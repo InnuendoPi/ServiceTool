@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Brautomat32 ServiceTool</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="/icomoon/style.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="appLoadingOverlay" class="app-loading-overlay">
+    <div class="app-loading-card">
+      <span class="spinner" aria-hidden="true"></span>
+      <span id="appLoadingText">ServiceTool wird geladen ...</span>
+    </div>
+  </div>
+  <header class="hero">
+    <div>
+      <h1 id="title">Brautomat32 ServiceTool V 1.5</h1>
+    </div>
+    <div class="hero-actions">
+      <div class="header-device">
+        <input id="deviceUrl" type="text" value="http://brautomat.local" placeholder="http://brautomat.local">
+        <button id="checkDevice">Check device</button>
+        <span id="deviceConnectionState" class="connection-state offline" data-state="offline"></span>
+        <button id="openDeviceUrl" class="ghost icon-button" type="button" aria-label="Open device"></button>
+        <button id="checkServiceToolUpdate" class="ghost icon-button" type="button" aria-label="Check ServiceTool update"></button>
+        <button id="openGuide" class="ghost icon-button" type="button" aria-label="Guide">?</button>
+      </div>
+      <div class="header-side">
+        <label class="lang-select">
+          <select id="language">
+            <option value="de">Deutsch</option>
+            <option value="en" selected>English</option>
+          </select>
+        </label>
+        <label class="checkline header-check">
+          <span id="debugOutputLabel">Debug Output</span>
+          <input id="debugOutput" type="checkbox">
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <div class="tabs-row span-2">
+      <nav class="tabs">
+        <button class="tab active" data-tab="firmware" id="tabFirmware">Firmware</button>
+        <button class="tab" data-tab="management" id="tabManagement">Verwaltung</button>
+        <button class="tab" data-tab="backup" id="tabBackup">Backup &amp; Restore</button>
+        <button class="tab" data-tab="logging" id="tabLogging">Logging</button>
+        <button class="tab" data-tab="telegraf" id="tabTelegraf">Telegraf</button>
+        <button class="tab" data-tab="migration" id="tabMigration">Migration</button>
+        <button class="tab hidden-panel" data-tab="testrunner" id="tabTestRunner">Test Runner</button>
+      </nav>
+      <div class="firmware-meta tabs-firmware-meta">
+        <span id="activeFirmwareLabel">Aktive Firmware</span>
+        <span id="activeFirmware" class="firmware-version"></span>
+        <span id="activeProcessState" class="process-state hidden-panel" data-state="idle"></span>
+      </div>
+    </div>
+
+    <section class="tab-panel span-2 firmware-panel active" data-panel="firmware">
+      <section class="card card-stack">
+        <h2 id="flashTitle">Firmware Flash</h2>
+        <div class="grid-2">
+          <label>
+            <span id="packageSourceLabel">Package source</span>
+            <select id="packageSource">
+              <option value="release">Latest Release</option>
+              <option value="development">Latest Development</option>
+              <option value="special">Special Version</option>
+              <option value="open">Open directory</option>
+            </select>
+          </label>
+          <label id="packageVersionGroup" class="hidden-panel">
+            <span id="packageVersionLabel">Special Version</span>
+            <select id="packageVersion"></select>
+          </label>
+          <label>
+            <span id="packageLabel">Package URL / directory</span>
+            <div class="input-action">
+              <input id="packageDir" type="text" placeholder="https://raw.githubusercontent.com/InnuendoPi/Brautomat32/main/build/ESP32-IDF5" readonly>
+              <button id="choosePackageDir" class="ghost" type="button">Open directory</button>
+            </div>
+          </label>
+        </div>
+        <div class="flash-controls">
+          <label>
+            <span id="portLabel">COM Port</span>
+            <select id="portSelect"></select>
+          </label>
+          <label>
+            <span id="baudLabel">Baudrate</span>
+            <div class="input-action">
+              <select id="baudSelect">
+                <option value="115200">115200</option>
+                <option value="460800">460800</option>
+                <option value="921600" selected>921600</option>
+              </select>
+              <button id="refreshPorts">Ports neu laden</button>
+            </div>
+          </label>
+          <div class="checkstack">
+            <label class="checkline">
+              <span id="eraseFlashLabel">Flash erase</span>
+              <input id="eraseFlashSelect" type="checkbox" checked>
+            </label>
+            <label class="checkline">
+              <span id="littlefsLabel">Webdateien mit aktualisieren</span>
+              <input id="littlefsSelect" type="checkbox" checked>
+            </label>
+          </div>
+        </div>
+        <div class="actions end">
+          <button id="flashBtn">Firmware flashen</button>
+          <span id="flashBackupWarning" class="flash-backup-warning hidden-panel"></span>
+        </div>
+        <div id="firmwareProgressPanel" class="progress-panel hidden">
+          <div class="progress-head">
+            <span id="firmwareProgressTitle">Progress</span>
+            <span id="firmwareProgressText">0%</span>
+          </div>
+          <div class="progress-bar-shell">
+            <div id="firmwareProgressBar" class="progress-bar-fill"></div>
+          </div>
+          <div id="firmwareProgressFile" class="progress-file">-</div>
+        </div>
+        <div class="status-inline">
+          <span id="flashSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+          <p id="flashInlineStatus" class="status-line"></p>
+        </div>
+      </section>
+
+      <section class="card card-stack">
+        <h2 id="webfilesTitle">Webdateien Update</h2>
+        <p id="webfilesHint" class="hint">Aktualisiert die in WebUpdate verwendeten LittleFS-Webdateien direkt über /edit aus dem öffentlichen Brautomat32-Repo.</p>
+        <div class="actions end">
+          <button id="updateWebfilesBtn" type="button" onclick="updateWebfiles()">Webdateien aktualisieren</button>
+          <button id="checkFirmwareUpdateBtn" class="ghost" type="button">Firmware WebUpdate</button>
+        </div>
+        <div class="section-divider" aria-hidden="true"></div>
+        <label>
+          <span id="webfilesLanguageLabel">Language file</span>
+          <div class="input-action">
+            <select id="webfilesLanguage"></select>
+            <button id="installLanguageBtn" type="button">Change language</button>
+          </div>
+        </label>
+        <div id="webfilesProgressPanel" class="progress-panel hidden">
+          <div class="progress-head">
+            <span id="webfilesProgressTitle">Progress</span>
+            <span id="webfilesProgressText">0%</span>
+          </div>
+          <div class="progress-bar-shell">
+            <div id="webfilesProgressBar" class="progress-bar-fill"></div>
+          </div>
+          <div id="webfilesProgressFile" class="progress-file"></div>
+        </div>
+        <div class="status-inline">
+          <span id="webfilesSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+          <p id="webfilesInlineStatus" class="status-line"></p>
+        </div>
+      </section>
+
+      <section class="card card-stack">
+        <h2 id="wifiTitle">WiFi Credentials</h2>
+        <label>
+          <span id="wifiScanLabel">Available networks</span>
+          <div class="input-action">
+            <select id="wifiNetworks"></select>
+            <button id="wifiScanBtn">Scan</button>
+          </div>
+        </label>
+          <label>
+            <span id="wifiSsidLabel">SSID</span>
+            <input id="wifiSsid" name="username" type="text" autocomplete="username" placeholder="BrautomatWiFi">
+          </label>
+          <label>
+            <span id="wifiPasswordLabel">Password</span>
+            <input id="wifiPassword" name="password" type="password" autocomplete="current-password" placeholder="">
+          </label>
+        <div class="actions end">
+          <button id="wifiSaveBtn">Save &amp; Reboot</button>
+          <button id="wifiResetBtn" class="danger">WLAN Reset</button>
+        </div>
+        <div class="status-inline">
+          <span id="wifiSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+          <p id="wifiInlineStatus" class="status-line"></p>
+        </div>
+      </section>
+
+      <section class="card firmware-status debug-panel">
+        <h2 id="firmwareStatusTitle">Status</h2>
+        <pre id="firmwareStatus" class="output"></pre>
+        <div class="actions logging-actions">
+          <button id="firmwareStatusClearBtn" class="danger" type="button">Clear log</button>
+          <button id="firmwareStatusCopyBtn" class="primary" type="button">Copy to clip</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="tab-panel span-2" data-panel="management">
+      <section class="card span-2">
+        <div class="subtabs">
+          <button class="subtab active" data-management-tab="mashplans" id="managementTabMashplans">Maischepläne</button>
+          <button class="subtab" data-management-tab="fermenterplans" id="managementTabFermenterplans">Fermenter Pläne</button>
+          <button class="subtab" data-management-tab="profiles" id="managementTabProfiles">Profile</button>
+          <button class="subtab" data-management-tab="config" id="managementTabConfig">Konfiguration</button>
+        </div>
+        <div class="inventory-root-bar">
+          <span id="inventoryRootLabel">Inventarverzeichnis</span>
+          <span id="inventoryRootPath" class="local-path">/</span>
+          <button id="chooseInventoryRoot" class="ghost" type="button">Open directory</button>
+        </div>
+
+        <section class="management-subpanel active" data-management-panel="mashplans">
+          <div class="management-grid">
+            <section class="management-column">
+              <div class="list-head">
+                <h2 id="managementDeviceFilesTitle">Dateien auf dem Device</h2>
+                <button id="mashplansRefreshDevice" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
+              </div>
+              <div class="file-table-shell">
+                <table class="file-table">
+                  <thead>
+                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
+                  </thead>
+                  <tbody id="mashplansDeviceList"></tbody>
+                </table>
+              </div>
+              <div class="actions list-actions">
+                <button id="mashplansInfoDevice" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+                <button id="mashplansRenameDevice" class="ghost" type="button">Rename</button>
+                <button id="mashplansDeleteDevice" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
+              </div>
+            </section>
+            <section class="management-transfer">
+              <button id="mashplansCopyToLocal" type="button"><i class="icon-step-forward button-icon" aria-hidden="true"></i></button>
+              <button id="mashplansCopyToDevice" type="button"><i class="icon-step-backward button-icon" aria-hidden="true"></i></button>
+            </section>
+            <section class="management-column">
+              <div class="local-inventory-head">
+                <h2 id="managementLocalFilesTitle">Dateien im lokalen Inventar</h2>
+                <button id="mashplansLocalUp" class="ghost" type="button">..</button>
+                <span id="mashplansLocalPath" class="local-path">/</span>
+                <button id="mashplansLocalNewFolder" class="ghost" type="button">+ Ordner</button>
+                <button id="mashplansLocalNewFile" class="ghost" type="button">+ Datei</button>
+                <button id="mashplansRefreshLocal" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
+              </div>
+              <div class="file-table-shell">
+                <table class="file-table">
+                  <thead>
+                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
+                  </thead>
+                  <tbody id="mashplansLocalList"></tbody>
+                </table>
+              </div>
+              <div class="actions list-actions">
+                <button id="mashplansInfoLocal" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+                <button id="mashplansRenameLocal" class="ghost" type="button">Rename</button>
+                <button id="mashplansDeleteLocal" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
+              </div>
+            </section>
+          </div>
+          <div class="status-inline">
+            <span id="mashplansSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+            <p id="mashplansInlineStatus" class="status-line"></p>
+          </div>
+        </section>
+
+        <section class="management-subpanel" data-management-panel="fermenterplans">
+          <div class="management-grid">
+            <section class="management-column">
+              <div class="list-head">
+                <h2 id="managementDeviceFilesTitle2">Dateien auf dem Device</h2>
+                <button id="fermenterplansRefreshDevice" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
+              </div>
+              <div class="file-table-shell">
+                <table class="file-table">
+                  <thead>
+                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
+                  </thead>
+                  <tbody id="fermenterplansDeviceList"></tbody>
+                </table>
+              </div>
+              <div class="actions list-actions">
+                <button id="fermenterplansInfoDevice" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+                <button id="fermenterplansRenameDevice" class="ghost" type="button">Rename</button>
+                <button id="fermenterplansDeleteDevice" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
+              </div>
+            </section>
+            <section class="management-transfer">
+              <button id="fermenterplansCopyToLocal" type="button"><i class="icon-step-forward button-icon" aria-hidden="true"></i></button>
+              <button id="fermenterplansCopyToDevice" type="button"><i class="icon-step-backward button-icon" aria-hidden="true"></i></button>
+            </section>
+            <section class="management-column">
+              <div class="local-inventory-head">
+                <h2 id="managementLocalFilesTitle2">Dateien im lokalen Inventar</h2>
+                <button id="fermenterplansLocalUp" class="ghost" type="button">..</button>
+                <span id="fermenterplansLocalPath" class="local-path">/</span>
+                <button id="fermenterplansLocalNewFolder" class="ghost" type="button">+ Ordner</button>
+                <button id="fermenterplansLocalNewFile" class="ghost" type="button">+ Datei</button>
+                <button id="fermenterplansRefreshLocal" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
+              </div>
+              <div class="file-table-shell">
+                <table class="file-table">
+                  <thead>
+                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
+                  </thead>
+                  <tbody id="fermenterplansLocalList"></tbody>
+                </table>
+              </div>
+              <div class="actions list-actions">
+                <button id="fermenterplansInfoLocal" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+                <button id="fermenterplansRenameLocal" class="ghost" type="button">Rename</button>
+                <button id="fermenterplansDeleteLocal" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
+              </div>
+            </section>
+          </div>
+          <div class="status-inline">
+            <span id="fermenterplansSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+            <p id="fermenterplansInlineStatus" class="status-line"></p>
+          </div>
+        </section>
+
+        <section class="management-subpanel" data-management-panel="profiles">
+          <div class="management-grid">
+            <section class="management-column">
+              <div class="list-head">
+                <h2 id="managementDeviceFilesTitle3">Dateien auf dem Device</h2>
+                <button id="profilesRefreshDevice" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
+              </div>
+              <div class="file-table-shell">
+                <table class="file-table">
+                  <thead>
+                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
+                  </thead>
+                  <tbody id="profilesDeviceList"></tbody>
+                </table>
+              </div>
+              <div class="actions list-actions">
+                <button id="profilesInfoDevice" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+                <button id="profilesRenameDevice" class="ghost" type="button">Rename</button>
+                <button id="profilesDeleteDevice" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
+              </div>
+            </section>
+            <section class="management-transfer">
+              <button id="profilesCopyToLocal" type="button"><i class="icon-step-forward button-icon" aria-hidden="true"></i></button>
+              <button id="profilesCopyToDevice" type="button"><i class="icon-step-backward button-icon" aria-hidden="true"></i></button>
+            </section>
+            <section class="management-column">
+              <div class="local-inventory-head">
+                <h2 id="managementLocalFilesTitle3">Dateien im lokalen Inventar</h2>
+                <button id="profilesLocalUp" class="ghost" type="button">..</button>
+                <span id="profilesLocalPath" class="local-path">/</span>
+                <button id="profilesLocalNewFolder" class="ghost" type="button">+ Ordner</button>
+                <button id="profilesLocalNewFile" class="ghost" type="button">+ Datei</button>
+                <button id="profilesRefreshLocal" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
+              </div>
+              <div class="file-table-shell">
+                <table class="file-table">
+                  <thead>
+                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
+                  </thead>
+                  <tbody id="profilesLocalList"></tbody>
+                </table>
+              </div>
+              <div class="actions list-actions">
+                <button id="profilesInfoLocal" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+                <button id="profilesRenameLocal" class="ghost" type="button">Rename</button>
+                <button id="profilesDeleteLocal" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
+              </div>
+            </section>
+          </div>
+          <div class="status-inline">
+            <span id="profilesSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+            <p id="profilesInlineStatus" class="status-line"></p>
+          </div>
+        </section>
+
+        <section class="management-subpanel" data-management-panel="config">
+          <div class="management-grid">
+            <section class="management-column">
+              <div class="list-head">
+                <h2 id="managementDeviceFilesTitle4">Dateien auf dem Device</h2>
+                <button id="configRefreshDevice" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
+              </div>
+              <div class="file-table-shell">
+                <table class="file-table">
+                  <thead>
+                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
+                  </thead>
+                  <tbody id="configDeviceList"></tbody>
+                </table>
+              </div>
+              <div class="actions list-actions">
+                <button id="configInfoDevice" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+                <button id="configRenameDevice" class="ghost" type="button">Rename</button>
+                <button id="configDeleteDevice" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
+              </div>
+            </section>
+            <section class="management-transfer">
+              <button id="configCopyToLocal" type="button"><i class="icon-step-forward button-icon" aria-hidden="true"></i></button>
+              <button id="configCopyToDevice" type="button"><i class="icon-step-backward button-icon" aria-hidden="true"></i></button>
+            </section>
+            <section class="management-column">
+              <div class="local-inventory-head">
+                <h2 id="managementLocalFilesTitle4">Dateien im lokalen Inventar</h2>
+                <button id="configLocalUp" class="ghost" type="button">..</button>
+                <span id="configLocalPath" class="local-path">/</span>
+                <button id="configLocalNewFolder" class="ghost" type="button">+ Ordner</button>
+                <button id="configLocalNewFile" class="ghost" type="button">+ Datei</button>
+                <button id="configRefreshLocal" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
+              </div>
+              <div class="file-table-shell">
+                <table class="file-table">
+                  <thead>
+                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
+                  </thead>
+                  <tbody id="configLocalList"></tbody>
+                </table>
+              </div>
+              <div class="actions list-actions">
+                <button id="configInfoLocal" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+                <button id="configRenameLocal" class="ghost" type="button">Rename</button>
+                <button id="configDeleteLocal" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
+              </div>
+            </section>
+          </div>
+          <div class="status-inline">
+            <span id="configSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+            <p id="configInlineStatus" class="status-line"></p>
+          </div>
+        </section>
+      </section>
+
+      <section class="card span-2 debug-panel">
+        <h2 id="managementStatusTitle">Status</h2>
+        <pre id="managementStatus" class="output"></pre>
+        <div class="actions logging-actions">
+          <button id="managementStatusClearBtn" class="danger" type="button">Clear log</button>
+          <button id="managementStatusCopyBtn" class="primary" type="button">Copy to clip</button>
+        </div>
+      </section>
+    </section>
+
+      <section class="tab-panel span-2 backup-panel" data-panel="backup">
+      <section class="card card-stack span-2">
+        <h2 id="backupTitle">Backup configuration</h2>
+        <div class="backup-head">
+          <label class="checkline">
+            <span id="includeApiLabel">Backup with BrewFather credentials</span>
+            <input id="includeApi" type="checkbox" checked>
+          </label>
+        </div>
+        <div class="file-table-shell">
+          <table class="file-table">
+            <thead>
+              <tr><th>Datei</th><th>Version</th><th>Datum</th><th>Größe</th></tr>
+            </thead>
+            <tbody id="backupList"></tbody>
+          </table>
+        </div>
+        <input id="restoreFile" type="file" accept=".json,application/json" class="hidden-file-input">
+        <div class="actions end backup-actions">
+            <button id="backupBtn">Backup</button>
+            <button id="backupRenameBtn" class="ghost" type="button">Rename</button>
+            <button id="backupInfoBtn" class="ghost" type="button">Info</button>
+            <button id="backupDeleteBtn" class="danger" type="button">Delete</button>
+            <span class="backup-restore-divider" aria-hidden="true"></span>
+            <span id="restoreInlineLabel">Restore</span>
+            <input id="restoreFilename" type="text" readonly>
+            <button id="restoreFilePickBtn" class="ghost" type="button">Choose file</button>
+            <button id="restoreBtn" type="button">Restore</button>
+        </div>
+        <div class="status-inline">
+          <span id="backupSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+          <p id="backupInlineStatus" class="status-line"></p>
+        </div>
+      </section>
+
+      <section class="card remove-me-restore" hidden>
+        <h2 id="restoreTitle_old">Restore</h2>
+        <label>
+          <span id="restoreFileLabel_old">Backup-Datei</span>
+          <input id="restoreFile_old" type="file" accept=".json,application/json">
+        </label>
+        <div class="actions">
+          <button id="restoreBtn_old">Restore ausführen</button>
+        </div>
+        <div class="status-inline">
+          <span id="restoreSpinner_old" class="spinner hidden-spinner" aria-hidden="true"></span>
+          <p id="restoreInlineStatus_old" class="status-line"></p>
+        </div>
+      </section>
+
+      <section class="card card-stack">
+        <h2 id="firmwareBackupTitle">Firmware Backup</h2>
+        <p id="firmwareBackupHint" class="hint">Sichert die aktuell laufende App-Partition des Geräts über den seriellen Port.</p>
+        <div class="actions">
+          <button id="backupFirmwareBtn">Firmware sichern</button>
+        </div>
+        <div class="status-inline">
+          <span id="firmwareBackupSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+          <p id="firmwareBackupInlineStatus" class="status-line"></p>
+        </div>
+      </section>
+
+        <section class="card span-2 debug-panel backup-status">
+          <h2 id="backupRestoreStatusTitle">Status</h2>
+          <pre id="backupRestoreStatus" class="output"></pre>
+          <div class="actions logging-actions">
+            <button id="backupRestoreStatusClearBtn" class="danger" type="button">Clear log</button>
+            <button id="backupRestoreStatusCopyBtn" class="primary" type="button">Copy to clip</button>
+          </div>
+        </section>
+      </section>
+
+    <section class="tab-panel span-2" data-panel="logging">
+      <section class="card span-2">
+        <h2 id="serialTitle">Serielles Log</h2>
+        <div class="logging-controls">
+          <label>
+            <span id="serialPortLabel">COM Port</span>
+            <select id="serialPortSelect"></select>
+          </label>
+          <label>
+            <span id="serialBaudLabel">Baudrate</span>
+            <div class="logging-baud-action">
+              <select id="serialBaudSelect">
+                <option value="115200" selected>115200</option>
+                <option value="230400">230400</option>
+                <option value="460800">460800</option>
+              </select>
+              <button id="serialRebootBtn" class="danger">Reboot</button>
+            </div>
+          </label>
+        </div>
+        <pre id="serialLog" class="output tall serial-output"></pre>
+        <div class="actions logging-actions">
+          <button id="serialStartBtn">Start Log</button>
+          <button id="serialStopBtn" class="danger">Stop Log</button>
+          <button id="serialClearBtn" class="danger">Clear log</button>
+          <button id="serialAutoscrollBtn" class="primary" type="button">Autoscroll</button>
+          <button id="serialCopyBtn" class="primary">Copy to clip</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="tab-panel span-2 hidden-panel" data-panel="testrunner" id="testRunnerPanel">
+      <section class="card">
+        <h2 id="testRunnerTitle">Test Runner</h2>
+        <p id="testRunnerHint" class="hint">Startet den vorhandenen Repo-Test-Runner aus tools/test-runner mit auswählbarer Suite.</p>
+        <div class="grid-2">
+          <label>
+            <span id="testRunnerSuiteLabel">Testsuite</span>
+            <select id="testRunnerSuite"></select>
+          </label>
+          <label>
+            <span id="testRunnerDeviceKeyLabel">Device Key</span>
+            <input id="testRunnerDeviceKey" type="text" value="brautomat-testdevice">
+          </label>
+        </div>
+        <div id="testRunnerSuiteInfo" class="hint">
+          <strong id="testRunnerSuiteInfoTitle">Suite info</strong>
+          <div id="testRunnerSuiteInfoBody"></div>
+        </div>
+        <div class="actions">
+          <button id="testRunnerStartBtn">Start</button>
+          <button id="testRunnerStopBtn" class="danger" type="button">Stop</button>
+        </div>
+        <div class="status-inline">
+          <span id="testRunnerSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+          <p id="testRunnerInlineStatus" class="status-line"></p>
+        </div>
+      </section>
+      <section class="card">
+        <div class="runner-result-head">
+          <h2 id="testRunnerResultTitle">Ergebnis</h2>
+          <div id="testRunnerLiveCounts" class="runner-live-counts hidden-panel" aria-live="polite">
+            <span id="testRunnerPassBadge" class="runner-count-badge pass">PASS 0</span>
+            <span id="testRunnerFailBadge" class="runner-count-badge fail">FAIL 0</span>
+            <span id="testRunnerWarnBadge" class="runner-count-badge warn">WARN 0</span>
+          </div>
+        </div>
+        <div class="runner-summary-grid">
+          <div><strong id="testRunnerSummarySuiteLabel">Suite</strong><span id="testRunnerSummarySuite">-</span></div>
+          <div><strong id="testRunnerSummaryStatusLabel">Status</strong><span id="testRunnerSummaryStatus">-</span></div>
+          <div><strong id="testRunnerSummaryCountsLabel">Step</strong><span id="testRunnerSummaryCounts">-</span></div>
+          <div><strong id="testRunnerSummaryReportLabel">Report</strong><span id="testRunnerSummaryReport">-</span></div>
+        </div>
+        <pre id="testRunnerLog" class="output tall"></pre>
+      </section>
+      <section class="card span-2 debug-panel">
+        <h2 id="testRunnerStatusTitle">Status</h2>
+        <pre id="testRunnerStatus" class="output"></pre>
+        <div class="actions logging-actions">
+          <button id="testRunnerStatusClearBtn" class="danger" type="button">Clear log</button>
+          <button id="testRunnerStatusCopyBtn" class="primary" type="button">Copy to clip</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="tab-panel span-2" data-panel="telegraf">
+      <section class="card span-2">
+        <h2 id="telegrafTitle">Telegraf</h2>
+        <p id="telegrafHint" class="hint">Telegraf liest die Telemetrie des Brautomats und leitet sie an die aktivierten Ziele weiter.</p>
+        <div class="grid-3">
+          <label><span id="telegrafDeviceUrlLabel">Brautomat-URL</span><input id="telegrafDeviceUrl" type="url" value="http://brautomat.local"></label>
+          <label><span id="telegrafIntervalLabel">Abrufintervall</span><input id="telegrafInterval" type="text" value="30s" placeholder="30s"></label>
+          <label><span id="telegrafBinaryLabel">Telegraf Programmdatei</span><input id="telegrafBinary" type="text" placeholder="telegraf oder C:\\Tools\\telegraf.exe"></label>
+        </div>
+        <div class="actions">
+          <button id="telegrafTestBtn" type="button">Brautomat testen</button>
+          <button id="telegrafStartBtn" class="success" type="button">Start</button>
+          <button id="telegrafStopBtn" class="danger" type="button">Stop</button>
+          <button id="telegrafSaveBtn" class="primary" type="button">Konfiguration speichern</button>
+        </div>
+        <div class="status-inline"><span id="telegrafSpinner" class="spinner hidden-spinner" aria-hidden="true"></span><p id="telegrafInlineStatus" class="status-line"></p></div>
+        <label class="checkline"><input id="telegrafSavePasswords" type="checkbox"><span id="telegrafSavePasswordsLabel">Zugangsdaten in der ServiceTool-Konfiguration speichern</span></label>
+      </section>
+      <section class="card span-2">
+        <div class="subtabs">
+          <button class="subtab active" data-telegraf-tab="csv">CSV</button>
+          <button class="subtab" data-telegraf-tab="influxdb">InfluxDB v2</button>
+          <button class="subtab" data-telegraf-tab="postgres">PostgreSQL</button>
+          <button class="subtab" data-telegraf-tab="mysql">MariaDB / MySQL</button>
+          <button class="subtab" data-telegraf-tab="mqtt">MQTT</button>
+        </div>
+        <div class="telegraf-subpanel active" data-telegraf-panel="csv">
+          <label class="checkline"><input id="telegrafCsvEnabled" type="checkbox"><span>CSV-Ziel aktivieren</span></label>
+          <label><span>CSV-Datei</span><input id="telegrafCsvPath" type="text" value="brautomat.csv"></label>
+        </div>
+        <div class="telegraf-subpanel" data-telegraf-panel="influxdb">
+          <label class="checkline"><input id="telegrafInfluxEnabled" type="checkbox"><span>InfluxDB-Ziel aktivieren</span></label>
+          <div class="grid-2"><label><span>URL</span><input id="telegrafInfluxUrl" type="url"></label><label><span>Organisation</span><input id="telegrafInfluxOrg" type="text"></label><label><span>Bucket</span><input id="telegrafInfluxBucket" type="text"></label><label><span>Token</span><input id="telegrafInfluxToken" type="password" autocomplete="off"></label></div>
+        </div>
+        <div class="telegraf-subpanel" data-telegraf-panel="postgres">
+          <label class="checkline"><input id="telegrafPostgresEnabled" type="checkbox"><span>PostgreSQL-Ziel aktivieren</span></label>
+          <div class="grid-4"><label><span>Host</span><input id="telegrafPostgresHost" type="text"></label><label><span>Port</span><input id="telegrafPostgresPort" type="text"></label><label><span>Datenbank</span><input id="telegrafPostgresDatabase" type="text"></label><label><span>Benutzer</span><input id="telegrafPostgresUser" type="text"></label></div>
+          <label><span>Passwort</span><input id="telegrafPostgresPassword" type="password" autocomplete="off"></label>
+        </div>
+        <div class="telegraf-subpanel" data-telegraf-panel="mysql">
+          <label class="checkline"><input id="telegrafMySqlEnabled" type="checkbox"><span>MariaDB/MySQL-Ziel aktivieren</span></label>
+          <div class="grid-4"><label><span>Host</span><input id="telegrafMySqlHost" type="text"></label><label><span>Port</span><input id="telegrafMySqlPort" type="text"></label><label><span>Datenbank</span><input id="telegrafMySqlDatabase" type="text"></label><label><span>Benutzer</span><input id="telegrafMySqlUser" type="text"></label></div>
+          <label><span>Passwort</span><input id="telegrafMySqlPassword" type="password" autocomplete="off"></label>
+        </div>
+        <div class="telegraf-subpanel" data-telegraf-panel="mqtt">
+          <label class="checkline"><input id="telegrafMqttEnabled" type="checkbox"><span>MQTT-Ziel aktivieren</span></label>
+          <div class="grid-3"><label><span>Broker</span><input id="telegrafMqttServer" type="text"></label><label><span>Topic</span><input id="telegrafMqttTopic" type="text"></label><label><span>Client-ID</span><input id="telegrafMqttClientId" type="text"></label><label><span>Benutzer</span><input id="telegrafMqttUsername" type="text"></label><label><span>Passwort</span><input id="telegrafMqttPassword" type="password" autocomplete="off"></label><label><span>QoS</span><select id="telegrafMqttQos"><option value="0">0</option><option value="1">1</option><option value="2">2</option></select></label></div>
+        </div>
+      </section>
+      <section class="card span-2">
+        <h2 id="telegrafLogTitle">Telegraf-Ausgabe</h2>
+        <pre id="telegrafLog" class="output tall"></pre>
+        <div class="actions logging-actions"><button id="telegrafClearBtn" class="danger" type="button">Ausgabe leeren</button><button id="telegrafCopyBtn" class="primary" type="button">In Zwischenablage kopieren</button></div>
+      </section>
+    </section>
+
+    <section class="tab-panel span-2" data-panel="migration">
+      <section class="card span-2">
+        <h2 id="migrationTitle">Migration</h2>
+        <p id="migrationHint" class="hint">Migration von 1.62 auf 1.70 mit verändertem Partitions-Schema. Ablauf: Backup, Erase Flash, neue Partitionen + Firmware + LittleFS flashen. WLAN wird übernommen, danach Gerät neu einrichten oder Restore.</p>
+          <div id="migrationRequirements" class="hint">
+          <div id="migrationRequirementSource">Quelle: Brautomat32 1.62.x</div>
+          <div id="migrationRequirementTarget">Ziel: Brautomat32 1.70.x</div>
+          <div id="migrationRequirementTransport">Erforderlich: Online + serieller COM-Port</div>
+        </div>
+        <div class="grid-2">
+          <label class="checkline">
+            <span id="migrationBackupLabel">Backup vor Migration</span>
+            <input id="migrationBackup" type="checkbox" checked disabled>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="migrateBtn" class="danger" type="button">Migration starten</button>
+        </div>
+        <div class="status-inline">
+          <span id="migrationSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+          <p id="migrationInlineStatus" class="status-line"></p>
+        </div>
+        <div class="debug-panel">
+          <pre id="migrationStatus" class="output"></pre>
+          <div class="actions logging-actions">
+            <button id="migrationStatusClearBtn" class="danger" type="button">Clear log</button>
+            <button id="migrationStatusCopyBtn" class="primary" type="button">Copy to clip</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+  </main>
+
+  <div id="guideModal" class="modal-shell hidden-panel" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="guideTitle">ServiceTool Guide</h2>
+        <button id="closeGuide" class="ghost icon-button" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="guideContent" class="guide-content"></div>
+    </div>
+  </div>
+
+  <div id="inventoryDetailModal" class="modal-shell hidden-panel" role="dialog" aria-modal="true" aria-labelledby="inventoryDetailTitle">
+    <div class="modal-card inventory-detail-card">
+      <div class="modal-head">
+        <h2 id="inventoryDetailTitle">Details</h2>
+        <button id="closeInventoryDetail" class="ghost icon-button" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="inventoryDetailLoading" class="modal-loading hidden-panel">
+        <span class="spinner" aria-hidden="true"></span>
+        <span id="inventoryDetailLoadingText">Loading ...</span>
+      </div>
+      <div id="inventoryDetailContent" class="inventory-detail-content"></div>
+    </div>
+  </div>
+
+  <div id="serviceToolUpdateModal" class="modal-shell hidden-panel" role="dialog" aria-modal="true" aria-labelledby="serviceToolUpdateTitle">
+    <div class="modal-card service-update-card">
+      <div class="modal-head">
+        <h2 id="serviceToolUpdateTitle">ServiceTool Update</h2>
+        <button id="closeServiceToolUpdate" class="ghost icon-button" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="serviceToolUpdateContent" class="service-update-content"></div>
+      <div class="actions end service-update-actions">
+        <span id="serviceToolUpdateStatus" class="status-line"></span>
+        <button id="downloadServiceToolUpdate" class="primary" type="button">Download</button>
+        <button id="cancelServiceToolUpdate" class="ghost" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="firmwareUpdateModal" class="modal-shell hidden-panel" role="dialog" aria-modal="true" aria-labelledby="firmwareUpdateTitle">
+    <div class="modal-card service-update-card">
+      <div class="modal-head">
+        <h2 id="firmwareUpdateTitle">Firmware Update</h2>
+        <button id="closeFirmwareUpdate" class="ghost icon-button" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="firmwareUpdateContent" class="service-update-content"></div>
+      <div class="actions end service-update-actions">
+        <span id="firmwareUpdateStatus" class="status-line"></span>
+        <button id="startFirmwareWebUpdate" class="primary" type="button">Update starten</button>
+        <button id="cancelFirmwareUpdate" class="ghost" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

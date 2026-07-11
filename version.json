@@ -1,0 +1,21 @@
+{
+  "tool": "Brautomat32 ServiceTool",
+  "version": "1.7.0",
+  "released_at": "2026-07-11",
+  "notes": "ServiceTool 1.7 release: Telegraf telemetry forwarding and Esptool 5.3.1.",
+  "windows": {
+    "filename": "Brautomat32ServiceTool-win.zip",
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.0/Brautomat32ServiceTool-win.zip",
+    "sha256": "dc0e337039146696a069348243027587d648a558ec664375cc0dc9187661e820"
+  },
+  "linux": {
+    "filename": "Brautomat32ServiceTool-linux.zip",
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.0/Brautomat32ServiceTool-linux.zip",
+    "sha256": "f247c1f414da323ace708418c628a7b490cffa7b338e864146486f563ceac9c0"
+  },
+  "macos": {
+    "filename": "Brautomat32ServiceTool-macos.zip",
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.0/Brautomat32ServiceTool-macos.zip",
+    "sha256": "fd441ec3a4971a5c55252d0e3cf1112ac0e654bf4fb34b5b1b3514ec81b5e696"
+  }
+}

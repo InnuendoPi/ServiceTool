@@ -1,0 +1,288 @@
+name: ServiceTool Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the generated packages as a GitHub Release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build Windows package
+        shell: pwsh
+        run: .\build_servicetool_windows_release.ps1
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brautomat32ServiceTool-windows
+          path: Brautomat32ServiceTool-win.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build ServiceTool for Linux
+        shell: bash
+        run: |
+          rm -rf build dist AppDir artifact
+          pyinstaller --noconfirm --clean Brautomat32ServiceTool.spec
+
+      - name: Package Linux AppImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p AppDir/usr/bin artifact/package
+          cp dist/Brautomat32ServiceTool AppDir/usr/bin/Brautomat32ServiceTool
+          chmod +x AppDir/usr/bin/Brautomat32ServiceTool
+          cat > AppDir/AppRun <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/Brautomat32ServiceTool" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+          cat > AppDir/Brautomat32ServiceTool.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Brautomat32 ServiceTool
+          Exec=Brautomat32ServiceTool
+          Icon=Brautomat32ServiceTool
+          Categories=Utility;
+          Terminal=true
+          EOF
+          python - <<'PY'
+          import struct
+          import zlib
+
+          width = height = 256
+          color = bytes((13, 110, 253, 255))
+          row = b"\x00" + color * width
+          raw = row * height
+
+          def chunk(tag, data):
+              return (
+                  struct.pack("!I", len(data))
+                  + tag
+                  + data
+                  + struct.pack("!I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+              )
+
+          png = b"\x89PNG\r\n\x1a\n"
+          png += chunk(b"IHDR", struct.pack("!2I5B", width, height, 8, 6, 0, 0, 0))
+          png += chunk(b"IDAT", zlib.compress(raw, 9))
+          png += chunk(b"IEND", b"")
+          with open("AppDir/Brautomat32ServiceTool.png", "wb") as handle:
+              handle.write(png)
+          PY
+          curl --fail --location --output appimagetool.AppImage \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool.AppImage
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 \
+            ./appimagetool.AppImage AppDir artifact/package/Brautomat32ServiceTool.AppImage
+          cp README.md artifact/package/README.md
+          cd artifact/package
+          zip -r ../../Brautomat32ServiceTool-linux.zip Brautomat32ServiceTool.AppImage README.md
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brautomat32ServiceTool-linux
+          path: Brautomat32ServiceTool-linux.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build ServiceTool app
+        shell: bash
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --onedir \
+            --windowed \
+            --name Brautomat32ServiceTool \
+            --collect-all zeroconf \
+            --collect-all ifaddr \
+            --collect-all serial \
+            --collect-all certifi \
+            --add-data "static:static" \
+            app.py
+
+      - name: Package macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact/package
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/Brautomat32ServiceTool.app Brautomat32ServiceTool-macos.zip
+
+      - name: Upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Brautomat32ServiceTool-macos
+          path: Brautomat32ServiceTool-macos.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    if: inputs.publish_release
+    needs:
+      - build-windows
+      - build-linux
+      - build-macos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify main branch
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Publishing is only allowed from main."
+            exit 1
+          fi
+
+      - name: Download Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: Brautomat32ServiceTool-windows
+          path: release/windows
+
+      - name: Download Linux package
+        uses: actions/download-artifact@v4
+        with:
+          name: Brautomat32ServiceTool-linux
+          path: release/linux
+
+      - name: Download macOS package
+        uses: actions/download-artifact@v4
+        with:
+          name: Brautomat32ServiceTool-macos
+          path: release/macos
+
+      - name: Update manifest from verified packages
+        id: manifest
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          version_path = Path("version.json")
+          data = json.loads(version_path.read_text(encoding="utf-8-sig"))
+          version = str(data.get("version") or "").strip()
+          if not version:
+              raise SystemExit("version.json does not contain a version")
+
+          release_tag = f"v{version}"
+          packages = {
+              "windows": Path("release/windows/Brautomat32ServiceTool-win.zip"),
+              "linux": Path("release/linux/Brautomat32ServiceTool-linux.zip"),
+              "macos": Path("release/macos/Brautomat32ServiceTool-macos.zip"),
+          }
+          base_url = f"https://github.com/InnuendoPi/ServiceTool/releases/download/{release_tag}"
+          for platform, package_path in packages.items():
+              if not package_path.is_file():
+                  raise SystemExit(f"Missing release package: {package_path}")
+              data[platform] = {
+                  "filename": package_path.name,
+                  "url": f"{base_url}/{package_path.name}",
+                  "sha256": hashlib.sha256(package_path.read_bytes()).hexdigest(),
+              }
+
+          data["released_at"] = datetime.now(timezone.utc).date().isoformat()
+          version_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+          Path("release-tag.txt").write_text(release_tag + "\n", encoding="utf-8")
+          PY
+          echo "tag=$(cat release-tag.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit release manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish ServiceTool ${{ steps.manifest.outputs.tag }}"
+            git push origin HEAD:main
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.manifest.outputs.tag }}" \
+            release/windows/Brautomat32ServiceTool-win.zip \
+            release/linux/Brautomat32ServiceTool-linux.zip \
+            release/macos/Brautomat32ServiceTool-macos.zip \
+            --target main \
+            --title "Brautomat32 ServiceTool ${{ steps.manifest.outputs.tag }}" \
+            --generate-notes

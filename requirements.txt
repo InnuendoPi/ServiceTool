@@ -1,0 +1,4 @@
+zeroconf==0.148.0
+ifaddr==0.2.0
+pyserial==3.5
+certifi==2025.8.3
