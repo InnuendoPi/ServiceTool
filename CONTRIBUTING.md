@@ -44,6 +44,32 @@ The build creates:
 - Releases may only be published from `main`.
 - The release workflow sets the download URLs and SHA256 values in
   `version.json`.
+- The `release` GitHub Environment must require maintainer approval before the
+  `publish-release` job can run.
+
+## Repository Collaboration Settings
+
+Repository settings are managed in GitHub, not in source control. Before
+inviting a co-author, configure the following controls for `main`:
+
+- require pull requests before merging
+- require at least one approving review
+
+Where GitHub makes the options available, also block force pushes and branch
+deletion. These are additional safeguards; a pull request requirement with one
+approval is the required baseline for this repository.
+
+Do not enable a blanket "restrict updates" rule for `main` while the current
+release workflow writes the release manifest back to `main`. That rule can break
+the manual release workflow unless a safe bypass is configured for GitHub
+Actions.
+
+Create the GitHub Environment named `release` and configure a repository
+maintainer as its required reviewer. This protects the release job even when a
+co-author can run normal build workflows.
+
+Invite co-authors with the `Write` role after their exact GitHub username is
+known. Do not grant `Maintain` or `Admin` for normal source contributions.
 
 ## Local Test Runner Integration
 

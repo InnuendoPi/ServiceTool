@@ -39,6 +39,9 @@ config.json
 .env.*
 !.env.example
 
+# Local internal work instructions (never commit)
+/ARBEITSANWEISUNG-BUILD.md
+
 # Editors and operating systems
 .idea/
 .vscode/

@@ -187,6 +187,8 @@ jobs:
       - build-linux
       - build-macos
     runs-on: ubuntu-latest
+    environment:
+      name: release
     permissions:
       contents: write
 
