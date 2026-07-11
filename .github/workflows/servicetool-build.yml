@@ -36,7 +36,7 @@ jobs:
         run: .\build_servicetool_windows_release.ps1
 
       - name: Upload Windows package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Brautomat32ServiceTool-windows
           path: Brautomat32ServiceTool-win.zip
@@ -123,7 +123,7 @@ jobs:
           zip -r ../../Brautomat32ServiceTool-linux.zip Brautomat32ServiceTool.AppImage README.md
 
       - name: Upload Linux package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Brautomat32ServiceTool-linux
           path: Brautomat32ServiceTool-linux.zip
@@ -173,7 +173,7 @@ jobs:
             dist/Brautomat32ServiceTool.app Brautomat32ServiceTool-macos.zip
 
       - name: Upload macOS package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Brautomat32ServiceTool-macos
           path: Brautomat32ServiceTool-macos.zip
@@ -206,19 +206,19 @@ jobs:
           fi
 
       - name: Download Windows package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: Brautomat32ServiceTool-windows
           path: release/windows
 
       - name: Download Linux package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: Brautomat32ServiceTool-linux
           path: release/linux
 
       - name: Download macOS package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: Brautomat32ServiceTool-macos
           path: release/macos
