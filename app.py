@@ -158,8 +158,13 @@ INVENTORY_SPECS: dict[str, dict[str, Any]] = {
         "device_files": ["config.txt", "log_cfg.json"],
     },
 }
+BRAUTOMAT32_SOURCE_ROOT = os.environ.get("BRAUTOMAT32_SOURCE_ROOT", "").strip()
 TEST_TASKS_DIR_CANDIDATES = [APP_ROOT / "tasks", APP_ROOT.parent / "tasks", DATA_ROOT / "tasks"]
 TEST_TOOLS_DIR_CANDIDATES = [APP_ROOT / "tools", APP_ROOT.parent / "tools", DATA_ROOT / "tools"]
+if BRAUTOMAT32_SOURCE_ROOT:
+    brautomat32_root = pathlib.Path(BRAUTOMAT32_SOURCE_ROOT).expanduser()
+    TEST_TASKS_DIR_CANDIDATES.append(brautomat32_root / "tasks")
+    TEST_TOOLS_DIR_CANDIDATES.append(brautomat32_root / "tools")
 
 
 def ensure_runtime_dirs() -> None:

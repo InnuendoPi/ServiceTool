@@ -1343,11 +1343,17 @@ async function loadPublicTestResults() {
 
 async function loadTestRunnerCatalog() {
   if (hideTestRunnerViaQuery()) return;
+  const data = await api("/api/test-runner/catalog");
+  testRunnerCatalog = data;
+  if (!data.enabled) {
+    $("tabTestRunner")?.classList.add("hidden-panel");
+    $("testRunnerPanel")?.classList.add("hidden-panel");
+    return;
+  }
+
   $("tabTestRunner")?.classList.remove("hidden-panel");
   $("testRunnerPanel")?.classList.remove("hidden-panel");
   setInlineStatus("testRunnerInlineStatus", text("testRunnerLoading"));
-  const data = await api("/api/test-runner/catalog");
-  testRunnerCatalog = data;
   const select = $("testRunnerSuite");
   if (select) {
     select.innerHTML = "";
@@ -1366,14 +1372,9 @@ async function loadTestRunnerCatalog() {
   }
   setStatus("testRunnerStatus", JSON.stringify(data, null, 2));
   appendTimestampedStatus("testRunnerStatus", `catalog loaded: enabled=${!!data.enabled} suites=${Array.isArray(data.suites) ? data.suites.length : 0}`);
-  if (data.enabled) {
-    setTestRunnerControlsEnabled(true);
-    setInlineStatus("testRunnerInlineStatus", "");
-    await loadTestRunnerStatus();
-  } else {
-    setTestRunnerControlsEnabled(false);
-    await loadPublicTestResults();
-  }
+  setTestRunnerControlsEnabled(true);
+  setInlineStatus("testRunnerInlineStatus", "");
+  await loadTestRunnerStatus();
 }
 
 async function loadTestRunnerStatus() {

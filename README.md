@@ -246,9 +246,10 @@ Runtime files such as `config.json`, logs, backups, downloaded tools, and local
 inventory are intentionally excluded from git. Never commit real WiFi,
 database, InfluxDB, or MQTT credentials.
 
-The optional Test Runner integration is only enabled when a compatible
-Brautomat32 test-runner checkout is available next to the application. It is
-not part of this repository.
+The optional Test Runner integration is not part of this repository. Its tab
+is only shown when a complete local Brautomat32 development checkout is
+configured through `BRAUTOMAT32_SOURCE_ROOT`. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the required files and setup.
 
 ## Builds
 
@@ -278,6 +279,7 @@ commits `version.json` with the matching release URLs and SHA256 values.
 - `.github/workflows/servicetool-build.yml`: manual cross-platform builds
 - `version.json`: update manifest used by released applications
 - `tasks/`: shared ServiceTool development tasks; no firmware test-runner data
+- `CONTRIBUTING.md`: contribution, release, and private test-runner setup
 
 ## License
 
