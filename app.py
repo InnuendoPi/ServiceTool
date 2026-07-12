@@ -54,6 +54,12 @@ except Exception:  # noqa: BLE001
     certifi = None
 
 
+# ---------------------------------------------------------------------------
+# Paths, runtime constants & bootstrap
+# Separates bundled application files (BUNDLE_ROOT/APP_ROOT) from writable
+# runtime data (DATA_ROOT), which lives in a different location per platform
+# once the app is packaged (see detect_data_root()).
+# ---------------------------------------------------------------------------
 BUNDLE_ROOT = pathlib.Path(getattr(sys, "_MEIPASS", pathlib.Path(__file__).resolve().parent))
 APP_ROOT = pathlib.Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else pathlib.Path(__file__).resolve().parent
 
@@ -229,6 +235,12 @@ def first_existing_dir(candidates: list[pathlib.Path], relative: str) -> pathlib
     return None
 
 
+# ---------------------------------------------------------------------------
+# Test Runner integration helpers
+# Support for the optional, private Node.js Test Runner (lives in a separate
+# Brautomat32 firmware checkout). Only formats/detects results; the runner
+# itself is launched by TestRunnerSession further below.
+# ---------------------------------------------------------------------------
 def slugify(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "runner"
 
@@ -430,6 +442,9 @@ def fetch_public_test_results() -> dict[str, Any]:
     return {"url": url, "content": content}
 
 
+# ---------------------------------------------------------------------------
+# App configuration (config.json)
+# ---------------------------------------------------------------------------
 def default_config() -> dict[str, Any]:
     return {
         "service_tool_version": SERVICE_TOOL_VERSION,
@@ -523,6 +538,9 @@ def now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+# ---------------------------------------------------------------------------
+# Version comparison, URL, and logging/network helpers
+# ---------------------------------------------------------------------------
 def sanitize_version_for_filename(version: str) -> str:
     raw = str(version or "").strip()
     if not raw:
@@ -622,7 +640,12 @@ def detect_local_advertise_ip() -> str:
     return "127.0.0.1"
 
 
+# ---------------------------------------------------------------------------
+# mDNS discovery
+# ---------------------------------------------------------------------------
 class MdnsAdvertiser:
+    """Advertises this ServiceTool instance as `serviceBrautomat32.local` via zeroconf."""
+
     def __init__(self, hostname: str, port: int) -> None:
         self.hostname = hostname.rstrip(".")
         self.port = port
@@ -670,6 +693,12 @@ class MdnsAdvertiser:
         self.active = False
 
 
+# ---------------------------------------------------------------------------
+# Device HTTP client
+# Plain urllib.request wrappers used to talk to the Brautomat32 device's own
+# HTTP API (config, filesystem, WiFi, telemetry, reboot, ...). No `requests`
+# dependency; try_base_urls() adds the ESP32 AP-mode IP as a fallback target.
+# ---------------------------------------------------------------------------
 def normalize_base_url(base_url: str) -> str:
     value = (base_url or "").strip()
     if not value:
@@ -832,6 +861,12 @@ def download_fs_file(base_url: str, target_path: str, timeout: float = 60.0) -> 
     return download_bytes(url, timeout=timeout)
 
 
+# ---------------------------------------------------------------------------
+# Serial port access
+# Primary path uses pyserial; run_powershell_json() backs the fallback path
+# used when pyserial is unavailable (drives System.IO.Ports.SerialPort via a
+# PowerShell subprocess instead).
+# ---------------------------------------------------------------------------
 def run_powershell_json(command: str) -> Any:
     completed = subprocess.run(
         ["powershell", "-NoProfile", "-Command", command],
@@ -1014,6 +1049,14 @@ def host_wifi_scan() -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Firmware package catalog, esptool/Telegraf tool provisioning, self-update
+# Covers: remote firmware package discovery/download (release/development/
+# special), on-demand download+caching of the esptool and Telegraf binaries,
+# and the ServiceTool's own self-update flow (checks version.json on GitHub,
+# downloads+verifies the release ZIP, and on Windows can self-replace the
+# running executable).
+# ---------------------------------------------------------------------------
 def package_exists(path: pathlib.Path) -> bool:
     return path.exists() and (path / REQUIRED_FIRMWARE_FILE).exists()
 
@@ -1879,8 +1922,16 @@ def install_language_job(job: Job, base_url: str, source_key: str, filename: str
     }
 
 
+# ---------------------------------------------------------------------------
+# Background job tracking & long-lived device sessions
+# Job/JobStore back the polling-based async-operation model used by the API
+# (flash/backup/migration run in a thread; the frontend polls /api/jobs/<id>).
+# SerialSession owns the live COM-port connection used by the Serial Monitor.
+# ---------------------------------------------------------------------------
 @dataclass
 class Job:
+    """A single tracked background operation: status, progress, and its log lines."""
+
     id: str
     type: str
     title: str
@@ -1905,6 +1956,8 @@ class Job:
 
 
 class JobStore:
+    """Thread-safe in-memory registry of Job objects, keyed by job id."""
+
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
@@ -1925,6 +1978,13 @@ class JobStore:
 
 
 class SerialSession:
+    """Owns one COM-port connection for the Serial Monitor.
+
+    Reads lines via pyserial when available, otherwise falls back to a
+    PowerShell subprocess driving System.IO.Ports.SerialPort; either way a
+    background thread (_pump) appends timestamped lines to a shared deque.
+    """
+
     def __init__(self, port: str, baud: int, shared_lines: deque[str]) -> None:
         self.port = normalize_serial_port_name(port)
         self.baud = baud
@@ -2014,6 +2074,12 @@ class SerialSession:
         }
 
 
+# ---------------------------------------------------------------------------
+# Telegraf configuration
+# Builds the temporary Telegraf TOML config from the user's destination
+# settings; the file (incl. any credentials) is written to a protected temp
+# directory and removed once the Telegraf process stops.
+# ---------------------------------------------------------------------------
 def toml_string(value: Any) -> str:
     return json.dumps(str(value or ""), ensure_ascii=False)
 
@@ -2125,6 +2191,12 @@ def write_telegraf_config(config: dict[str, Any]) -> pathlib.Path:
 
 
 class TelegrafSession:
+    """Runs Telegraf as a managed subprocess against a generated temp config.
+
+    Only starts/stops the process and exposes its stdout/stderr; the actual
+    metric forwarding logic lives entirely inside Telegraf itself.
+    """
+
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._proc: subprocess.Popen[str] | None = None
@@ -2207,7 +2279,15 @@ class TelegrafSession:
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# Global application state
+# STATE (instantiated near the bottom of the file) is the single process-wide
+# ServiceState; AppHandler reads/mutates it on every request instead of
+# holding any per-connection state of its own.
+# ---------------------------------------------------------------------------
 class ServiceState:
+    """Process-wide state: job store plus the active serial/Telegraf/test-runner sessions."""
+
     def __init__(self) -> None:
         self.jobs = JobStore()
         self.serial: SerialSession | None = None
@@ -2279,7 +2359,15 @@ class ServiceState:
                 self.serial_lines.append(entry)
 
 
+# ---------------------------------------------------------------------------
+# Optional private Test Runner session
+# Launches the Node.js test-runner subprocess from a private Brautomat32
+# checkout (see detect_test_runner_environment() above); the tab stays
+# hidden in the UI unless that environment is actually present.
+# ---------------------------------------------------------------------------
 class TestRunnerSession:
+    """Runs the optional private Node.js Test Runner as a managed subprocess."""
+
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._proc: subprocess.Popen[str] | None = None
@@ -2508,6 +2596,12 @@ STATE = ServiceState()
 HTTP_SERVER: ThreadingHTTPServer | None = None
 
 
+# ---------------------------------------------------------------------------
+# Job execution & flash progress
+# run_job() is the generic thread launcher used by every long-running API
+# action; exclusive_serial_access() pauses the Serial Monitor so flashing,
+# backup, or migration can have the COM port to themselves.
+# ---------------------------------------------------------------------------
 @contextmanager
 def exclusive_serial_access(timeout: float = 10.0):
     acquired = STATE.serial_access_lock.acquire(timeout=timeout)
@@ -2616,6 +2710,12 @@ def create_backup_job(job: Job, base_url: str, include_api: bool) -> dict[str, A
     return {"backup_file": str(target), "size": len(payload)}
 
 
+# ---------------------------------------------------------------------------
+# Device status & firmware detection
+# combined_device_status() reconciles the serial and network probes into the
+# single connection state shown in the UI badge: No device / Checking /
+# Serial / Online.
+# ---------------------------------------------------------------------------
 def device_status(base_url: str) -> dict[str, Any]:
     base, vis = try_base_urls(base_url, lambda candidate: json_request(f"{candidate}/reqVis", timeout=2.5))
     firmware = extract_firmware_banner(vis.get("firm")) or str(vis.get("firm") or "").strip()
@@ -3116,6 +3216,11 @@ def firmware_slot(base_url: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {"raw": data}
 
 
+# ---------------------------------------------------------------------------
+# Firmware update & migration-readiness checks
+# Compares the device's current firmware version against the remote repo
+# version/migration thresholds (MIGRATION_MIN_VERSION / _TARGET_VERSION).
+# ---------------------------------------------------------------------------
 def current_firmware_version(base_url: str) -> tuple[str, tuple[int, int, int]]:
     slot = firmware_slot(base_url)
     version = str(slot.get("firmware", "")).strip()
@@ -3277,6 +3382,11 @@ def restore_job(job: Job, base_url: str, filename: str, content: bytes) -> dict[
     return result
 
 
+# ---------------------------------------------------------------------------
+# Backup management
+# Local JSON config backups: create/list/restore/rename/delete, plus the
+# user-note metadata (backup_info.json) kept alongside them.
+# ---------------------------------------------------------------------------
 def backup_file_path(filename: str) -> pathlib.Path:
     clean = pathlib.PurePath(str(filename)).name.strip()
     if not clean or clean in {".", ".."}:
@@ -3554,6 +3664,12 @@ def restore_backup_and_wait(base_url: str, filename: str, content: bytes, timeou
     return result
 
 
+# ---------------------------------------------------------------------------
+# WiFi provisioning & migration package/version helpers
+# WiFi scan/save/reset over network or serial, plus the package validation
+# used before/around a firmware migration (version checks, WiFi capture and
+# restore across the migration flash).
+# ---------------------------------------------------------------------------
 def wifi_reset(base_url: str, serial_port: str = "", serial_baud: int = 115200) -> dict[str, Any]:
     if serial_port:
         data = serial_json_command(serial_port, serial_baud, {"cmd": "wifi_reset"})
@@ -3890,6 +4006,11 @@ def validate_migration_package_source(package_source: str, package_ref: str, pac
     return migration_target_version(package_source, package_ref, package_dir)
 
 
+# ---------------------------------------------------------------------------
+# Inventory management (mash plans, fermenter plans, profiles, config)
+# CRUD + sync between local inventory files (DEFAULT_INVENTORY_DIR) and the
+# corresponding device paths, driven by the per-kind INVENTORY_SPECS entries.
+# ---------------------------------------------------------------------------
 def inventory_spec(kind: str) -> dict[str, str]:
     spec = INVENTORY_SPECS.get(kind)
     if not spec:
@@ -4548,6 +4669,13 @@ def rename_device_inventory(base_url: str, kind: str, old_name: str, new_name: s
     return {"renamed": old_clean, "target": new_clean, "mode": "fs"}
 
 
+# ---------------------------------------------------------------------------
+# Flash / firmware-backup / migration jobs
+# The actual Job targets run in background threads: flash_job() shells out to
+# esptool, backup_firmware_job() reads back the flashed firmware, and
+# migration_job() drives the full pre-1.70 migration sequence (WiFi capture,
+# flash, wait-for-ready, WiFi restore).
+# ---------------------------------------------------------------------------
 def ensure_esptool_port_available(port: str) -> None:
     port = normalize_serial_port_name(port)
     if not port:
@@ -4876,6 +5004,13 @@ def migration_job(
     return result
 
 
+# ---------------------------------------------------------------------------
+# HTTP request handler / API routing
+# One handler instance per request (ThreadingHTTPServer spawns a thread per
+# connection). Serves the static frontend and dispatches /api/* routes via
+# manual if-chains in _route_api_get() (GET) and do_POST(); all real work is
+# delegated to the module-level functions defined above.
+# ---------------------------------------------------------------------------
 class AppHandler(BaseHTTPRequestHandler):
     server_version = "BrautomatServiceTool/0.1"
 
@@ -5311,6 +5446,11 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, status=500)
 
 
+# ---------------------------------------------------------------------------
+# Startup
+# main() wires everything together: pick a free port, start the threaded
+# HTTP server, advertise via mDNS, and open the default browser.
+# ---------------------------------------------------------------------------
 def choose_listen_port(host: str, preferred_port: int) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
