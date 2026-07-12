@@ -1,8 +1,8 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "released_at": "2026-07-11",
-  "notes": "ServiceTool 1.7 release: Telegraf telemetry forwarding and Esptool 5.3.1.",
+  "notes": "ServiceTool 1.7.1: verified Windows self-update, clearer Test Runner setup, and compact changelog.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
     "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.0/Brautomat32ServiceTool-win.zip",

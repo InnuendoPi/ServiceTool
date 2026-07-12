@@ -26,8 +26,10 @@ const I18N = {
     serviceToolUpdateNoUpdate: "Keine neue ServiceTool-Version verfügbar.",
     serviceToolUpdateReady: "Eine neue ServiceTool-Version ist verfügbar.",
     serviceToolUpdateDownloading: "Update wird heruntergeladen ...",
-    serviceToolUpdateDownloaded: "Update heruntergeladen. Der Zielordner wurde geöffnet. Entpacke das ZIP und ersetze die alte Version bewusst manuell.",
-    serviceToolUpdateDownloadBtn: "Download",
+    serviceToolUpdateDownloaded: "Update geprüft. Das ServiceTool wird beendet, aktualisiert und anschließend neu gestartet.",
+    serviceToolUpdateManualDownloaded: "Update heruntergeladen und geprüft. Der Zielordner wurde geöffnet; bitte das Paket manuell installieren.",
+    serviceToolUpdateDownloadBtn: "Update installieren",
+    serviceToolUpdateManualDownloadBtn: "Download",
     serviceToolUpdateCloseBtn: "Schließen",
     firmwareUpdateTitle: "Firmware Update",
     firmwareUpdateCurrent: "Installierte Firmware",
@@ -210,8 +212,10 @@ const I18N = {
     serviceToolUpdateNoUpdate: "No new ServiceTool version available.",
     serviceToolUpdateReady: "A new ServiceTool version is available.",
     serviceToolUpdateDownloading: "Downloading update ...",
-    serviceToolUpdateDownloaded: "Update downloaded. The target folder has been opened. Extract the ZIP and replace the old version manually.",
-    serviceToolUpdateDownloadBtn: "Download",
+    serviceToolUpdateDownloaded: "Update verified. ServiceTool will close, install the update, and restart.",
+    serviceToolUpdateManualDownloaded: "Update downloaded and verified. The target folder has been opened; please install the package manually.",
+    serviceToolUpdateDownloadBtn: "Install update",
+    serviceToolUpdateManualDownloadBtn: "Download",
     serviceToolUpdateCloseBtn: "Close",
     firmwareUpdateTitle: "Firmware Update",
     firmwareUpdateCurrent: "Installed firmware",
@@ -383,7 +387,7 @@ I18N.en.migrateBtn = "Start migration";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.7",
+  service_tool_version: "1.7.1",
   language: "en",
   debug_output: false,
   device_url: "http://brautomat.local",
@@ -444,7 +448,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.7"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.7.1"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -891,8 +895,10 @@ function renderServiceToolUpdate(data, explicit = false) {
   const downloadBtn = $("downloadServiceToolUpdate");
   if (!modal || !content || !downloadBtn) return;
   const available = data?.available === true;
+  const installSupported = data?.install_supported === true;
   downloadBtn.classList.toggle("hidden-panel", !available);
   downloadBtn.disabled = !available;
+  downloadBtn.textContent = installSupported ? text("serviceToolUpdateDownloadBtn") : text("serviceToolUpdateManualDownloadBtn");
   const rows = [
     [text("serviceToolUpdateCurrent"), data?.current_version || appConfig.service_tool_version || "-"],
     [text("serviceToolUpdateAvailable"), data?.version || "-"],
@@ -932,12 +938,19 @@ async function checkServiceToolUpdate(explicit = false) {
 
 async function downloadServiceToolUpdate() {
   const button = $("downloadServiceToolUpdate");
+  if (serviceToolUpdateState?.install_supported && !window.confirm(currentLang === "de"
+    ? "Das ServiceTool wird beendet, aktualisiert und neu gestartet. Jetzt fortfahren?"
+    : "ServiceTool will close, install the update, and restart. Continue?")) {
+    return;
+  }
   button.disabled = true;
   setInlineStatus("serviceToolUpdateStatus", text("serviceToolUpdateDownloading"));
   try {
     const data = await api("/api/servicetool/update/download", { method: "POST", body: {} });
     serviceToolUpdateState = data;
-    setInlineStatus("serviceToolUpdateStatus", text("serviceToolUpdateDownloaded"));
+    setInlineStatus("serviceToolUpdateStatus", data.install_started
+      ? text("serviceToolUpdateDownloaded")
+      : text("serviceToolUpdateManualDownloaded"));
   } catch (err) {
     setInlineStatus("serviceToolUpdateStatus", `Error: ${String(err)}`);
     button.disabled = false;

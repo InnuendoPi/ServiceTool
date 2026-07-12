@@ -87,10 +87,11 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.7"
+SERVICE_TOOL_VERSION = "1.7.1"
 ESPTOOL_VERSION = "5.3.1"
 TELEGRAF_VERSION = "1.39.1"
 SERVICE_TOOL_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/InnuendoPi/ServiceTool/main/version.json"
+SERVICE_TOOL_WINDOWS_EXECUTABLE = "Brautomat32ServiceTool.exe"
 MIGRATION_MIN_VERSION = (1, 62, 0)
 MIGRATION_TARGET_VERSION = (1, 70, 0)
 ESPTOOL_REPO_BASE = f"https://github.com/espressif/esptool/releases/download/v{ESPTOOL_VERSION}"
@@ -1211,6 +1212,11 @@ def service_tool_update_status() -> dict[str, Any]:
     sha256 = str(entry.get("sha256") or "").strip().lower()
     filename = str(entry.get("filename") or "").strip() or pathlib.PurePosixPath(parse.urlparse(url).path).name
     available = bool(remote_version and url and compare_versions(remote_version, SERVICE_TOOL_VERSION) > 0)
+    install_supported = (
+        platform_key == "windows"
+        and bool(getattr(sys, "frozen", False))
+        and pathlib.Path(sys.executable).name.lower() == SERVICE_TOOL_WINDOWS_EXECUTABLE.lower()
+    )
     return {
         "tool": manifest.get("tool") or "Brautomat32 ServiceTool",
         "current_version": SERVICE_TOOL_VERSION,
@@ -1223,13 +1229,16 @@ def service_tool_update_status() -> dict[str, Any]:
         "sha256": sha256,
         "filename": filename,
         "manifest_url": SERVICE_TOOL_UPDATE_MANIFEST_URL,
+        "install_supported": install_supported,
     }
 
 
-def download_service_tool_update() -> dict[str, Any]:
+def download_service_tool_update(open_target: bool = True) -> dict[str, Any]:
     status = service_tool_update_status()
     if not status.get("url"):
         raise RuntimeError("No ServiceTool update package URL for this platform")
+    if not status.get("available"):
+        raise RuntimeError("No newer ServiceTool version is available")
     version = sanitize_version_for_filename(str(status.get("version") or "unknown"))
     filename = str(status.get("filename") or f"Brautomat32ServiceTool-{status['platform']}.zip")
     target = UPDATE_DIR / version / filename
@@ -1242,10 +1251,11 @@ def download_service_tool_update() -> dict[str, Any]:
         except OSError:
             pass
         raise RuntimeError(f"SHA256 mismatch: expected {expected}, got {digest}")
-    try:
-        open_directory(target.parent)
-    except Exception:
-        pass
+    if open_target:
+        try:
+            open_directory(target.parent)
+        except Exception:
+            pass
     return {
         **status,
         "downloaded": True,
@@ -1253,6 +1263,93 @@ def download_service_tool_update() -> dict[str, Any]:
         "directory": str(target.parent),
         "sha256_actual": digest,
         "sha256_ok": not expected or digest.lower() == expected,
+    }
+
+
+def schedule_service_tool_shutdown(delay_seconds: float = 1.5) -> None:
+    def shutdown() -> None:
+        server = HTTP_SERVER
+        if server is not None:
+            server.shutdown()
+
+    threading.Timer(delay_seconds, shutdown).start()
+
+
+def install_service_tool_update() -> dict[str, Any]:
+    status = service_tool_update_status()
+    if not status.get("available"):
+        raise RuntimeError("No newer ServiceTool version is available")
+    if not status.get("install_supported"):
+        raise RuntimeError("Automatic installation is only available for the packaged Windows application")
+    update = download_service_tool_update(open_target=False)
+
+    archive = pathlib.Path(str(update["path"])).resolve()
+    install_dir = pathlib.Path(sys.executable).resolve().parent
+    updater_path = archive.parent / f"install-update-{uuid.uuid4().hex}.ps1"
+    expected_sha256 = str(update["sha256_actual"])
+    script = """param(
+    [int]$ProcessId,
+    [string]$Archive,
+    [string]$ExpectedSha256,
+    [string]$InstallDir
+)
+$ErrorActionPreference = 'Stop'
+$actualSha256 = (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualSha256 -ne $ExpectedSha256.ToLowerInvariant()) {
+    throw 'Downloaded ServiceTool update failed its SHA256 verification.'
+}
+while (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) {
+    Start-Sleep -Milliseconds 250
+}
+$stagingDir = Join-Path (Split-Path -Parent $Archive) ('install-' + [guid]::NewGuid().ToString('N'))
+$logPath = Join-Path (Split-Path -Parent $Archive) 'install-update.log'
+try {
+    Expand-Archive -LiteralPath $Archive -DestinationPath $stagingDir -Force
+    $newExecutable = Join-Path $stagingDir 'Brautomat32ServiceTool.exe'
+    if (-not (Test-Path -LiteralPath $newExecutable -PathType Leaf)) {
+        throw 'The update package does not contain Brautomat32ServiceTool.exe.'
+    }
+    Get-ChildItem -LiteralPath $stagingDir -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $InstallDir -Recurse -Force
+    }
+    Start-Process -FilePath (Join-Path $InstallDir 'Brautomat32ServiceTool.exe') -WorkingDirectory $InstallDir
+} catch {
+    $_ | Out-File -LiteralPath $logPath -Encoding utf8
+    exit 1
+} finally {
+    Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+"""
+    updater_path.write_text(script, encoding="utf-8-sig")
+    flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+    subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            str(updater_path),
+            "-ProcessId",
+            str(os.getpid()),
+            "-Archive",
+            str(archive),
+            "-ExpectedSha256",
+            expected_sha256,
+            "-InstallDir",
+            str(install_dir),
+        ],
+        cwd=str(archive.parent),
+        creationflags=flags,
+    )
+    schedule_service_tool_shutdown()
+    return {
+        **update,
+        "install_started": True,
+        "restart_required": True,
     }
 
 
@@ -2408,6 +2505,7 @@ def load_test_runner_report(report_path: str) -> dict[str, Any]:
 
 
 STATE = ServiceState()
+HTTP_SERVER: ThreadingHTTPServer | None = None
 
 
 @contextmanager
@@ -5202,7 +5300,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 self._send_json(STATE.clear_serial_log())
                 return
             if path == "/api/servicetool/update/download":
-                self._send_json(download_service_tool_update())
+                status = service_tool_update_status()
+                self._send_json(install_service_tool_update() if status.get("install_supported") else download_service_tool_update())
                 return
             self._send_json({"error": "not found"}, status=404)
         except error.HTTPError as exc:
@@ -5248,10 +5347,11 @@ def start_browser(port: int) -> None:
 
 
 def main() -> None:
-    global PORT
+    global HTTP_SERVER, PORT
     ensure_runtime_dirs()
     PORT = choose_listen_port(HOST, DEFAULT_PORT)
     server = ThreadingHTTPServer((HOST, PORT), AppHandler)
+    HTTP_SERVER = server
     advertiser = MdnsAdvertiser(SERVICE_HOSTNAME, PORT)
     mdns_active = advertiser.start()
     print(f"Brautomat32 ServiceTool running on {fallback_url(PORT)}")
@@ -5266,6 +5366,7 @@ def main() -> None:
         if STATE.serial:
             STATE.serial.stop()
         server.server_close()
+        HTTP_SERVER = None
 
 
 if __name__ == "__main__":
