@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
   "version": "1.7.1",
-  "released_at": "2026-07-11",
+  "released_at": "2026-07-12",
   "notes": "ServiceTool 1.7.1: verified Windows self-update, clearer Test Runner setup, and compact changelog.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.0/Brautomat32ServiceTool-win.zip",
-    "sha256": "9691b817b0b7840b2a05ba726533328e1ddb7b1900f376472d4e8ddab673bd32"
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.1/Brautomat32ServiceTool-win.zip",
+    "sha256": "635039019eb04225f644c8395469737b713a94e34860e2795088924d1d0328d8"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.0/Brautomat32ServiceTool-linux.zip",
-    "sha256": "f6016f68b3440cc53fb08aee8565085313d120bd6e496557c1f4c400793c88f3"
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.1/Brautomat32ServiceTool-linux.zip",
+    "sha256": "6da335096b06a5fb44da8715e946141221fb6ae54f94813c8612ba5d9d8d386c"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.0/Brautomat32ServiceTool-macos.zip",
-    "sha256": "855eebfbd0755e63e4f328253e608fd74250a940b08ccdef381b3dcb74a11b1b"
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.1/Brautomat32ServiceTool-macos.zip",
+    "sha256": "5207b30d76941381237a1a701eb28f9a5d4da2a6b5efb067cab635ac2d2a2ea7"
   }
 }
