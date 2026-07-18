@@ -4778,7 +4778,14 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # The browser polls these JSON endpoints constantly and routinely
+            # drops a connection mid-response (tab reload, navigation). That is
+            # not an application error, so swallow it instead of letting it
+            # bubble up as a noisy traceback from the socketserver thread.
+            pass
 
     def _send_file(self, path: pathlib.Path) -> None:
         if not path.exists() or not path.is_file():
