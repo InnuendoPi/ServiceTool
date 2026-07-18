@@ -1979,6 +1979,8 @@ class SerialSession:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 cwd=str(DATA_ROOT),
             )
         self._thread = threading.Thread(target=self._pump, daemon=True)
@@ -2658,6 +2660,8 @@ try {{
             ["powershell", "-NoProfile", "-Command", ps_script],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(DATA_ROOT),
             timeout=max(6, int(timeout) + 4),
         )
@@ -2862,6 +2866,8 @@ try {{
             ["powershell", "-NoProfile", "-Command", ps_script],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(DATA_ROOT),
             timeout=max(5, int(timeout) + 5),
         )
@@ -2945,6 +2951,8 @@ while ((Get-Date) -lt $deadline) {{
             ["powershell", "-NoProfile", "-Command", ps_script],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(DATA_ROOT),
             timeout=max(10, int(timeout) + 10),
         )
