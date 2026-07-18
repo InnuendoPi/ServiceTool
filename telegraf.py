@@ -14,6 +14,7 @@ Abschnitt "Design-Entscheidung: Import-Richtung & Zirkularität").
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -32,6 +33,26 @@ from urllib import request
 # offiziellen InfluxData-Release-Downloads.
 TELEGRAF_VERSION = "1.39.1"
 TELEGRAF_REPO_BASE = "https://dl.influxdata.com/telegraf/releases"
+
+# Offiziell veröffentlichte SHA256-Prüfsummen der Release-ARCHIVE (.zip/.tar.gz)
+# für TELEGRAF_VERSION, je Plattform-Schlüssel (<os>_<arch>). Quelle: die
+# "Packages"-Tabelle des GitHub-Release
+# (https://github.com/influxdata/telegraf/releases/tag/v1.39.1) - diese Tabelle
+# ist verlässlicher als influxdata.com/downloads bzw. docs.influxdata.com, wo
+# beim Nachprüfen widersprüchliche Werte standen.
+#
+# WICHTIG: Wird TELEGRAF_VERSION angehoben, MÜSSEN diese Werte mit den neuen,
+# offiziellen SHA256-Prüfsummen aus der GitHub-Release-Tabelle der neuen Version
+# ersetzt werden - sonst schlägt der Download für jede Plattform fehl (fail
+# closed, siehe ensure_telegraf_available).
+TELEGRAF_CHECKSUMS = {
+    "linux_amd64":   "d9194fb73fadc18f88d7d6649a2e018168028bedec1fdbc5fb655aaed120647a",
+    "linux_arm64":   "ed46395c24c47f8360db9d1f0c8684640368879d2aa7fc41e6fe0f8a878990cd",
+    "windows_amd64": "b68a1cd98c933d02fc5c1adcc2c0e1f19078e692dd47c47cdc122e552cb3b465",
+    "windows_arm64": "0d452cf167a6f1c2d82b27b52c4cdd9783aa342925c6138091da0dc5a7438d57",
+    "darwin_amd64":  "653c8a4b5afe66b0a6223952853de9f4d9ad4387b62858248fcad1ff4021e060",
+    "darwin_arm64":  "cb0be878c76cf64d26da63ef77f9fa683ede2b1a79bcbfcbfed836bad16200e0",
+}
 
 # Gültige Werte für das telegraf-eigene Log-Level (steuert debug/quiet im
 # [agent]-Block, siehe write_telegraf_config). Default ist "info".
@@ -105,21 +126,37 @@ def default_telegraf_config() -> dict[str, Any]:
 # On-demand download+caching of the Telegraf binary into cache/tools (bundled
 # binary next to the exe wins if present).
 # ---------------------------------------------------------------------------
-def telegraf_platform_asset() -> tuple[str, str]:
+def telegraf_platform_key() -> str:
+    """Plattform-Schlüssel <os>_<arch>, passend zu TELEGRAF_CHECKSUMS und zum
+    Dateinamen des Release-Archivs."""
     system = platform.system().lower()
     machine = platform.machine().lower()
-    executable = "telegraf.exe" if system == "windows" else "telegraf"
     if system == "windows" and machine in {"amd64", "x86_64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_windows_amd64.zip", executable)
+        return "windows_amd64"
     if system == "darwin" and machine in {"amd64", "x86_64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_darwin_amd64.tar.gz", executable)
+        return "darwin_amd64"
     if system == "darwin" and machine in {"arm64", "aarch64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_darwin_arm64.tar.gz", executable)
+        return "darwin_arm64"
     if system == "linux" and machine in {"amd64", "x86_64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_linux_amd64.tar.gz", executable)
+        return "linux_amd64"
     if system == "linux" and machine in {"arm64", "aarch64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_linux_arm64.tar.gz", executable)
+        return "linux_arm64"
     raise RuntimeError(f"Unsupported platform for Telegraf: {platform.system()} {platform.machine()}")
+
+
+def telegraf_platform_asset() -> tuple[str, str]:
+    key = telegraf_platform_key()
+    extension = "zip" if key.startswith("windows") else "tar.gz"
+    executable = "telegraf.exe" if key.startswith("windows") else "telegraf"
+    return (f"telegraf-{TELEGRAF_VERSION}_{key}.{extension}", executable)
+
+
+def _sha256_file(path: pathlib.Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def cached_telegraf_path() -> pathlib.Path:
@@ -146,10 +183,28 @@ def ensure_telegraf_available() -> pathlib.Path:
         mark_executable(cached)
         return cached
 
+    # Fail closed: ohne hinterlegte Prüfsumme wird gar nicht erst geladen.
+    platform_key = telegraf_platform_key()
+    expected = TELEGRAF_CHECKSUMS.get(platform_key)
+    if not expected:
+        raise RuntimeError(
+            f"Für Telegraf {TELEGRAF_VERSION} ({platform_key}) ist keine SHA256-Prüfsumme "
+            "hinterlegt - der Download wird aus Sicherheitsgründen abgelehnt."
+        )
+
     asset_name, _ = telegraf_platform_asset()
     archive_path = TOOLS_CACHE_DIR / asset_name
     target_dir = cached.parent.parent
     download_to_file(f"{TELEGRAF_REPO_BASE}/{asset_name}", archive_path, timeout=300.0)
+
+    actual = _sha256_file(archive_path)
+    if actual.lower() != expected.lower():
+        archive_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"SHA256-Prüfsumme des Telegraf-Downloads stimmt nicht überein "
+            f"(erwartet {expected}, erhalten {actual}) - Datei verworfen, kein Entpacken."
+        )
+
     extract_esptool_archive(archive_path, target_dir)
     if not cached.is_file():
         raise RuntimeError(f"Telegraf executable missing after extract: {cached}")
