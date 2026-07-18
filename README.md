@@ -292,7 +292,10 @@ commits `version.json` with the matching release URLs and SHA256 values.
 ## Repository Layout
 
 - `app.py`: local HTTP backend, device communication, and tool orchestration
+- `telegraf.py`: Telegraf config generation, process management, and binary download
 - `static/`: browser UI
+- `tools/mock_server.py`: standalone `/telemetry` mock device for development
+- `docker-compose.yml`, `docker/`: test databases and provisioned Grafana for development
 - `img/`: README screenshots
 - `Brautomat32ServiceTool.spec`: PyInstaller configuration
 - `build_servicetool_windows_release.ps1`: local Windows release build
