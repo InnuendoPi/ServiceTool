@@ -692,6 +692,17 @@ button.ghost:hover {
   border-color: var(--line);
   box-shadow: 0 -1px 0 rgba(13, 110, 253, 0.06);
 }
+/* Green dot marking a Telegraf destination sub-tab whose target is enabled */
+.subtab.enabled::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.45em;
+  border-radius: 50%;
+  background: var(--success);
+  vertical-align: middle;
+}
 .management-subpanel {
   display: none;
 }

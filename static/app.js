@@ -2488,6 +2488,25 @@ function applyTelegrafConfig(raw) {
   setChecked("telegrafPostgresEnabled", config.postgres.enabled); ["Host", "Port", "Database", "User", "Password"].forEach(name => setValue(`telegrafPostgres${name}`, config.postgres[name.toLowerCase()]));
   setChecked("telegrafMySqlEnabled", config.mysql.enabled); ["Host", "Port", "Database", "User", "Password"].forEach(name => setValue(`telegrafMySql${name}`, config.mysql[name.toLowerCase()]));
   setChecked("telegrafMqttEnabled", config.mqtt.enabled); setValue("telegrafMqttServer", config.mqtt.server || "tcp://localhost:1883"); setValue("telegrafMqttTopic", config.mqtt.topic || "brautomat/telemetry"); setValue("telegrafMqttClientId", config.mqtt.client_id || "brautomat-telegraf"); setValue("telegrafMqttUsername", config.mqtt.username); setValue("telegrafMqttPassword", config.mqtt.password); setValue("telegrafMqttQos", config.mqtt.qos || 0);
+  updateTelegrafTabIndicators();
+}
+
+// Maps each Telegraf destination sub-tab to its "enabled" checkbox so the tab
+// can be marked (green dot) whenever that destination is active.
+const telegrafEnabledCheckboxByTab = {
+  csv: "telegrafCsvEnabled",
+  influxdb: "telegrafInfluxEnabled",
+  postgres: "telegrafPostgresEnabled",
+  mysql: "telegrafMySqlEnabled",
+  mqtt: "telegrafMqttEnabled",
+};
+
+function updateTelegrafTabIndicators() {
+  Object.entries(telegrafEnabledCheckboxByTab).forEach(([tab, checkboxId]) => {
+    const btn = document.querySelector(`[data-telegraf-tab="${tab}"]`);
+    const checkbox = $(checkboxId);
+    if (btn && checkbox) btn.classList.toggle("enabled", checkbox.checked);
+  });
 }
 
 function renderTelegraf(state) {
@@ -4214,6 +4233,10 @@ function attachEvents() {
   document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
   document.querySelectorAll("[data-management-tab]").forEach(btn => btn.addEventListener("click", () => activateManagementTab(btn.dataset.managementTab)));
   document.querySelectorAll("[data-telegraf-tab]").forEach(btn => btn.addEventListener("click", () => activateTelegrafTab(btn.dataset.telegrafTab)));
+  Object.values(telegrafEnabledCheckboxByTab).forEach(id => {
+    const checkbox = $(id);
+    if (checkbox) checkbox.addEventListener("change", updateTelegrafTabIndicators);
+  });
   Object.keys(MANAGEMENT_KINDS).forEach(kind => {
     $(`${kind}RefreshDevice`).addEventListener("click", () => loadInventory(kind));
     $(`${kind}RefreshLocal`).addEventListener("click", () => loadInventory(kind));
