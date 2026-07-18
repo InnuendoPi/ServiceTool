@@ -612,6 +612,14 @@
           <label><span id="telegrafIntervalLabel">Abrufintervall</span><input id="telegrafInterval" type="text" value="30s" placeholder="30s"></label>
           <label><span id="telegrafBinaryLabel">Telegraf Programmdatei</span><input id="telegrafBinary" type="text" placeholder="telegraf oder C:\\Tools\\telegraf.exe"></label>
         </div>
+        <div class="grid-2">
+          <label><span id="telegrafLogLevelLabel">Telegraf Log-Level</span><select id="telegrafLogLevel"><option value="quiet">quiet</option><option value="info" selected>info</option><option value="debug">debug</option></select></label>
+          <label><span id="telegrafTemplatesDirLabel">Eigene Templates (Verzeichnis, optional)</span><input id="telegrafTemplatesDir" type="text" placeholder="leer = eingebaute Konfiguration"></label>
+        </div>
+        <div class="actions">
+          <button id="telegrafTemplatesPickBtn" type="button">Templates-Verzeichnis wählen…</button>
+          <button id="telegrafExportTemplatesBtn" type="button">Templates exportieren…</button>
+        </div>
         <div class="actions">
           <button id="telegrafTestBtn" type="button">Brautomat testen</button>
           <button id="telegrafStartBtn" class="success" type="button">Start</button>

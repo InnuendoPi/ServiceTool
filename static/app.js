@@ -2461,6 +2461,8 @@ function telegrafFormConfig() {
     binary: value("telegrafBinary"),
     device_url: value("telegrafDeviceUrl") || "http://brautomat.local",
     interval: value("telegrafInterval") || "30s",
+    log_level: $("telegrafLogLevel").value || "info",
+    templates_dir: value("telegrafTemplatesDir"),
     save_passwords: $("telegrafSavePasswords").checked,
     csv: { enabled: $("telegrafCsvEnabled").checked, path: value("telegrafCsvPath") || "brautomat.csv" },
     influxdb: { enabled: $("telegrafInfluxEnabled").checked, url: value("telegrafInfluxUrl"), token: $("telegrafInfluxToken").value, org: value("telegrafInfluxOrg"), bucket: value("telegrafInfluxBucket") },
@@ -2471,13 +2473,15 @@ function telegrafFormConfig() {
 }
 
 function applyTelegrafConfig(raw) {
-  const defaults = { binary: "", device_url: "http://brautomat.local", interval: "30s", save_passwords: false, csv: {}, influxdb: {}, postgres: {}, mysql: {}, mqtt: {} };
+  const defaults = { binary: "", device_url: "http://brautomat.local", interval: "30s", log_level: "info", templates_dir: "", save_passwords: false, csv: {}, influxdb: {}, postgres: {}, mysql: {}, mqtt: {} };
   const config = { ...defaults, ...(raw || {}) };
   const setValue = (id, value) => { $(id).value = value == null ? "" : String(value); };
   const setChecked = (id, value) => { $(id).checked = !!value; };
   setValue("telegrafBinary", config.binary);
   setValue("telegrafDeviceUrl", config.device_url);
   setValue("telegrafInterval", config.interval);
+  setValue("telegrafLogLevel", config.log_level || "info");
+  setValue("telegrafTemplatesDir", config.templates_dir);
   setChecked("telegrafSavePasswords", config.save_passwords);
   setChecked("telegrafCsvEnabled", config.csv.enabled); setValue("telegrafCsvPath", config.csv.path || "brautomat.csv");
   setChecked("telegrafInfluxEnabled", config.influxdb.enabled); setValue("telegrafInfluxUrl", config.influxdb.url || "http://localhost:8086"); setValue("telegrafInfluxToken", config.influxdb.token); setValue("telegrafInfluxOrg", config.influxdb.org); setValue("telegrafInfluxBucket", config.influxdb.bucket || "brautomat");
@@ -2507,6 +2511,22 @@ async function saveTelegrafConfig() {
   const config = telegrafFormConfig();
   await saveConfig({ telegraf: config });
   setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf-Konfiguration gespeichert." : "Telegraf configuration saved.");
+}
+async function pickTelegrafTemplatesDir() {
+  const result = await api("/api/telegraf/templates/pick", { method: "POST", body: {} });
+  if (result?.selected) {
+    $("telegrafTemplatesDir").value = result.selected;
+    setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Templates-Verzeichnis übernommen." : "Templates directory set.");
+  }
+}
+async function exportTelegrafTemplates() {
+  const result = await api("/api/telegraf/export-templates", { method: "POST", body: {} });
+  if (result?.selected) {
+    const count = (result.written || []).length;
+    setInlineStatus("telegrafInlineStatus", currentLang === "de" ? `${count} Template-Dateien nach ${result.selected} exportiert.` : `Exported ${count} template files to ${result.selected}.`);
+  } else {
+    setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Export abgebrochen." : "Export cancelled.");
+  }
 }
 async function startTelegraf() {
   setSpinner("telegrafSpinner", true);
@@ -4118,6 +4138,8 @@ function attachEvents() {
   $("serialCopyBtn").addEventListener("click", copySerialLog);
   $("telegrafTestBtn").addEventListener("click", () => testTelegrafDevice().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafSaveBtn").addEventListener("click", () => saveTelegrafConfig().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
+  $("telegrafTemplatesPickBtn").addEventListener("click", () => pickTelegrafTemplatesDir().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
+  $("telegrafExportTemplatesBtn").addEventListener("click", () => exportTelegrafTemplates().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafStartBtn").addEventListener("click", () => startTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafStopBtn").addEventListener("click", () => stopTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafClearBtn").addEventListener("click", () => clearTelegrafLog().catch(console.error));
