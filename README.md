@@ -251,6 +251,26 @@ is only shown when a complete local Brautomat32 development checkout is
 configured through `BRAUTOMAT32_SOURCE_ROOT`. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the required files and setup.
 
+### Testing without hardware
+
+Two optional helpers make it possible to exercise the Telegraf integration
+without a real Brautomat and without external databases:
+
+- **Mock device** — `python tools/mock_server.py` starts a minimal
+  `/telemetry` endpoint (pure standard library) that returns the same JSON as
+  a real device, with slowly changing values. Enter its URL (for example
+  `http://localhost:8080`) as the Brautomat URL on the Telegraf tab. Use
+  `--addr` to change the listen address (e.g. `--addr :9090`).
+- **Test backends** — `docker compose up -d` starts local PostgreSQL,
+  MariaDB, InfluxDB v2, and Mosquitto (MQTT) instances plus a Grafana with
+  pre-provisioned datasources and example dashboards for PostgreSQL, MySQL,
+  and InfluxDB. The credentials match the Telegraf form defaults
+  (database/user `brautomat`, InfluxDB bucket `brautomat`, token
+  `brautomat-token`, Grafana login `brautomat` / `brautomat`). Stop with
+  `docker compose down` (add `--volumes` to also drop the data).
+
+These are development aids only, never a production configuration.
+
 ## Builds
 
 Windows can be built locally with:
