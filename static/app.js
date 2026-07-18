@@ -2568,9 +2568,15 @@ async function startTelegraf() {
   try {
     renderTelegraf(await api("/api/telegraf/start", { method: "POST", body: { config: telegrafFormConfig() } }));
     setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf wurde gestartet." : "Telegraf started.");
+    // Telegrafs Startausgabe erscheint erst kurz nach dem Start - schnelle
+    // Nachfassung, damit sie nicht erst beim nächsten Sekunden-Poll auftaucht.
+    setTimeout(() => pollTelegraf().catch(console.error), 300);
   } finally { setSpinner("telegrafSpinner", false); }
 }
-async function stopTelegraf() { renderTelegraf(await api("/api/telegraf/stop", { method: "POST", body: {} })); }
+async function stopTelegraf() {
+  renderTelegraf(await api("/api/telegraf/stop", { method: "POST", body: {} }));
+  setTimeout(() => pollTelegraf().catch(console.error), 300);
+}
 async function clearTelegrafLog() { renderTelegraf(await api("/api/telegraf/clear", { method: "POST", body: {} })); }
 
 function applyWifiNetworksResult(data) {
@@ -3996,6 +4002,11 @@ function activateTab(name) {
   }
   document.querySelectorAll(".tab").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach(panel => panel.classList.toggle("active", panel.dataset.panel === name));
+  if (name === "telegraf") {
+    // Sofort aktualisieren, damit der Reiter beim Öffnen den aktuellen
+    // Laufzustand und die Ausgabe zeigt, statt bis zum nächsten Poll zu warten.
+    pollTelegraf().catch(console.error);
+  }
   if (name === "firmware") {
     writeStartupTrace("activateTab firmware");
     const spinner = $("wifiSpinner");
