@@ -39,6 +39,7 @@ from telegraf import (
     TelegrafSession,
     cached_telegraf_path,
     default_telegraf_config,
+    describe_telegraf_binary,
     download_telegraf,
     export_telegraf_templates,
     normalize_telegraf_config,
@@ -5023,6 +5024,10 @@ class AppHandler(BaseHTTPRequestHandler):
             if path == "/api/telegraf/test-device":
                 data = self._read_json()
                 self._send_json(test_telegraf_device(str(data.get("device_url") or "")))
+                return
+            if path == "/api/telegraf/resolve-binary":
+                data = self._read_json()
+                self._send_json(describe_telegraf_binary({"binary": str(data.get("binary") or "")}))
                 return
             if path == "/api/telegraf/start":
                 data = self._read_json()

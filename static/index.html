@@ -609,16 +609,14 @@
         <p id="telegrafHint" class="hint">Telegraf liest die Telemetrie des Brautomats unter der oben im Kopfbereich eingestellten Brautomat-Adresse und leitet sie an die aktivierten Ziele weiter.</p>
         <div class="grid-2">
           <label><span id="telegrafIntervalLabel">Abrufintervall</span><input id="telegrafInterval" type="text" value="30s" placeholder="30s"></label>
-          <label><span id="telegrafBinaryLabel">Telegraf Programmdatei</span><input id="telegrafBinary" type="text" placeholder="telegraf oder C:\\Tools\\telegraf.exe"></label>
+          <label><span id="telegrafBinaryLabel">Telegraf Programmdatei</span><div class="input-action"><input id="telegrafBinary" type="text" placeholder="telegraf oder C:\\Tools\\telegraf.exe"><button id="telegrafBinaryPickBtn" class="ghost" type="button"></button></div><small id="telegrafBinaryResolved" class="field-note"></small></label>
         </div>
         <div class="grid-2">
           <label><span id="telegrafLogLevelLabel">Telegraf Log-Level</span><select id="telegrafLogLevel"><option value="quiet">quiet</option><option value="info" selected>info</option><option value="debug">debug</option></select></label>
-          <label><span id="telegrafTemplatesDirLabel">Eigene Templates (Verzeichnis, optional)</span><input id="telegrafTemplatesDir" type="text" placeholder="leer = eingebaute Konfiguration"></label>
+          <label><span id="telegrafTemplatesDirLabel">Eigene Templates (Verzeichnis, optional)</span><div class="input-action"><input id="telegrafTemplatesDir" type="text" placeholder="leer = eingebaute Konfiguration"><button id="telegrafTemplatesPickBtn" class="ghost" type="button"></button></div></label>
         </div>
         <div class="actions">
           <button id="telegrafDownloadBtn" type="button">Telegraf herunterladen…</button>
-          <button id="telegrafBinaryPickBtn" type="button">Programmdatei wählen…</button>
-          <button id="telegrafTemplatesPickBtn" type="button">Templates-Verzeichnis wählen…</button>
           <button id="telegrafExportTemplatesBtn" type="button">Templates exportieren…</button>
         </div>
         <div class="actions">

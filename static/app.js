@@ -118,6 +118,15 @@ const I18N = {
     restoreBtn: "Restore ausführen",
     refreshPorts: "Ports neu laden",
     choosePackageDir: "Verzeichnis öffnen",
+    telegrafBinaryPickBtn: "Programmdatei wählen",
+    telegrafTemplatesPickBtn: "Templates-Verzeichnis wählen",
+    telegrafBinaryFound: "Verwendet",
+    telegrafBinarySourcePath: "im Suchpfad (PATH) gefunden",
+    telegrafBinarySourceConfigured: "konfiguriert",
+    telegrafBinarySourceBundled: "mitgeliefert",
+    telegrafBinarySourceCached: "heruntergeladen",
+    telegrafBinaryPending: "Nicht gefunden – Telegraf wird beim Start automatisch heruntergeladen.",
+    telegrafBinaryMissing: "Angegebene Programmdatei nicht gefunden.",
     backupFirmwareBtn: "Firmware sichern",
     managementRefreshBtn: "Liste aktualisieren",
     managementDeleteDeviceBtn: "Datei auf dem Device löschen",
@@ -304,6 +313,15 @@ const I18N = {
     restoreBtn: "Run restore",
     refreshPorts: "Reload ports",
     choosePackageDir: "Open directory",
+    telegrafBinaryPickBtn: "Choose executable",
+    telegrafTemplatesPickBtn: "Choose templates directory",
+    telegrafBinaryFound: "Using",
+    telegrafBinarySourcePath: "found in PATH",
+    telegrafBinarySourceConfigured: "configured",
+    telegrafBinarySourceBundled: "bundled",
+    telegrafBinarySourceCached: "downloaded",
+    telegrafBinaryPending: "Not found – Telegraf will be downloaded automatically on start.",
+    telegrafBinaryMissing: "Configured executable not found.",
     backupFirmwareBtn: "Backup firmware",
     managementRefreshBtn: "Refresh list",
     managementDeleteDeviceBtn: "Delete file on device",
@@ -672,6 +690,10 @@ function applyLanguage() {
   $("refreshPorts").innerHTML = '<i class="icon-refresh button-icon" aria-hidden="true"></i>';
   $("choosePackageDir").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
   if ($("chooseInventoryRoot")) $("chooseInventoryRoot").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
+  $("telegrafBinaryPickBtn").innerHTML = '<span class="button-icon" aria-hidden="true">📄</span>';
+  $("telegrafBinaryPickBtn").setAttribute("aria-label", text("telegrafBinaryPickBtn"));
+  $("telegrafTemplatesPickBtn").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
+  $("telegrafTemplatesPickBtn").setAttribute("aria-label", text("telegrafTemplatesPickBtn"));
   $("backupFirmwareBtn").innerHTML = '<i class="icon-download button-icon" aria-hidden="true"></i>';
   Object.keys(MANAGEMENT_KINDS).forEach(kind => {
     $(`${kind}RefreshDevice`).innerHTML = '<i class="icon-refresh button-icon" aria-hidden="true"></i>';
@@ -755,6 +777,7 @@ function applyLanguage() {
   updateDeviceConnectionState($("deviceConnectionState").dataset.state || "offline");
   renderGuide();
   renderTestRunnerSuiteInfo($("testRunnerSuite")?.value || "");
+  refreshTelegrafBinaryPath();
 }
 
 function buttonTooltip(key) {
@@ -783,6 +806,8 @@ function applyButtonTooltips() {
     restoreBtn: "restoreBtn",
     choosePackageDir: "choosePackageDir",
     chooseInventoryRoot: "chooseInventoryRoot",
+    telegrafBinaryPickBtn: "telegrafBinaryPickBtn",
+    telegrafTemplatesPickBtn: "telegrafTemplatesPickBtn",
     refreshPorts: "refreshPorts",
     backupFirmwareBtn: "backupFirmwareBtn",
     checkFirmwareUpdateBtn: "checkFirmwareUpdateBtn",
@@ -2488,6 +2513,7 @@ function applyTelegrafConfig(raw) {
   setChecked("telegrafMySqlEnabled", config.mysql.enabled); ["Host", "Port", "Database", "User", "Password"].forEach(name => setValue(`telegrafMySql${name}`, config.mysql[name.toLowerCase()]));
   setChecked("telegrafMqttEnabled", config.mqtt.enabled); setValue("telegrafMqttServer", config.mqtt.server || "tcp://localhost:1883"); setValue("telegrafMqttTopic", config.mqtt.topic || "brautomat/telemetry"); setValue("telegrafMqttClientId", config.mqtt.client_id || "brautomat-telegraf"); setValue("telegrafMqttUsername", config.mqtt.username); setValue("telegrafMqttPassword", config.mqtt.password); setValue("telegrafMqttQos", config.mqtt.qos || 0);
   updateTelegrafTabIndicators();
+  refreshTelegrafBinaryPath();
 }
 
 // Maps each Telegraf destination sub-tab to its "enabled" checkbox so the tab
@@ -2530,11 +2556,41 @@ async function saveTelegrafConfig() {
   await saveConfig({ telegraf: config });
   setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf-Konfiguration gespeichert." : "Telegraf configuration saved.");
 }
+// Zeigt unter dem Programmdatei-Feld den tatsächlich genutzten Telegraf-Pfad an
+// (konfiguriert / PATH / mitgeliefert / heruntergeladen). Rein lesend - löst
+// keinen Download aus.
+async function refreshTelegrafBinaryPath() {
+  const node = $("telegrafBinaryResolved");
+  if (!node) return;
+  try {
+    const info = await api("/api/telegraf/resolve-binary", { method: "POST", body: { binary: $("telegrafBinary").value.trim() } });
+    if (info?.available && info.path) {
+      const sourceKey = {
+        path: "telegrafBinarySourcePath",
+        configured: "telegrafBinarySourceConfigured",
+        bundled: "telegrafBinarySourceBundled",
+        cached: "telegrafBinarySourceCached"
+      }[info.source] || "telegrafBinarySourceConfigured";
+      node.textContent = `${text("telegrafBinaryFound")}: ${info.path} (${text(sourceKey)})`;
+      node.classList.remove("missing");
+    } else if (info?.source === "download") {
+      node.textContent = text("telegrafBinaryPending");
+      node.classList.remove("missing");
+    } else {
+      node.textContent = text("telegrafBinaryMissing");
+      node.classList.add("missing");
+    }
+  } catch {
+    node.textContent = "";
+    node.classList.remove("missing");
+  }
+}
 async function pickTelegrafBinary() {
   const result = await api("/api/telegraf/binary/pick", { method: "POST", body: {} });
   if (result?.selected) {
     $("telegrafBinary").value = result.selected;
     setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf-Programmdatei übernommen." : "Telegraf executable set.");
+    refreshTelegrafBinaryPath();
   }
 }
 async function pickTelegrafTemplatesDir() {
@@ -2575,6 +2631,7 @@ async function downloadTelegraf() {
       tick();
     });
     setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf ist bereit." : "Telegraf is ready.");
+    refreshTelegrafBinaryPath();
   } finally {
     setSpinner("telegrafSpinner", false);
     btn.disabled = false;
@@ -4205,6 +4262,7 @@ function attachEvents() {
   $("telegrafExportTemplatesBtn").addEventListener("click", () => exportTelegrafTemplates().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafDownloadBtn").addEventListener("click", () => downloadTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafBinaryPickBtn").addEventListener("click", () => pickTelegrafBinary().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
+  $("telegrafBinary").addEventListener("change", () => refreshTelegrafBinaryPath());
   $("telegrafStartBtn").addEventListener("click", () => startTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafStopBtn").addEventListener("click", () => stopTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafClearBtn").addEventListener("click", () => clearTelegrafLog().catch(console.error));

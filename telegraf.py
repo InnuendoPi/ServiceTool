@@ -289,6 +289,11 @@ def normalize_telegraf_config(raw: Any) -> dict[str, Any]:
     return config
 
 
+def telegraf_which_name() -> str:
+    """Name der Telegraf-Programmdatei fuer die PATH-Suche (shutil.which)."""
+    return "telegraf.exe" if os.name == "nt" else "telegraf"
+
+
 def resolve_telegraf_binary(config: dict[str, Any]) -> str:
     configured = str(config.get("binary") or "").strip()
     if configured:
@@ -299,11 +304,35 @@ def resolve_telegraf_binary(config: dict[str, Any]) -> str:
         if resolved:
             return resolved
         raise RuntimeError(f"Configured Telegraf executable was not found: {configured}")
-    executable = "telegraf.exe" if os.name == "nt" else "telegraf"
-    resolved = shutil.which(executable)
+    resolved = shutil.which(telegraf_which_name())
     if resolved:
         return resolved
     return str(ensure_telegraf_available())
+
+
+def describe_telegraf_binary(config: dict[str, Any]) -> dict[str, Any]:
+    """Ermittelt rein lesend, welche Telegraf-Programmdatei genutzt würde - ohne
+    einen Download auszulösen. Für die Anzeige des gefundenen Pfads in der UI.
+    Die Auflösungsreihenfolge spiegelt resolve_telegraf_binary() wider."""
+    configured = str(config.get("binary") or "").strip()
+    if configured:
+        candidate = pathlib.Path(configured).expanduser()
+        if candidate.is_file():
+            return {"path": str(candidate.resolve()), "source": "configured", "available": True}
+        resolved = shutil.which(configured)
+        if resolved:
+            return {"path": resolved, "source": "configured", "available": True}
+        return {"path": "", "source": "configured", "available": False}
+    resolved = shutil.which(telegraf_which_name())
+    if resolved:
+        return {"path": resolved, "source": "path", "available": True}
+    bundled = bundled_telegraf_path()
+    if bundled:
+        return {"path": str(bundled), "source": "bundled", "available": True}
+    cached = cached_telegraf_path()
+    if cached.is_file():
+        return {"path": str(cached.resolve()), "source": "cached", "available": True}
+    return {"path": "", "source": "download", "available": False}
 
 
 def telemetry_url(device_url: str) -> str:
