@@ -39,6 +39,7 @@ from telegraf import (
     TelegrafSession,
     cached_telegraf_path,
     default_telegraf_config,
+    download_telegraf,
     export_telegraf_templates,
     normalize_telegraf_config,
     test_telegraf_device,
@@ -2389,6 +2390,23 @@ def run_job(job: Job, target, *args, **kwargs) -> None:
             log_path.write_text("\n".join(job.logs), encoding="utf-8")
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def telegraf_download_job(job: Job) -> dict[str, Any]:
+    """Lädt die Telegraf-Binary im Hintergrund herunter und meldet Fortschritt
+    (Status-Zeilen und Prozent) an den Job, den das Frontend pollt."""
+    def on_status(message: str) -> None:
+        job.log(message)
+
+    def on_progress(done: int, total: int) -> None:
+        if total:
+            job.set_progress(int(done * 100 / total))
+        done_mb = done / (1024 * 1024)
+        job.set_current_file(f"{done_mb:.1f} MB / {total / (1024 * 1024):.1f} MB" if total else f"{done_mb:.1f} MB")
+
+    path = download_telegraf(on_status=on_status, on_progress=on_progress)
+    job.set_progress(100)
+    return {"path": str(path)}
 
 
 def update_progress_from_line(job: Job, line: str) -> None:
@@ -5013,6 +5031,11 @@ class AppHandler(BaseHTTPRequestHandler):
                 selected = pick_directory("Zielverzeichnis für die Telegraf-Templates wählen")
                 written = export_telegraf_templates(selected) if selected else []
                 self._send_json({"selected": selected, "written": written})
+                return
+            if path == "/api/telegraf/download":
+                job = STATE.jobs.create("telegraf-download", "Telegraf herunterladen")
+                run_job(job, telegraf_download_job)
+                self._send_json({"job_id": job.id})
                 return
             if path == "/api/package/pick":
                 selected = pick_directory()

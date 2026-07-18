@@ -2528,6 +2528,33 @@ async function exportTelegrafTemplates() {
     setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Export abgebrochen." : "Export cancelled.");
   }
 }
+async function downloadTelegraf() {
+  const btn = $("telegrafDownloadBtn");
+  btn.disabled = true;
+  setSpinner("telegrafSpinner", true);
+  try {
+    const { job_id } = await api("/api/telegraf/download", { method: "POST", body: {} });
+    await new Promise((resolve, reject) => {
+      const tick = async () => {
+        try {
+          const job = await api(`/api/jobs/${job_id}`);
+          const last = ((job.logs || [])[job.logs.length - 1] || "").replace(/^\[[^\]]*\]\s*/, "");
+          const pct = job.progress ? ` ${job.progress}%` : "";
+          const file = job.current_file ? ` (${job.current_file})` : "";
+          setInlineStatus("telegrafInlineStatus", `${last}${pct}${file}`);
+          if (job.status === "done") { resolve(job); return; }
+          if (job.status === "failed") { reject(new Error(job.error || "Download failed")); return; }
+          setTimeout(tick, 500);
+        } catch (err) { reject(err); }
+      };
+      tick();
+    });
+    setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf ist bereit." : "Telegraf is ready.");
+  } finally {
+    setSpinner("telegrafSpinner", false);
+    btn.disabled = false;
+  }
+}
 async function startTelegraf() {
   setSpinner("telegrafSpinner", true);
   try {
@@ -4140,6 +4167,7 @@ function attachEvents() {
   $("telegrafSaveBtn").addEventListener("click", () => saveTelegrafConfig().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafTemplatesPickBtn").addEventListener("click", () => pickTelegrafTemplatesDir().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafExportTemplatesBtn").addEventListener("click", () => exportTelegrafTemplates().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
+  $("telegrafDownloadBtn").addEventListener("click", () => downloadTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafStartBtn").addEventListener("click", () => startTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafStopBtn").addEventListener("click", () => stopTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafClearBtn").addEventListener("click", () => clearTelegrafLog().catch(console.error));

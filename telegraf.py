@@ -173,14 +173,26 @@ def bundled_telegraf_path() -> pathlib.Path | None:
     return candidate if candidate.is_file() else None
 
 
-def ensure_telegraf_available() -> pathlib.Path:
-    from app import TOOLS_CACHE_DIR, mark_executable, download_to_file, extract_esptool_archive
+def download_telegraf(on_status=None, on_progress=None) -> pathlib.Path:
+    """Stellt die Telegraf-Binary bereit und gibt ihren Pfad zurück: eine
+    mitgelieferte oder bereits gecachte Binary wird direkt genutzt, sonst wird das
+    Release-Archiv heruntergeladen, gegen TELEGRAF_CHECKSUMS geprüft (fail closed)
+    und entpackt. Optionale Callbacks: on_status(text) meldet die aktuelle Phase,
+    on_progress(done_bytes, total_bytes) den Download-Fortschritt."""
+    from app import TOOLS_CACHE_DIR, mark_executable, extract_esptool_archive
+
+    def status(message: str) -> None:
+        if on_status:
+            on_status(message)
+
     bundled = bundled_telegraf_path()
     if bundled:
+        status(f"Telegraf ist bereits mitgeliefert: {bundled}")
         return bundled
     cached = cached_telegraf_path()
     if cached.is_file():
         mark_executable(cached)
+        status(f"Telegraf ist bereits vorhanden: {cached}")
         return cached
 
     # Fail closed: ohne hinterlegte Prüfsumme wird gar nicht erst geladen.
@@ -195,8 +207,10 @@ def ensure_telegraf_available() -> pathlib.Path:
     asset_name, _ = telegraf_platform_asset()
     archive_path = TOOLS_CACHE_DIR / asset_name
     target_dir = cached.parent.parent
-    download_to_file(f"{TELEGRAF_REPO_BASE}/{asset_name}", archive_path, timeout=300.0)
+    status(f"Lade {asset_name} herunter …")
+    _download_with_progress(f"{TELEGRAF_REPO_BASE}/{asset_name}", archive_path, on_progress)
 
+    status("Prüfe SHA256-Prüfsumme …")
     actual = _sha256_file(archive_path)
     if actual.lower() != expected.lower():
         archive_path.unlink(missing_ok=True)
@@ -205,11 +219,36 @@ def ensure_telegraf_available() -> pathlib.Path:
             f"(erwartet {expected}, erhalten {actual}) - Datei verworfen, kein Entpacken."
         )
 
+    status("Entpacke Archiv …")
     extract_esptool_archive(archive_path, target_dir)
     if not cached.is_file():
         raise RuntimeError(f"Telegraf executable missing after extract: {cached}")
     mark_executable(cached)
+    status(f"Telegraf bereit: {cached}")
     return cached
+
+
+def _download_with_progress(url: str, target: pathlib.Path, on_progress) -> None:
+    from app import ssl_context
+    target.parent.mkdir(parents=True, exist_ok=True)
+    req = request.Request(url, method="GET", headers={"User-Agent": "Brautomat32-ServiceTool"})
+    with request.urlopen(req, timeout=300, context=ssl_context()) as response, target.open("wb") as handle:
+        total = int(response.headers.get("Content-Length") or 0)
+        done = 0
+        while True:
+            chunk = response.read(65536)
+            if not chunk:
+                break
+            handle.write(chunk)
+            done += len(chunk)
+            if on_progress:
+                on_progress(done, total)
+
+
+def ensure_telegraf_available() -> pathlib.Path:
+    # Auto-Bereitstellung ohne Fortschritts-Callbacks (z.B. beim Start von
+    # Telegraf); der Download-Button nutzt download_telegraf() mit Callbacks.
+    return download_telegraf()
 
 
 # ---------------------------------------------------------------------------
