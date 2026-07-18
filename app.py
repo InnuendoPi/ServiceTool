@@ -39,6 +39,7 @@ from telegraf import (
     TelegrafSession,
     cached_telegraf_path,
     default_telegraf_config,
+    export_telegraf_templates,
     normalize_telegraf_config,
     test_telegraf_device,
 )
@@ -4995,6 +4996,15 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/telegraf/clear":
                 self._send_json(STATE.telegraf.clear())
+                return
+            if path == "/api/telegraf/templates/pick":
+                selected = pick_directory("Verzeichnis mit eigenen Telegraf-Templates wählen")
+                self._send_json({"selected": selected})
+                return
+            if path == "/api/telegraf/export-templates":
+                selected = pick_directory("Zielverzeichnis für die Telegraf-Templates wählen")
+                written = export_telegraf_templates(selected) if selected else []
+                self._send_json({"selected": selected, "written": written})
                 return
             if path == "/api/package/pick":
                 selected = pick_directory()

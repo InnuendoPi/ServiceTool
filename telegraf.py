@@ -90,6 +90,7 @@ def default_telegraf_config() -> dict[str, Any]:
         "device_url": "http://brautomat.local",
         "interval": "30s",
         "log_level": "info",
+        "templates_dir": "",
         "save_passwords": False,
         "csv": {"enabled": True, "path": "brautomat.csv"},
         "influxdb": {"enabled": False, "url": "http://localhost:8086", "token": "", "org": "", "bucket": "brautomat"},
@@ -183,10 +184,13 @@ def normalize_telegraf_config(raw: Any) -> dict[str, Any]:
     config["interval"] = interval
     log_level = str(config.get("log_level") or "info").strip().lower()
     config["log_level"] = log_level if log_level in TELEGRAF_LOG_LEVELS else "info"
+    config["templates_dir"] = str(config.get("templates_dir") or "").strip()
     config["mqtt"]["qos"] = int(config["mqtt"].get("qos", 0))
     if config["mqtt"]["qos"] not in (0, 1, 2):
         raise RuntimeError("MQTT QoS must be 0, 1, or 2.")
-    if not any(bool(config[target].get("enabled")) for target in ("csv", "influxdb", "postgres", "mysql", "mqtt")):
+    # Bei eigenen Templates bestimmt der Nutzer selbst, welche Ausgaben es gibt -
+    # die enabled-Schalter des Formulars steuern dann nichts mehr.
+    if not config["templates_dir"] and not any(bool(config[target].get("enabled")) for target in ("csv", "influxdb", "postgres", "mysql", "mqtt")):
         raise RuntimeError("Enable at least one Telegraf destination.")
     return config
 
@@ -223,20 +227,232 @@ def test_telegraf_device(device_url: str) -> dict[str, Any]:
     return {"url": url, "timestamp": payload["t"], "mode": payload.get("mode", "")}
 
 
-def _sql_convert_lines(real_type: str) -> list[str]:
+# Ordnet jeden Template-Namen einem Ziel-Schlüssel zu (None = wird immer
+# gerendert). Steuert bei der Standardgenerierung, welche outputs-*.conf je
+# nach aktivem Ziel entstehen. Die Reihenfolge bestimmt auch die Reihenfolge
+# beim Export.
+_TEMPLATE_TARGETS = {
+    "telegraf.conf": None,
+    "processors-rename.conf": None,
+    "outputs-csv.conf": "csv",
+    "outputs-influxdb.conf": "influxdb",
+    "outputs-postgres.conf": "postgres",
+    "outputs-mysql.conf": "mysql",
+    "outputs-mqtt.conf": "mqtt",
+}
+
+# Platzhalter-Syntax der eingebauten und der benutzerdefinierten Templates:
+# {{name}} (dotted, z.B. {{mqtt.password}}). Einzelne geschweifte Klammern
+# ({TABLE}, {"timestamp": timestamp}) bleiben unangetastet - nur doppelte
+# Klammern sind Platzhalter.
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")
+
+
+def _toml_escape(value: str) -> str:
+    """Escaping für die Verwendung INNERHALB eines TOML-Basic-Strings ("..."),
+    ohne umschließende Anführungszeichen (die stehen im Template). Deckt die
+    injektionsrelevanten Fälle ab (Backslash, Anführungszeichen, Steuerzeichen)
+    - jeder eingesetzte Wert kann so einen "-String nicht verlassen."""
+    out = []
+    for ch in value:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ch == "\b":
+            out.append("\\b")
+        elif ch == "\f":
+            out.append("\\f")
+        elif ord(ch) < 0x20:
+            out.append(f"\\u{ord(ch):04x}")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def render_template(text: str, context: dict[str, str]) -> str:
+    """Ersetzt {{name}}-Platzhalter durch die (TOML-escapten) Werte aus context.
+    Unbekannte Platzhalter sind ein Fehler, damit Tippfehler in eigenen
+    Templates sofort auffallen statt still leer zu bleiben."""
+    def repl(match: "re.Match[str]") -> str:
+        key = match.group(1)
+        if key not in context:
+            raise RuntimeError(f"Unbekannter Platzhalter im Telegraf-Template: {{{{{key}}}}}")
+        return _toml_escape(str(context[key]))
+    return _PLACEHOLDER_RE.sub(repl, text)
+
+
+def template_context(config: dict[str, Any]) -> dict[str, str]:
+    """Flache Platzhalter->Wert-Zuordnung für render_template. Alle Werte werden
+    beim Einsetzen TOML-escaped; String-Platzhalter gehören daher im Template in
+    doppelte Anführungszeichen (z.B. password = "{{mqtt.password}}")."""
+    log_level = config.get("log_level", "info")
+    influx, pg, my, mqtt = config["influxdb"], config["postgres"], config["mysql"], config["mqtt"]
+    return {
+        "interval": config["interval"],
+        "log_level": log_level,
+        "log_debug": "true" if log_level == "debug" else "false",
+        "log_quiet": "true" if log_level == "quiet" else "false",
+        "device_url": config["device_url"],
+        "telemetry_url": telemetry_url(config["device_url"]),
+        "csv.path": config["csv"]["path"],
+        "influxdb.url": influx["url"],
+        "influxdb.token": influx["token"],
+        "influxdb.org": influx["org"],
+        "influxdb.bucket": influx["bucket"],
+        "postgres.host": pg["host"],
+        "postgres.port": pg["port"],
+        "postgres.database": pg["database"],
+        "postgres.user": pg["user"],
+        "postgres.password": pg["password"],
+        "postgres.dsn": f"postgres://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}",
+        "mysql.host": my["host"],
+        "mysql.port": my["port"],
+        "mysql.database": my["database"],
+        "mysql.user": my["user"],
+        "mysql.password": my["password"],
+        "mysql.dsn": f"{my['user']}:{my['password']}@tcp({my['host']}:{my['port']})/{my['database']}",
+        "mqtt.server": mqtt["server"],
+        "mqtt.topic": mqtt["topic"],
+        "mqtt.qos": str(mqtt["qos"]),
+        "mqtt.client_id": mqtt["client_id"],
+        "mqtt.username": mqtt["username"],
+        "mqtt.password": mqtt["password"],
+    }
+
+
+def _sql_convert(real_type: str) -> str:
     # Typmapping telegraf -> SQL. Nur "real" unterscheidet sich zwischen
     # Postgres (REAL) und MySQL/MariaDB (DOUBLE).
-    return [
-        "  [outputs.sql.convert]",
-        "    integer = \"INT\"",
-        f"    real = {toml_string(real_type)}",
-        "    text = \"TEXT\"",
-        "    timestamp = \"TIMESTAMP\"",
-        "    defaultvalue = \"TEXT\"",
-        "    unsigned = \"UNSIGNED\"",
-        "    bool = \"BOOL\"",
-        "    conversion_style = \"unsigned_suffix\"",
-    ]
+    return (
+        "  [outputs.sql.convert]\n"
+        '    integer = "INT"\n'
+        f'    real = "{real_type}"\n'
+        '    text = "TEXT"\n'
+        '    timestamp = "TIMESTAMP"\n'
+        '    defaultvalue = "TEXT"\n'
+        '    unsigned = "UNSIGNED"\n'
+        '    bool = "BOOL"\n'
+        '    conversion_style = "unsigned_suffix"\n'
+    )
+
+
+def builtin_templates() -> dict[str, str]:
+    """Die eingebauten Telegraf-Config-Templates mit {{platzhalter}}. Einzige
+    Quelle für die Standardgenerierung (gerendert) UND den Export (unverändert).
+    Die strukturellen Teile (Feld-Umbenennung, CSV-Spalten) stammen aus den
+    Konstanten FIELD_RENAMES/CSV_TELEGRAF_COLUMNS, damit sie nicht driften."""
+    rename = "[[processors.rename]]\n"
+    for field, dest in FIELD_RENAMES:
+        rename += (
+            "  [[processors.rename.replace]]\n"
+            f'    field = "{field}"\n'
+            f'    dest = "{dest}"\n'
+        )
+    csv_columns = ",\n".join(f'    "{col}"' for col in CSV_TELEGRAF_COLUMNS)
+    return {
+        "telegraf.conf": (
+            "[agent]\n"
+            '  interval = "{{interval}}"\n'
+            "  round_interval = true\n"
+            '  flush_interval = "{{interval}}"\n'
+            "  omit_hostname = true\n"
+            "  debug = {{log_debug}}\n"
+            "  quiet = {{log_quiet}}\n"
+            "\n"
+            "[[inputs.http]]\n"
+            '  urls = ["{{telemetry_url}}"]\n'
+            '  name_override = "brautomat_telemetry"\n'
+            '  method = "GET"\n'
+            '  data_format = "json"\n'
+            '  json_time_key = "t"\n'
+            '  json_time_format = "unix"\n'
+            '  tag_keys = ["mode", "stepName"]\n'
+            '  timeout = "5s"\n'
+            '  interval = "{{interval}}"\n'
+        ),
+        "processors-rename.conf": rename,
+        "outputs-csv.conf": (
+            "[[outputs.file]]\n"
+            '  files = ["{{csv.path}}"]\n'
+            '  data_format = "csv"\n'
+            # csv_header bleibt false: der Header wird einmalig von
+            # ensure_csv_header geschrieben (telegraf würde ihn sonst bei jedem
+            # Flush erneut einfügen).
+            "  csv_header = false\n"
+            "  csv_columns = [\n" + csv_columns + "\n  ]\n"
+        ),
+        "outputs-influxdb.conf": (
+            "[[outputs.influxdb_v2]]\n"
+            '  urls = ["{{influxdb.url}}"]\n'
+            '  token = "{{influxdb.token}}"\n'
+            '  organization = "{{influxdb.org}}"\n'
+            '  bucket = "{{influxdb.bucket}}"\n'
+        ),
+        "outputs-postgres.conf": (
+            "[[outputs.sql]]\n"
+            '  driver = "pgx"\n'
+            '  data_source_name = "postgres://{{postgres.user}}:{{postgres.password}}@{{postgres.host}}:{{postgres.port}}/{{postgres.database}}"\n'
+            '  table_template = "CREATE TABLE {TABLE}({COLUMNS})"\n'
+            '  table_update_template = "ALTER TABLE {TABLE} ADD COLUMN {COLUMN}"\n'
+            + _sql_convert("REAL")
+        ),
+        "outputs-mysql.conf": (
+            "[[outputs.sql]]\n"
+            '  driver = "mysql"\n'
+            '  data_source_name = "{{mysql.user}}:{{mysql.password}}@tcp({{mysql.host}}:{{mysql.port}})/{{mysql.database}}"\n'
+            '  table_template = "CREATE TABLE {TABLE}({COLUMNS})"\n'
+            '  table_exists_template = "SELECT 1 FROM {TABLE} LIMIT 1"\n'
+            "  init_sql = \"SET sql_mode='ANSI_QUOTES';\"\n"
+            '  table_update_template = "ALTER TABLE {TABLE} ADD COLUMN {COLUMN}"\n'
+            + _sql_convert("DOUBLE")
+        ),
+        "outputs-mqtt.conf": (
+            "[[outputs.mqtt]]\n"
+            '  servers = ["{{mqtt.server}}"]\n'
+            '  topic = "{{mqtt.topic}}"\n'
+            "  qos = {{mqtt.qos}}\n"
+            '  client_id = "{{mqtt.client_id}}"\n'
+            '  username = "{{mqtt.username}}"\n'
+            '  password = "{{mqtt.password}}"\n'
+            '  data_format = "json"\n'
+            # JSONata fasst fields, tags und timestamp zu einem flachen
+            # JSON-Objekt zusammen (single-quoted TOML-Literal, kein Escaping).
+            '  json_transformation = \'$merge([fields, tags, {"timestamp": timestamp}])\'\n'
+        ),
+    }
+
+
+def _template_dest(name: str, work_dir: pathlib.Path, conf_dir: pathlib.Path) -> pathlib.Path:
+    # telegraf.conf liegt im Hauptverzeichnis, alles andere in telegraf.d/.
+    return work_dir / name if name == "telegraf.conf" else conf_dir / name
+
+
+def _write_builtin_config(config: dict[str, Any], work_dir: pathlib.Path, conf_dir: pathlib.Path) -> None:
+    ctx = template_context(config)
+    for name, template in builtin_templates().items():
+        target_key = _TEMPLATE_TARGETS[name]
+        if target_key is not None and not config[target_key].get("enabled"):
+            continue
+        _template_dest(name, work_dir, conf_dir).write_text(render_template(template, ctx), encoding="utf-8")
+
+
+def _write_custom_config(src: pathlib.Path, config: dict[str, Any], work_dir: pathlib.Path, conf_dir: pathlib.Path) -> None:
+    main = src / "telegraf.conf"
+    if not main.is_file():
+        raise RuntimeError(f"Templates-Verzeichnis enthält keine telegraf.conf: {src}")
+    ctx = template_context(config)
+    (work_dir / "telegraf.conf").write_text(render_template(main.read_text(encoding="utf-8"), ctx), encoding="utf-8")
+    src_d = src / "telegraf.d"
+    if src_d.is_dir():
+        for conf in sorted(src_d.glob("*.conf")):
+            (conf_dir / conf.name).write_text(render_template(conf.read_text(encoding="utf-8"), ctx), encoding="utf-8")
 
 
 def write_telegraf_config(config: dict[str, Any]) -> pathlib.Path:
@@ -246,114 +462,33 @@ def write_telegraf_config(config: dict[str, Any]) -> pathlib.Path:
         os.chmod(work_dir, 0o700)
         conf_dir = work_dir / "telegraf.d"
         conf_dir.mkdir()
-
-        # telegraf kennt kein einzelnes Log-Level-Feld, sondern nur debug/quiet.
-        log_level = config.get("log_level", "info")
-        debug = "true" if log_level == "debug" else "false"
-        quiet = "true" if log_level == "quiet" else "false"
-
-        main_conf = "\n".join([
-            "[agent]",
-            f"  interval = {toml_string(config['interval'])}",
-            "  round_interval = true",
-            f"  flush_interval = {toml_string(config['interval'])}",
-            "  omit_hostname = true",
-            f"  debug = {debug}",
-            f"  quiet = {quiet}",
-            "",
-            "[[inputs.http]]",
-            f"  urls = [{toml_string(telemetry_url(config['device_url']))}]",
-            "  name_override = \"brautomat_telemetry\"",
-            "  method = \"GET\"",
-            "  data_format = \"json\"",
-            "  json_time_key = \"t\"",
-            "  json_time_format = \"unix\"",
-            "  tag_keys = [\"mode\", \"stepName\"]",
-            "  timeout = \"5s\"",
-            f"  interval = {toml_string(config['interval'])}",
-            "",
-        ])
-        (work_dir / "telegraf.conf").write_text(main_conf, encoding="utf-8")
-
-        # processors.rename gilt immer, unabhängig von den aktiven Zielen -
-        # benennt die kurzen Gerätefelder global in sprechende Namen um.
-        rename_lines = ["[[processors.rename]]"]
-        for field, dest in FIELD_RENAMES:
-            rename_lines.append("  [[processors.rename.replace]]")
-            rename_lines.append(f"    field = {toml_string(field)}")
-            rename_lines.append(f"    dest = {toml_string(dest)}")
-        rename_lines.append("")
-        (conf_dir / "processors-rename.conf").write_text("\n".join(rename_lines), encoding="utf-8")
-
-        targets = config
-        if targets["csv"]["enabled"]:
-            csv_columns = ",\n".join(f"    {toml_string(col)}" for col in CSV_TELEGRAF_COLUMNS)
-            content = "\n".join([
-                "[[outputs.file]]",
-                f"  files = [{toml_string(targets['csv']['path'])}]",
-                "  data_format = \"csv\"",
-                # csv_header bleibt false: der Header wird einmalig von
-                # ensure_csv_header geschrieben (telegraf würde ihn sonst bei
-                # jedem Flush erneut einfügen).
-                "  csv_header = false",
-                f"  csv_columns = [\n{csv_columns}\n  ]",
-                "",
-            ])
-            (conf_dir / "outputs-csv.conf").write_text(content, encoding="utf-8")
-        if targets["influxdb"]["enabled"]:
-            content = "\n".join(["[[outputs.influxdb_v2]]", f"  urls = [{toml_string(targets['influxdb']['url'])}]", f"  token = {toml_string(targets['influxdb']['token'])}", f"  organization = {toml_string(targets['influxdb']['org'])}", f"  bucket = {toml_string(targets['influxdb']['bucket'])}", ""])
-            (conf_dir / "outputs-influxdb.conf").write_text(content, encoding="utf-8")
-        if targets["postgres"]["enabled"]:
-            item = targets["postgres"]
-            dsn = f"postgres://{item['user']}:{item['password']}@{item['host']}:{item['port']}/{item['database']}"
-            content = "\n".join([
-                "[[outputs.sql]]",
-                "  driver = \"pgx\"",
-                f"  data_source_name = {toml_string(dsn)}",
-                "  table_template = \"CREATE TABLE {TABLE}({COLUMNS})\"",
-                "  table_update_template = \"ALTER TABLE {TABLE} ADD COLUMN {COLUMN}\"",
-                *_sql_convert_lines("REAL"),
-                "",
-            ])
-            (conf_dir / "outputs-postgres.conf").write_text(content, encoding="utf-8")
-        if targets["mysql"]["enabled"]:
-            item = targets["mysql"]
-            dsn = f"{item['user']}:{item['password']}@tcp({item['host']}:{item['port']})/{item['database']}"
-            content = "\n".join([
-                "[[outputs.sql]]",
-                "  driver = \"mysql\"",
-                f"  data_source_name = {toml_string(dsn)}",
-                "  table_template = \"CREATE TABLE {TABLE}({COLUMNS})\"",
-                "  table_exists_template = \"SELECT 1 FROM {TABLE} LIMIT 1\"",
-                "  init_sql = \"SET sql_mode='ANSI_QUOTES';\"",
-                "  table_update_template = \"ALTER TABLE {TABLE} ADD COLUMN {COLUMN}\"",
-                *_sql_convert_lines("DOUBLE"),
-                "",
-            ])
-            (conf_dir / "outputs-mysql.conf").write_text(content, encoding="utf-8")
-        if targets["mqtt"]["enabled"]:
-            item = targets["mqtt"]
-            content = "\n".join([
-                "[[outputs.mqtt]]",
-                f"  servers = [{toml_string(item['server'])}]",
-                f"  topic = {toml_string(item['topic'])}",
-                f"  qos = {item['qos']}",
-                f"  client_id = {toml_string(item['client_id'])}",
-                f"  username = {toml_string(item['username'])}",
-                f"  password = {toml_string(item['password'])}",
-                "  data_format = \"json\"",
-                # JSONata fasst fields, tags und timestamp zu einem flachen
-                # JSON-Objekt zusammen (single-quoted TOML-Literal, kein Escaping).
-                "  json_transformation = '$merge([fields, tags, {\"timestamp\": timestamp}])'",
-                "",
-            ])
-            (conf_dir / "outputs-mqtt.conf").write_text(content, encoding="utf-8")
+        templates_dir = str(config.get("templates_dir") or "").strip()
+        if templates_dir:
+            _write_custom_config(pathlib.Path(templates_dir).expanduser(), config, work_dir, conf_dir)
+        else:
+            _write_builtin_config(config, work_dir, conf_dir)
         for path in work_dir.rglob("*.conf"):
             os.chmod(path, 0o600)
         return work_dir
     except Exception:
         shutil.rmtree(work_dir, ignore_errors=True)
         raise
+
+
+def export_telegraf_templates(dest_dir: str) -> list[str]:
+    """Schreibt die eingebauten Templates (mit {{platzhalter}}, ohne
+    Klartext-Zugangsdaten) nach dest_dir als Ausgangspunkt für eigene
+    Anpassungen. Das Ergebnisverzeichnis kann anschließend unverändert als
+    templates_dir verwendet werden."""
+    dest = pathlib.Path(dest_dir).expanduser()
+    written: list[str] = []
+    conf_dir = dest / "telegraf.d"
+    for name, template in builtin_templates().items():
+        target = _template_dest(name, dest, conf_dir)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(template, encoding="utf-8")
+        written.append(str(target))
+    return written
 
 
 def ensure_csv_header(config: dict[str, Any], base_dir: pathlib.Path) -> None:
@@ -417,7 +552,10 @@ class TelegrafSession:
             self.status = "running"
             self.binary = binary
             self._work_dir = write_telegraf_config(config)
-            ensure_csv_header(config, DATA_ROOT)
+            # Bei eigenen Templates gehört der CSV-Header (und ob es überhaupt
+            # ein CSV-Ziel gibt) dem Nutzer - dann nicht automatisch schreiben.
+            if not config.get("templates_dir"):
+                ensure_csv_header(config, DATA_ROOT)
             command = [binary, "--config", str(self._work_dir / "telegraf.conf"), "--config-directory", str(self._work_dir / "telegraf.d")]
             self._append("Starting Telegraf")
             # cwd = DATA_ROOT (nicht das temporäre work_dir): die generierten
