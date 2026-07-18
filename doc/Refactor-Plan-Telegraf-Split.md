@@ -1,6 +1,8 @@
 # Plan: Telegraf-Funktionen aus app.py separieren
 
-*Status: geplant, noch nicht umgesetzt.*
+*Status: umgesetzt (2026-07-18). `telegraf.py` existiert, der Telegraf-Code ist aus `app.py` verschoben.*
+
+*Abweichung vom ursprünglichen Vorgehen: Der `from telegraf import ...`-Import steht am Dateianfang von `app.py` (wie im Abschnitt „Anpassungen in app.py" beschrieben), nicht an der alten Codestelle. Er umfasst zusätzlich `cached_telegraf_path` (wird im Status-Payload des `AppHandler` genutzt und fehlte in der ursprünglichen Import-Liste unter „Vorgehen"). `LOCAL_TELEGRAF_DIR` wurde nicht als Modulkonstante übernommen, sondern in `bundled_telegraf_path()` als `APP_ROOT / "telegraf"` inlined (vermeidet einen App-Import auf Modulebene).*
 
 Dies ist eine kleinere, in sich geschlossene erste Scheibe des größeren Umbaus in [Refactor-Plan-Package-Split.md](Refactor-Plan-Package-Split.md): **nur** die Telegraf-Funktionalität wandert in ein eigenes Modul (`telegraf.py`, direkt neben `app.py`), der Rest von `app.py` bleibt vorerst unverändert. Kein Package, kein `core/`-Layer — das kommt erst mit dem großen Umbau, falls gewünscht.
 
