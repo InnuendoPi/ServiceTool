@@ -2538,6 +2538,13 @@ async function saveTelegrafConfig() {
   await saveConfig({ telegraf: config });
   setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf-Konfiguration gespeichert." : "Telegraf configuration saved.");
 }
+async function pickTelegrafBinary() {
+  const result = await api("/api/telegraf/binary/pick", { method: "POST", body: {} });
+  if (result?.selected) {
+    $("telegrafBinary").value = result.selected;
+    setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf-Programmdatei übernommen." : "Telegraf executable set.");
+  }
+}
 async function pickTelegrafTemplatesDir() {
   const result = await api("/api/telegraf/templates/pick", { method: "POST", body: {} });
   if (result?.selected) {
@@ -4205,6 +4212,7 @@ function attachEvents() {
   $("telegrafTemplatesPickBtn").addEventListener("click", () => pickTelegrafTemplatesDir().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafExportTemplatesBtn").addEventListener("click", () => exportTelegrafTemplates().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafDownloadBtn").addEventListener("click", () => downloadTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
+  $("telegrafBinaryPickBtn").addEventListener("click", () => pickTelegrafBinary().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafStartBtn").addEventListener("click", () => startTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafStopBtn").addEventListener("click", () => stopTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
   $("telegrafClearBtn").addEventListener("click", () => clearTelegrafLog().catch(console.error));

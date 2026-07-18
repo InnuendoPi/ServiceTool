@@ -1521,6 +1521,21 @@ def pick_directory(title: str = "Select Brautomat package directory", initial_di
         root.destroy()
 
 
+def pick_file(title: str, initial_dir: pathlib.Path | None = None) -> str | None:
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        selected = filedialog.askopenfilename(
+            parent=root,
+            title=title,
+            initialdir=str(initial_dir or DATA_ROOT),
+        )
+        return selected or None
+    finally:
+        root.destroy()
+
+
 def package_details(path: pathlib.Path) -> dict[str, Any]:
     files = {
         "bootloader": str(path / "bootloader.bin"),
@@ -5022,6 +5037,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/telegraf/clear":
                 self._send_json(STATE.telegraf.clear())
+                return
+            if path == "/api/telegraf/binary/pick":
+                selected = pick_file("Telegraf-Programmdatei wählen")
+                self._send_json({"selected": selected})
                 return
             if path == "/api/telegraf/templates/pick":
                 selected = pick_directory("Verzeichnis mit eigenen Telegraf-Templates wählen")
