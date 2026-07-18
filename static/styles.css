@@ -1088,3 +1088,24 @@ button.ghost:hover {
   }
   .checkstack { padding-top: 0; }
 }
+
+/* Telegraf run-state badge next to the Start/Stop buttons */
+.run-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.15em 0.7em;
+  border-radius: 999px;
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.run-badge::before {
+  content: "";
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: currentColor;
+}
+.run-badge.running { color: #0f5132; background: #d1e7dd; }
+.run-badge.stopped { color: #343a40; background: #e9ecef; }
