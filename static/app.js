@@ -2512,14 +2512,6 @@ function renderTelegraf(state) {
   const running = !!state?.running;
   $("telegrafStartBtn").disabled = running;
   $("telegrafStopBtn").disabled = !running;
-  const badge = $("telegrafRunState");
-  if (badge) {
-    badge.classList.toggle("running", running);
-    badge.classList.toggle("stopped", !running);
-    badge.textContent = running
-      ? (currentLang === "de" ? "läuft" : "running")
-      : (currentLang === "de" ? "gestoppt" : "stopped");
-  }
   $("telegrafLog").textContent = (state?.lines || []).join("\n");
   scrollOutputToEnd("telegrafLog");
   if (state?.error) setInlineStatus("telegrafInlineStatus", state.error);
