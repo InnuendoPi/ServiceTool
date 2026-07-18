@@ -860,17 +860,33 @@ def download_fs_file(base_url: str, target_path: str, timeout: float = 60.0) -> 
 # PowerShell subprocess instead).
 # ---------------------------------------------------------------------------
 def run_powershell_json(command: str) -> Any:
+    # Capture raw bytes and decode ourselves. text=True would decode with the
+    # locale default (cp1252 on a German Windows), where bytes like 0x81 are
+    # undefined -> the subprocess reader thread dies with UnicodeDecodeError as
+    # soon as a device name contains a non-ASCII character (e.g. "ü" in a
+    # Win32_PnPEntity name). Windows PowerShell 5.1 writes redirected output in
+    # the OEM code page (cp850, where 0x81 == "ü"), while PowerShell 7 writes
+    # UTF-8. Try UTF-8, then the OEM code page, and only then fall back to a
+    # lossy decode so a single odd byte never aborts device enumeration.
     completed = subprocess.run(
         ["powershell", "-NoProfile", "-Command", command],
         capture_output=True,
-        text=True,
         cwd=str(DATA_ROOT),
         timeout=15,
     )
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "PowerShell failed")
-    text = completed.stdout.strip()
+        raise RuntimeError(_decode_powershell(completed.stderr).strip() or _decode_powershell(completed.stdout).strip() or "PowerShell failed")
+    text = _decode_powershell(completed.stdout).strip()
     return json.loads(text) if text else []
+
+
+def _decode_powershell(raw: bytes) -> str:
+    for encoding in ("utf-8", "oem"):
+        try:
+            return raw.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="replace")
 
 
 def has_pyserial() -> bool:
