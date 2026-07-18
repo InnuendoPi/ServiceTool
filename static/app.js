@@ -2459,7 +2459,7 @@ function telegrafFormConfig() {
   const value = id => $(id).value.trim();
   return {
     binary: value("telegrafBinary"),
-    device_url: value("telegrafDeviceUrl") || "http://brautomat.local",
+    device_url: $("deviceUrl").value.trim() || "http://brautomat.local",
     interval: value("telegrafInterval") || "30s",
     log_level: $("telegrafLogLevel").value || "info",
     templates_dir: value("telegrafTemplatesDir"),
@@ -2478,7 +2478,6 @@ function applyTelegrafConfig(raw) {
   const setValue = (id, value) => { $(id).value = value == null ? "" : String(value); };
   const setChecked = (id, value) => { $(id).checked = !!value; };
   setValue("telegrafBinary", config.binary);
-  setValue("telegrafDeviceUrl", config.device_url);
   setValue("telegrafInterval", config.interval);
   setValue("telegrafLogLevel", config.log_level || "info");
   setValue("telegrafTemplatesDir", config.templates_dir);
@@ -2530,7 +2529,7 @@ async function pollTelegraf() { renderTelegraf(await api("/api/telegraf/status")
 async function testTelegrafDevice() {
   setSpinner("telegrafSpinner", true);
   try {
-    const result = await api("/api/telegraf/test-device", { method: "POST", body: { device_url: $("telegrafDeviceUrl").value } });
+    const result = await api("/api/telegraf/test-device", { method: "POST", body: { device_url: $("deviceUrl").value } });
     setInlineStatus("telegrafInlineStatus", `Telemetrie erreichbar: ${result.url}`);
   } finally { setSpinner("telegrafSpinner", false); }
 }
