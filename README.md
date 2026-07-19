@@ -271,6 +271,40 @@ without a real Brautomat and without external databases:
 
 These are development aids only, never a production configuration.
 
+#### Using the docker compose services
+
+After `docker compose up -d`, point the Telegraf tab at the matching
+destination (the form defaults already use the credentials below) and enable
+it. The services are reachable on `localhost`:
+
+| Service    | Address / Port          | Notes                                              |
+| ---------- | ----------------------- | -------------------------------------------------- |
+| Grafana    | <http://localhost:3000> | Login `brautomat` / `brautomat`                    |
+| InfluxDB   | <http://localhost:8086> | Login `brautomat` / `brautomat`                    |
+| Mosquitto  | `localhost:1883`        | MQTT, no authentication                            |
+| PostgreSQL | `localhost:5432`        | database/user/password `brautomat`                 |
+| MariaDB    | `localhost:3306`        | database/user/password `brautomat`, root `root`    |
+
+**Grafana** (<http://localhost:3000>) already has PostgreSQL, MariaDB, and
+InfluxDB wired up as datasources. After logging in, open the **Brautomat**
+dashboard folder for the ready-made example dashboards — *Brautomat
+(InfluxDB)*, *Brautomat (PostgreSQL)*, and *Brautomat (MySQL)* — each showing
+the same Brautomat telemetry from its respective backend. They are provisioned
+automatically, so no manual import is needed; start Telegraf, wait one poll
+interval, and the panels fill with data.
+
+**InfluxDB** (<http://localhost:8086>) can be inspected directly in its web UI.
+Log in with `brautomat` / `brautomat` and use the *Data Explorer* on
+organization `brautomat`, bucket `brautomat`, to browse the incoming
+`brautomat_telemetry` measurement. The pre-provisioned admin token is
+`brautomat-token`.
+
+**MQTT** has no built-in web UI. To verify that Telegraf actually publishes to
+Mosquitto, use a standalone MQTT client such as
+[MQTT Explorer](https://mqtt-explorer.com/): connect it to host `localhost`,
+port `1883`, without credentials, and subscribe to the configured topic (the
+form default is `brautomat/telemetry`) to watch the messages arrive.
+
 ## Builds
 
 Windows can be built locally with:
