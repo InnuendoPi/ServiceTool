@@ -293,6 +293,10 @@ the same Brautomat telemetry from its respective backend. They are provisioned
 automatically, so no manual import is needed; start Telegraf, wait one poll
 interval, and the panels fill with data.
 
+To use these dashboards in your own Grafana (with your own, differently named
+datasources), import the portable copies from `examples/grafana/` — they prompt
+for a datasource on import. See `examples/grafana/README.md` for details.
+
 **InfluxDB** (<http://localhost:8086>) can be inspected directly in its web UI.
 Log in with `brautomat` / `brautomat` and use the *Data Explorer* on
 organization `brautomat`, bucket `brautomat`, to browse the incoming
@@ -330,6 +334,8 @@ commits `version.json` with the matching release URLs and SHA256 values.
 - `static/`: browser UI
 - `tools/mock_server.py`: standalone `/telemetry` mock device for development
 - `docker-compose.yml`, `docker/`: test databases and provisioned Grafana for development
+- `examples/grafana/`: portable copies of the example dashboards for importing
+  into any Grafana; also bundled into the release archives
 - `img/`: README screenshots
 - `Brautomat32ServiceTool.spec`: PyInstaller configuration
 - `build_servicetool_windows_release.ps1`: local Windows release build

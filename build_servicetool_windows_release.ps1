@@ -17,6 +17,7 @@ try {
     $exePath = Join-Path $scriptDir "dist\Brautomat32ServiceTool.exe"
     $readmePath = Join-Path $scriptDir "README.md"
     $versionPath = Join-Path $scriptDir "version.json"
+    $examplesPath = Join-Path $scriptDir "examples"
 
     if (-not (Test-Path $exePath)) {
         throw "Missing built executable: $exePath"
@@ -27,12 +28,17 @@ try {
     if (-not (Test-Path $versionPath)) {
         throw "Missing version manifest: $versionPath"
     }
+    if (-not (Test-Path $examplesPath)) {
+        throw "Missing examples directory: $examplesPath"
+    }
 
     Remove-Item -Recurse -Force $artifactDir -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $esptoolPackageDir | Out-Null
 
     Copy-Item $exePath (Join-Path $packageDir "Brautomat32ServiceTool.exe")
     Copy-Item $readmePath (Join-Path $packageDir "README.md")
+    # Portable Beispiel-Dashboards (examples/grafana) mit ins Archiv legen.
+    Copy-Item -Recurse $examplesPath (Join-Path $packageDir "examples")
 
     $localEsptool = Join-Path $scriptDir "esptool\esptool.exe"
     if (Test-Path $localEsptool) {
