@@ -723,6 +723,74 @@ button:disabled:hover {
   display: grid;
   gap: 0.9rem;
 }
+.telegraf-savepasswords {
+  margin-top: 1rem;
+}
+/* Collapsible cards (Telegraf tab) built on <details>/<summary> */
+.collapsible-card {
+  padding: 0;
+}
+.collapsible-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem;
+  user-select: none;
+}
+.collapsible-summary::-webkit-details-marker {
+  display: none;
+}
+.collapsible-summary h2 {
+  margin: 0;
+}
+.collapsible-summary::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 2px solid var(--secondary);
+  border-bottom: 2px solid var(--secondary);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+}
+.collapsible-card[open] > .collapsible-summary::before {
+  transform: rotate(45deg);
+}
+.collapsible-summary:hover::before {
+  border-color: var(--primary);
+}
+.collapsible-body {
+  padding: 0 1.25rem 1.25rem;
+}
+.telegraf-control-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+/* Warning pill shown in a collapsible handle (e.g. Telegraf missing / no targets) */
+.summary-warning {
+  margin-left: auto;
+  color: var(--warning);
+  font-weight: 700;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid rgba(253, 126, 20, 0.35);
+  border-radius: 999px;
+  background: rgba(253, 126, 20, 0.08);
+}
+.summary-warning::before {
+  content: "⚠";
+  font-size: 0.9em;
+}
+.summary-warning.hidden-panel {
+  display: none;
+}
 .inventory-root-bar {
   display: flex;
   align-items: center;
