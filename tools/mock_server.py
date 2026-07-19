@@ -21,10 +21,18 @@ import argparse
 import json
 import math
 import random
+import socket
 import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+def log(message: str) -> None:
+    """Schreibt eine Logzeile sofort (flush=True). Ohne das bleibt die Ausgabe
+    bei umgeleiteter stdout (Datei/Pipe) block-gepuffert und erscheint stark
+    verzögert oder - bei hartem Abbruch - gar nicht."""
+    print(message, flush=True)
+
 
 # Rastschritte im Maisch-Modus: (Anzeigename, Zieltemperatur).
 MASH_STEPS = [
@@ -119,9 +127,17 @@ def make_handler(sim: Simulator) -> type[BaseHTTPRequestHandler]:
         def log_message(self, *args) -> None:  # noqa: A003 - eigene Logs unten
             return
 
+        def _client(self) -> str:
+            addr = self.client_address[0] if self.client_address else "?"
+            return addr
+
         def do_GET(self) -> None:  # noqa: N802
             if self.path != "/telemetry":
-                self.send_error(404, "not found")
+                # Bewusst jede Fehlanfrage loggen: So ist sofort sichtbar, ob und
+                # mit welchem Pfad ein Request überhaupt hier ankommt (z.B. bei
+                # einem Tippfehler im Pfad oder einem Trailing Slash).
+                log(f"{self._client()} GET {self.path!r} -> 404 (erwartet wird /telemetry)")
+                self.send_error(404, "not found - erwartet wird GET /telemetry")
                 return
             data = sim.next()
             body = json.dumps(data).encode("utf-8")
@@ -130,12 +146,61 @@ def make_handler(sim: Simulator) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-            print(
-                f"GET /telemetry -> mode={data['mode']} step={data['step']} "
-                f"stepName={data['stepName']!r} t={data['t']}"
+            log(
+                f"{self._client()} GET /telemetry -> 200 mode={data['mode']} "
+                f"step={data['step']} stepName={data['stepName']!r} t={data['t']}"
             )
 
+        def do_POST(self) -> None:  # noqa: N802
+            # Nur zur Diagnose: Falscher HTTP-Methodenaufruf soll nicht stumm bleiben.
+            log(f"{self._client()} POST {self.path!r} -> 405 (nur GET /telemetry wird unterstützt)")
+            self.send_error(405, "nur GET /telemetry wird unterstützt")
+
     return TelemetryHandler
+
+
+class MockServer(ThreadingHTTPServer):
+    """HTTP-Server für den Mock mit zwei bewussten Abweichungen vom Default:
+
+    1. ``allow_reuse_address = False``: Ist der Port bereits belegt, soll der
+       Start hier hart abbrechen statt still nebenher zu binden. Unter Windows
+       erlaubt das sonst gesetzte ``SO_REUSEADDR``, dass zwei Prozesse denselben
+       Port belegen - Requests landen dann unbemerkt beim anderen Prozess.
+    2. IPv6-Dualstack, wenn auf allen Schnittstellen gelauscht wird (leerer
+       Host): So erreichen sowohl ``127.0.0.1`` als auch ``::1`` - und damit
+       ``localhost``, das unter Windows bevorzugt zu ``::1`` auflöst - den
+       Server. Ein reiner IPv4-Bind ließe ``http://localhost:8080`` ins Leere
+       laufen.
+    """
+
+    allow_reuse_address = False
+    daemon_threads = True
+
+    def server_bind(self) -> None:
+        if self.address_family == socket.AF_INET6:
+            # Dualstack: auch IPv4-Clients (127.0.0.1) auf demselben Socket
+            # annehmen. Nicht überall verfügbar - dann bleibt es bei IPv6.
+            try:
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            except (AttributeError, OSError):
+                pass
+        super().server_bind()
+
+
+def make_server(host: str, port: int, handler: type[BaseHTTPRequestHandler]) -> MockServer:
+    """Erzeugt den Server; bindet bei leerem Host per IPv6-Dualstack (siehe
+    MockServer), sonst exakt am angegebenen Host.
+
+    Ein Bind-Fehler (typisch: Port bereits belegt) wird bewusst NICHT
+    abgefangen, sondern nach oben gereicht - sonst würde ein belegter Port
+    stumm auf eine andere Bindung ausweichen und der Server liefe scheinbar,
+    ohne die Requests zu bekommen. Wer explizit IPv4 will, gibt einen Host an
+    (z.B. --addr 127.0.0.1:8080)."""
+    if host == "" and socket.has_ipv6:
+        MockServer.address_family = socket.AF_INET6
+        return MockServer(("::", port), handler)
+    MockServer.address_family = socket.AF_INET
+    return MockServer((host, port), handler)
 
 
 def parse_addr(addr: str) -> tuple[str, int]:
@@ -157,14 +222,29 @@ def main() -> None:
     host, port = parse_addr(args.addr)
 
     sim = Simulator()
-    server = ThreadingHTTPServer((host, port), make_handler(sim))
+    try:
+        server = make_server(host, port, make_handler(sim))
+    except OSError as err:
+        # Häufigster Fall: der Port ist bereits belegt (evtl. ein zuvor
+        # gestarteter Mock-Server oder ein fremder Prozess). Klare Ansage statt
+        # eines rohen Tracebacks - und Hinweis auf den Ausweg.
+        print(
+            f"FEHLER: Konnte nicht auf Port {port} lauschen: {err}\n"
+            f"Vermutlich belegt bereits ein anderer Prozess diesen Port. "
+            f"Beende ihn oder wähle mit --addr einen anderen Port, z.B. "
+            f"--addr :9090.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from err
+
     shown = host or "localhost"
-    print(f"Mock-Brautomat-Server läuft auf http://{shown}:{port}/telemetry")
-    print(f"Im ServiceTool als Brautomat-URL z.B. http://{shown}:{port} eintragen.")
+    log(f"Mock-Brautomat-Server läuft auf http://{shown}:{port}/telemetry")
+    log(f"Im ServiceTool als Brautomat-URL z.B. http://{shown}:{port} eintragen.")
+    log("Wartet auf Anfragen (jede Anfrage wird unten protokolliert) ...")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nBeende Mock-Server.", file=sys.stderr)
+        print("\nBeende Mock-Server.", file=sys.stderr, flush=True)
         server.shutdown()
 
 
