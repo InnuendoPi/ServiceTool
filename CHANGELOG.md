@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.7.2 - 2026-07-22
+
 - Erweitert die Telegraf-Integration um lesbare Feldnamen, feste CSV-Spalten,
   MQTT-Flattening und SQL-Typmapping.
 - Ergänzt Log-Level-Auswahl, eigene Telegraf-Templates und Template-Export.

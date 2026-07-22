@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "1.7.1",
-  "released_at": "2026-07-12",
-  "notes": "ServiceTool 1.7.1: verified Windows self-update, clearer Test Runner setup, and compact changelog.",
+  "version": "1.7.2",
+  "released_at": "2026-07-22",
+  "notes": "ServiceTool 1.7.2: Telegraf validation, custom templates, verified Telegraf downloads, local test helpers, and Grafana dashboards.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.1/Brautomat32ServiceTool-win.zip",
-    "sha256": "635039019eb04225f644c8395469737b713a94e34860e2795088924d1d0328d8"
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.2/Brautomat32ServiceTool-win.zip",
+    "sha256": ""
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.1/Brautomat32ServiceTool-linux.zip",
-    "sha256": "6da335096b06a5fb44da8715e946141221fb6ae54f94813c8612ba5d9d8d386c"
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.2/Brautomat32ServiceTool-linux.zip",
+    "sha256": ""
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.1/Brautomat32ServiceTool-macos.zip",
-    "sha256": "5207b30d76941381237a1a701eb28f9a5d4da2a6b5efb067cab635ac2d2a2ea7"
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.2/Brautomat32ServiceTool-macos.zip",
+    "sha256": ""
   }
 }

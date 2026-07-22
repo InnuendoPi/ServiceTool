@@ -405,7 +405,7 @@ I18N.en.migrateBtn = "Start migration";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.7.1",
+  service_tool_version: "1.7.2",
   language: "en",
   debug_output: false,
   device_url: "http://brautomat.local",
@@ -466,7 +466,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.7.1"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.7.2"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
