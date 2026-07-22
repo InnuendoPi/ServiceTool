@@ -594,6 +594,13 @@ button.ghost {
 button.ghost:hover {
   background: rgba(108, 117, 125, 0.08);
 }
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button:disabled:hover {
+  background: transparent;
+}
 #checkDevice.online {
   color: var(--success);
   border-color: var(--success);
@@ -692,6 +699,17 @@ button.ghost:hover {
   border-color: var(--line);
   box-shadow: 0 -1px 0 rgba(13, 110, 253, 0.06);
 }
+/* Green dot marking a Telegraf destination sub-tab whose target is enabled */
+.subtab.enabled::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.45em;
+  border-radius: 50%;
+  background: var(--success);
+  vertical-align: middle;
+}
 .management-subpanel {
   display: none;
 }
@@ -704,6 +722,74 @@ button.ghost:hover {
 .telegraf-subpanel.active {
   display: grid;
   gap: 0.9rem;
+}
+.telegraf-savepasswords {
+  margin-top: 1rem;
+}
+/* Collapsible cards (Telegraf tab) built on <details>/<summary> */
+.collapsible-card {
+  padding: 0;
+}
+.collapsible-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.25rem;
+  user-select: none;
+}
+.collapsible-summary::-webkit-details-marker {
+  display: none;
+}
+.collapsible-summary h2 {
+  margin: 0;
+}
+.collapsible-summary::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 2px solid var(--secondary);
+  border-bottom: 2px solid var(--secondary);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+}
+.collapsible-card[open] > .collapsible-summary::before {
+  transform: rotate(45deg);
+}
+.collapsible-summary:hover::before {
+  border-color: var(--primary);
+}
+.collapsible-body {
+  padding: 0 1.25rem 1.25rem;
+}
+.telegraf-control-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+/* Warning pill shown in a collapsible handle (e.g. Telegraf missing / no targets) */
+.summary-warning {
+  margin-left: auto;
+  color: var(--warning);
+  font-weight: 700;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid rgba(253, 126, 20, 0.35);
+  border-radius: 999px;
+  background: rgba(253, 126, 20, 0.08);
+}
+.summary-warning::before {
+  content: "⚠";
+  font-size: 0.9em;
+}
+.summary-warning.hidden-panel {
+  display: none;
 }
 .inventory-root-bar {
   display: flex;
@@ -1013,6 +1099,14 @@ button.ghost:hover {
   white-space: pre;
 }
 .hint { margin: -0.2rem 0 0.9rem; color: var(--muted); }
+.field-note {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+.field-note.missing { color: var(--danger); }
 .status-line {
   margin: 0.2rem 0 0;
   color: var(--muted);

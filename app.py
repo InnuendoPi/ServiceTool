@@ -34,6 +34,18 @@ from urllib import error, parse, request
 from zipfile import ZipFile
 from tkinter import filedialog
 
+from telegraf import (
+    TELEGRAF_VERSION,
+    TelegrafSession,
+    cached_telegraf_path,
+    default_telegraf_config,
+    describe_telegraf_binary,
+    download_telegraf,
+    export_telegraf_templates,
+    normalize_telegraf_config,
+    test_telegraf_device,
+)
+
 try:
     from zeroconf import IPVersion, ServiceInfo, Zeroconf
 except Exception:  # noqa: BLE001
@@ -54,6 +66,12 @@ except Exception:  # noqa: BLE001
     certifi = None
 
 
+# ---------------------------------------------------------------------------
+# Paths, runtime constants & bootstrap
+# Separates bundled application files (BUNDLE_ROOT/APP_ROOT) from writable
+# runtime data (DATA_ROOT), which lives in a different location per platform
+# once the app is packaged (see detect_data_root()).
+# ---------------------------------------------------------------------------
 BUNDLE_ROOT = pathlib.Path(getattr(sys, "_MEIPASS", pathlib.Path(__file__).resolve().parent))
 APP_ROOT = pathlib.Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else pathlib.Path(__file__).resolve().parent
 
@@ -80,7 +98,6 @@ TOOLS_CACHE_DIR = DATA_ROOT / "cache" / "tools"
 DEFAULT_INVENTORY_DIR = DATA_ROOT / "inventar"
 UPDATE_DIR = DATA_ROOT / "updates"
 LOCAL_ESPTOOL_DIR = APP_ROOT / "esptool"
-LOCAL_TELEGRAF_DIR = APP_ROOT / "telegraf"
 CONFIG_FILE = DATA_ROOT / "config.json"
 HOST = "127.0.0.1"
 SERVICE_HOSTNAME = "serviceBrautomat32.local"
@@ -89,13 +106,11 @@ PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
 SERVICE_TOOL_VERSION = "1.7.1"
 ESPTOOL_VERSION = "5.3.1"
-TELEGRAF_VERSION = "1.39.1"
 SERVICE_TOOL_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/InnuendoPi/ServiceTool/main/version.json"
 SERVICE_TOOL_WINDOWS_EXECUTABLE = "Brautomat32ServiceTool.exe"
 MIGRATION_MIN_VERSION = (1, 62, 0)
 MIGRATION_TARGET_VERSION = (1, 70, 0)
 ESPTOOL_REPO_BASE = f"https://github.com/espressif/esptool/releases/download/v{ESPTOOL_VERSION}"
-TELEGRAF_REPO_BASE = f"https://dl.influxdata.com/telegraf/releases"
 
 REMOTE_PACKAGES: dict[str, dict[str, str]] = {
     "release": {
@@ -229,6 +244,12 @@ def first_existing_dir(candidates: list[pathlib.Path], relative: str) -> pathlib
     return None
 
 
+# ---------------------------------------------------------------------------
+# Test Runner integration helpers
+# Support for the optional, private Node.js Test Runner (lives in a separate
+# Brautomat32 firmware checkout). Only formats/detects results; the runner
+# itself is launched by TestRunnerSession further below.
+# ---------------------------------------------------------------------------
 def slugify(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-") or "runner"
 
@@ -430,6 +451,9 @@ def fetch_public_test_results() -> dict[str, Any]:
     return {"url": url, "content": content}
 
 
+# ---------------------------------------------------------------------------
+# App configuration (config.json)
+# ---------------------------------------------------------------------------
 def default_config() -> dict[str, Any]:
     return {
         "service_tool_version": SERVICE_TOOL_VERSION,
@@ -445,20 +469,6 @@ def default_config() -> dict[str, Any]:
         "serial_baud_rate": 115200,
         "serial_port": "",
         "telegraf": default_telegraf_config(),
-    }
-
-
-def default_telegraf_config() -> dict[str, Any]:
-    return {
-        "binary": "",
-        "device_url": "http://brautomat.local",
-        "interval": "30s",
-        "save_passwords": False,
-        "csv": {"enabled": True, "path": "brautomat.csv"},
-        "influxdb": {"enabled": False, "url": "http://localhost:8086", "token": "", "org": "", "bucket": "brautomat"},
-        "postgres": {"enabled": False, "host": "localhost", "port": "5432", "database": "brautomat", "user": "brautomat", "password": ""},
-        "mysql": {"enabled": False, "host": "localhost", "port": "3306", "database": "brautomat", "user": "brautomat", "password": ""},
-        "mqtt": {"enabled": False, "server": "tcp://localhost:1883", "topic": "brautomat/telemetry", "client_id": "brautomat-telegraf", "username": "", "password": "", "qos": 0},
     }
 
 
@@ -523,6 +533,9 @@ def now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+# ---------------------------------------------------------------------------
+# Version comparison, URL, and logging/network helpers
+# ---------------------------------------------------------------------------
 def sanitize_version_for_filename(version: str) -> str:
     raw = str(version or "").strip()
     if not raw:
@@ -622,7 +635,12 @@ def detect_local_advertise_ip() -> str:
     return "127.0.0.1"
 
 
+# ---------------------------------------------------------------------------
+# mDNS discovery
+# ---------------------------------------------------------------------------
 class MdnsAdvertiser:
+    """Advertises this ServiceTool instance as `serviceBrautomat32.local` via zeroconf."""
+
     def __init__(self, hostname: str, port: int) -> None:
         self.hostname = hostname.rstrip(".")
         self.port = port
@@ -670,6 +688,12 @@ class MdnsAdvertiser:
         self.active = False
 
 
+# ---------------------------------------------------------------------------
+# Device HTTP client
+# Plain urllib.request wrappers used to talk to the Brautomat32 device's own
+# HTTP API (config, filesystem, WiFi, telemetry, reboot, ...). No `requests`
+# dependency; try_base_urls() adds the ESP32 AP-mode IP as a fallback target.
+# ---------------------------------------------------------------------------
 def normalize_base_url(base_url: str) -> str:
     value = (base_url or "").strip()
     if not value:
@@ -832,18 +856,40 @@ def download_fs_file(base_url: str, target_path: str, timeout: float = 60.0) -> 
     return download_bytes(url, timeout=timeout)
 
 
+# ---------------------------------------------------------------------------
+# Serial port access
+# Primary path uses pyserial; run_powershell_json() backs the fallback path
+# used when pyserial is unavailable (drives System.IO.Ports.SerialPort via a
+# PowerShell subprocess instead).
+# ---------------------------------------------------------------------------
 def run_powershell_json(command: str) -> Any:
+    # Capture raw bytes and decode ourselves. text=True would decode with the
+    # locale default (cp1252 on a German Windows), where bytes like 0x81 are
+    # undefined -> the subprocess reader thread dies with UnicodeDecodeError as
+    # soon as a device name contains a non-ASCII character (e.g. "ü" in a
+    # Win32_PnPEntity name). Windows PowerShell 5.1 writes redirected output in
+    # the OEM code page (cp850, where 0x81 == "ü"), while PowerShell 7 writes
+    # UTF-8. Try UTF-8, then the OEM code page, and only then fall back to a
+    # lossy decode so a single odd byte never aborts device enumeration.
     completed = subprocess.run(
         ["powershell", "-NoProfile", "-Command", command],
         capture_output=True,
-        text=True,
         cwd=str(DATA_ROOT),
         timeout=15,
     )
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "PowerShell failed")
-    text = completed.stdout.strip()
+        raise RuntimeError(_decode_powershell(completed.stderr).strip() or _decode_powershell(completed.stdout).strip() or "PowerShell failed")
+    text = _decode_powershell(completed.stdout).strip()
     return json.loads(text) if text else []
+
+
+def _decode_powershell(raw: bytes) -> str:
+    for encoding in ("utf-8", "oem"):
+        try:
+            return raw.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="replace")
 
 
 def has_pyserial() -> bool:
@@ -1014,6 +1060,14 @@ def host_wifi_scan() -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Firmware package catalog, esptool/Telegraf tool provisioning, self-update
+# Covers: remote firmware package discovery/download (release/development/
+# special), on-demand download+caching of the esptool and Telegraf binaries,
+# and the ServiceTool's own self-update flow (checks version.json on GitHub,
+# downloads+verifies the release ZIP, and on Windows can self-replace the
+# running executable).
+# ---------------------------------------------------------------------------
 def package_exists(path: pathlib.Path) -> bool:
     return path.exists() and (path / REQUIRED_FIRMWARE_FILE).exists()
 
@@ -1398,54 +1452,6 @@ def ensure_esptool_available(job: Job | None = None) -> pathlib.Path:
     return cached
 
 
-def telegraf_platform_asset() -> tuple[str, str]:
-    system = platform.system().lower()
-    machine = platform.machine().lower()
-    executable = "telegraf.exe" if system == "windows" else "telegraf"
-    if system == "windows" and machine in {"amd64", "x86_64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_windows_amd64.zip", executable)
-    if system == "darwin" and machine in {"amd64", "x86_64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_darwin_amd64.tar.gz", executable)
-    if system == "darwin" and machine in {"arm64", "aarch64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_darwin_arm64.tar.gz", executable)
-    if system == "linux" and machine in {"amd64", "x86_64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_linux_amd64.tar.gz", executable)
-    if system == "linux" and machine in {"arm64", "aarch64"}:
-        return (f"telegraf-{TELEGRAF_VERSION}_linux_arm64.tar.gz", executable)
-    raise RuntimeError(f"Unsupported platform for Telegraf: {platform.system()} {platform.machine()}")
-
-
-def cached_telegraf_path() -> pathlib.Path:
-    _, executable = telegraf_platform_asset()
-    return TOOLS_CACHE_DIR / f"telegraf-{TELEGRAF_VERSION}" / f"telegraf-{TELEGRAF_VERSION}" / executable
-
-
-def bundled_telegraf_path() -> pathlib.Path | None:
-    _, executable = telegraf_platform_asset()
-    candidate = LOCAL_TELEGRAF_DIR / executable
-    return candidate if candidate.is_file() else None
-
-
-def ensure_telegraf_available() -> pathlib.Path:
-    bundled = bundled_telegraf_path()
-    if bundled:
-        return bundled
-    cached = cached_telegraf_path()
-    if cached.is_file():
-        mark_executable(cached)
-        return cached
-
-    asset_name, _ = telegraf_platform_asset()
-    archive_path = TOOLS_CACHE_DIR / asset_name
-    target_dir = cached.parent.parent
-    download_to_file(f"{TELEGRAF_REPO_BASE}/{asset_name}", archive_path, timeout=300.0)
-    extract_esptool_archive(archive_path, target_dir)
-    if not cached.is_file():
-        raise RuntimeError(f"Telegraf executable missing after extract: {cached}")
-    mark_executable(cached)
-    return cached
-
-
 def write_package_metadata(path: pathlib.Path, source_key: str) -> None:
     if source_key in REMOTE_PACKAGES:
         package = REMOTE_PACKAGES[source_key]
@@ -1509,6 +1515,21 @@ def pick_directory(title: str = "Select Brautomat package directory", initial_di
             parent=root,
             title=title,
             mustexist=True,
+            initialdir=str(initial_dir or DATA_ROOT),
+        )
+        return selected or None
+    finally:
+        root.destroy()
+
+
+def pick_file(title: str, initial_dir: pathlib.Path | None = None) -> str | None:
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        selected = filedialog.askopenfilename(
+            parent=root,
+            title=title,
             initialdir=str(initial_dir or DATA_ROOT),
         )
         return selected or None
@@ -1879,8 +1900,16 @@ def install_language_job(job: Job, base_url: str, source_key: str, filename: str
     }
 
 
+# ---------------------------------------------------------------------------
+# Background job tracking & long-lived device sessions
+# Job/JobStore back the polling-based async-operation model used by the API
+# (flash/backup/migration run in a thread; the frontend polls /api/jobs/<id>).
+# SerialSession owns the live COM-port connection used by the Serial Monitor.
+# ---------------------------------------------------------------------------
 @dataclass
 class Job:
+    """A single tracked background operation: status, progress, and its log lines."""
+
     id: str
     type: str
     title: str
@@ -1905,6 +1934,8 @@ class Job:
 
 
 class JobStore:
+    """Thread-safe in-memory registry of Job objects, keyed by job id."""
+
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
@@ -1925,6 +1956,13 @@ class JobStore:
 
 
 class SerialSession:
+    """Owns one COM-port connection for the Serial Monitor.
+
+    Reads lines via pyserial when available, otherwise falls back to a
+    PowerShell subprocess driving System.IO.Ports.SerialPort; either way a
+    background thread (_pump) appends timestamped lines to a shared deque.
+    """
+
     def __init__(self, port: str, baud: int, shared_lines: deque[str]) -> None:
         self.port = normalize_serial_port_name(port)
         self.baud = baud
@@ -1958,6 +1996,8 @@ class SerialSession:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 cwd=str(DATA_ROOT),
             )
         self._thread = threading.Thread(target=self._pump, daemon=True)
@@ -2014,200 +2054,15 @@ class SerialSession:
         }
 
 
-def toml_string(value: Any) -> str:
-    return json.dumps(str(value or ""), ensure_ascii=False)
-
-
-def normalize_telegraf_config(raw: Any) -> dict[str, Any]:
-    config = default_telegraf_config()
-    if isinstance(raw, dict):
-        config.update({key: value for key, value in raw.items() if key in config})
-        for target in ("csv", "influxdb", "postgres", "mysql", "mqtt"):
-            if isinstance(raw.get(target), dict):
-                defaults = default_telegraf_config()[target]
-                defaults.update(raw[target])
-                config[target] = defaults
-    config["device_url"] = normalize_base_url(str(config["device_url"]))
-    interval = str(config["interval"] or "").strip()
-    if not re.fullmatch(r"\d+(ms|s|m|h)", interval):
-        raise RuntimeError("Telegraf interval must use a duration such as 10s, 1m, or 500ms.")
-    config["interval"] = interval
-    config["mqtt"]["qos"] = int(config["mqtt"].get("qos", 0))
-    if config["mqtt"]["qos"] not in (0, 1, 2):
-        raise RuntimeError("MQTT QoS must be 0, 1, or 2.")
-    if not any(bool(config[target].get("enabled")) for target in ("csv", "influxdb", "postgres", "mysql", "mqtt")):
-        raise RuntimeError("Enable at least one Telegraf destination.")
-    return config
-
-
-def resolve_telegraf_binary(config: dict[str, Any]) -> str:
-    configured = str(config.get("binary") or "").strip()
-    if configured:
-        candidate = pathlib.Path(configured).expanduser()
-        if candidate.is_file():
-            return str(candidate.resolve())
-        resolved = shutil.which(configured)
-        if resolved:
-            return resolved
-        raise RuntimeError(f"Configured Telegraf executable was not found: {configured}")
-    executable = "telegraf.exe" if os.name == "nt" else "telegraf"
-    resolved = shutil.which(executable)
-    if resolved:
-        return resolved
-    return str(ensure_telegraf_available())
-
-
-def telemetry_url(device_url: str) -> str:
-    return f"{normalize_base_url(device_url)}/telemetry"
-
-
-def test_telegraf_device(device_url: str) -> dict[str, Any]:
-    url = telemetry_url(device_url)
-    req = request.Request(url, headers={"User-Agent": "Brautomat32-ServiceTool"})
-    with request.urlopen(req, timeout=5) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if not isinstance(payload, dict) or "t" not in payload:
-        raise RuntimeError("The response is not a Brautomat telemetry payload (field 't' is missing).")
-    return {"url": url, "timestamp": payload["t"], "mode": payload.get("mode", "")}
-
-
-def write_telegraf_config(config: dict[str, Any]) -> pathlib.Path:
-    work_dir = pathlib.Path(tempfile.mkdtemp(prefix="brautomat-telegraf-", dir=str(CACHE_DIR)))
-    try:
-        os.chmod(work_dir, 0o700)
-        conf_dir = work_dir / "telegraf.d"
-        conf_dir.mkdir()
-        main_conf = "\n".join([
-            "[agent]",
-            f"  interval = {toml_string(config['interval'])}",
-            "  round_interval = true",
-            f"  flush_interval = {toml_string(config['interval'])}",
-            "",
-            "[[inputs.http]]",
-            f"  urls = [{toml_string(telemetry_url(config['device_url']))}]",
-            "  method = \"GET\"",
-            "  data_format = \"json\"",
-            "  json_time_key = \"t\"",
-            "  json_time_format = \"unix\"",
-            "  tag_keys = [\"mode\", \"stepName\"]",
-            "  timeout = \"5s\"",
-            f"  interval = {toml_string(config['interval'])}",
-            "",
-        ])
-        (work_dir / "telegraf.conf").write_text(main_conf, encoding="utf-8")
-        targets = config
-        if targets["csv"]["enabled"]:
-            content = "\n".join(["[[outputs.file]]", f"  files = [{toml_string(targets['csv']['path'])}]", "  data_format = \"csv\"", "  csv_header = false", ""])
-            (conf_dir / "outputs-csv.conf").write_text(content, encoding="utf-8")
-        if targets["influxdb"]["enabled"]:
-            content = "\n".join(["[[outputs.influxdb_v2]]", f"  urls = [{toml_string(targets['influxdb']['url'])}]", f"  token = {toml_string(targets['influxdb']['token'])}", f"  organization = {toml_string(targets['influxdb']['org'])}", f"  bucket = {toml_string(targets['influxdb']['bucket'])}", ""])
-            (conf_dir / "outputs-influxdb.conf").write_text(content, encoding="utf-8")
-        for target, driver, filename in (("postgres", "pgx", "outputs-postgres.conf"), ("mysql", "mysql", "outputs-mysql.conf")):
-            if not targets[target]["enabled"]:
-                continue
-            item = targets[target]
-            if target == "postgres":
-                dsn = f"postgres://{item['user']}:{item['password']}@{item['host']}:{item['port']}/{item['database']}"
-            else:
-                dsn = f"{item['user']}:{item['password']}@tcp({item['host']}:{item['port']})/{item['database']}"
-            content = "\n".join(["[[outputs.sql]]", f"  driver = {toml_string(driver)}", f"  data_source_name = {toml_string(dsn)}", "  table_template = \"CREATE TABLE {TABLE}({COLUMNS})\"", ""])
-            (conf_dir / filename).write_text(content, encoding="utf-8")
-        if targets["mqtt"]["enabled"]:
-            item = targets["mqtt"]
-            content = "\n".join(["[[outputs.mqtt]]", f"  servers = [{toml_string(item['server'])}]", f"  topic = {toml_string(item['topic'])}", f"  qos = {item['qos']}", f"  client_id = {toml_string(item['client_id'])}", f"  username = {toml_string(item['username'])}", f"  password = {toml_string(item['password'])}", "  data_format = \"json\"", ""])
-            (conf_dir / "outputs-mqtt.conf").write_text(content, encoding="utf-8")
-        for path in work_dir.rglob("*.conf"):
-            os.chmod(path, 0o600)
-        return work_dir
-    except Exception:
-        shutil.rmtree(work_dir, ignore_errors=True)
-        raise
-
-
-class TelegrafSession:
-    def __init__(self) -> None:
-        self._lock = threading.RLock()
-        self._proc: subprocess.Popen[str] | None = None
-        self._thread: threading.Thread | None = None
-        self._work_dir: pathlib.Path | None = None
-        self._logs: deque[str] = deque(maxlen=4000)
-        self.status = "idle"
-        self.started_at: str | None = None
-        self.finished_at: str | None = None
-        self.error = ""
-        self.binary = ""
-
-    def _append(self, message: str) -> None:
-        self._logs.append(f"[{now_iso()}] {message}")
-
-    def snapshot(self) -> dict[str, Any]:
-        with self._lock:
-            return {"running": self.status in {"running", "stopping"}, "status": self.status, "started_at": self.started_at, "finished_at": self.finished_at, "error": self.error, "binary": self.binary, "lines": list(self._logs)}
-
-    def start(self, raw_config: Any) -> dict[str, Any]:
-        config = normalize_telegraf_config(raw_config)
-        binary = resolve_telegraf_binary(config)
-        with self._lock:
-            if self._proc:
-                raise RuntimeError("Telegraf is already running.")
-            self._logs.clear()
-            self.error = ""
-            self.finished_at = None
-            self.started_at = now_iso()
-            self.status = "running"
-            self.binary = binary
-            self._work_dir = write_telegraf_config(config)
-            command = [binary, "--config", str(self._work_dir / "telegraf.conf"), "--config-directory", str(self._work_dir / "telegraf.d")]
-            self._append("Starting Telegraf")
-            self._proc = subprocess.Popen(command, cwd=str(self._work_dir), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
-            self._thread = threading.Thread(target=self._pump, daemon=True)
-            self._thread.start()
-            return self.snapshot()
-
-    def stop(self) -> dict[str, Any]:
-        with self._lock:
-            if not self._proc:
-                return self.snapshot()
-            self.status = "stopping"
-            self._append("Stopping Telegraf")
-            self._proc.terminate()
-            return self.snapshot()
-
-    def clear(self) -> dict[str, Any]:
-        with self._lock:
-            self._logs.clear()
-            return self.snapshot()
-
-    def _pump(self) -> None:
-        with self._lock:
-            proc = self._proc
-        if not proc:
-            return
-        while True:
-            line = proc.stdout.readline() if proc.stdout else ""
-            if line:
-                with self._lock:
-                    self._append(line.rstrip())
-                continue
-            if proc.poll() is not None:
-                break
-            time.sleep(0.1)
-        code = proc.wait()
-        with self._lock:
-            if code and self.status != "stopping":
-                self.status = "failed"
-                self.error = f"Telegraf exited with code {code}."
-            else:
-                self.status = "stopped"
-            self.finished_at = now_iso()
-            self._append(self.error or "Telegraf stopped.")
-            self._proc = None
-            work_dir, self._work_dir = self._work_dir, None
-        if work_dir:
-            shutil.rmtree(work_dir, ignore_errors=True)
-
-
+# ---------------------------------------------------------------------------
+# Global application state
+# STATE (instantiated near the bottom of the file) is the single process-wide
+# ServiceState; AppHandler reads/mutates it on every request instead of
+# holding any per-connection state of its own.
+# ---------------------------------------------------------------------------
 class ServiceState:
+    """Process-wide state: job store plus the active serial/Telegraf/test-runner sessions."""
+
     def __init__(self) -> None:
         self.jobs = JobStore()
         self.serial: SerialSession | None = None
@@ -2279,7 +2134,15 @@ class ServiceState:
                 self.serial_lines.append(entry)
 
 
+# ---------------------------------------------------------------------------
+# Optional private Test Runner session
+# Launches the Node.js test-runner subprocess from a private Brautomat32
+# checkout (see detect_test_runner_environment() above); the tab stays
+# hidden in the UI unless that environment is actually present.
+# ---------------------------------------------------------------------------
 class TestRunnerSession:
+    """Runs the optional private Node.js Test Runner as a managed subprocess."""
+
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._proc: subprocess.Popen[str] | None = None
@@ -2508,6 +2371,12 @@ STATE = ServiceState()
 HTTP_SERVER: ThreadingHTTPServer | None = None
 
 
+# ---------------------------------------------------------------------------
+# Job execution & flash progress
+# run_job() is the generic thread launcher used by every long-running API
+# action; exclusive_serial_access() pauses the Serial Monitor so flashing,
+# backup, or migration can have the COM port to themselves.
+# ---------------------------------------------------------------------------
 @contextmanager
 def exclusive_serial_access(timeout: float = 10.0):
     acquired = STATE.serial_access_lock.acquire(timeout=timeout)
@@ -2537,6 +2406,23 @@ def run_job(job: Job, target, *args, **kwargs) -> None:
             log_path.write_text("\n".join(job.logs), encoding="utf-8")
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def telegraf_download_job(job: Job) -> dict[str, Any]:
+    """Lädt die Telegraf-Binary im Hintergrund herunter und meldet Fortschritt
+    (Status-Zeilen und Prozent) an den Job, den das Frontend pollt."""
+    def on_status(message: str) -> None:
+        job.log(message)
+
+    def on_progress(done: int, total: int) -> None:
+        if total:
+            job.set_progress(int(done * 100 / total))
+        done_mb = done / (1024 * 1024)
+        job.set_current_file(f"{done_mb:.1f} MB / {total / (1024 * 1024):.1f} MB" if total else f"{done_mb:.1f} MB")
+
+    path = download_telegraf(on_status=on_status, on_progress=on_progress)
+    job.set_progress(100)
+    return {"path": str(path)}
 
 
 def update_progress_from_line(job: Job, line: str) -> None:
@@ -2616,6 +2502,12 @@ def create_backup_job(job: Job, base_url: str, include_api: bool) -> dict[str, A
     return {"backup_file": str(target), "size": len(payload)}
 
 
+# ---------------------------------------------------------------------------
+# Device status & firmware detection
+# combined_device_status() reconciles the serial and network probes into the
+# single connection state shown in the UI badge: No device / Checking /
+# Serial / Online.
+# ---------------------------------------------------------------------------
 def device_status(base_url: str) -> dict[str, Any]:
     base, vis = try_base_urls(base_url, lambda candidate: json_request(f"{candidate}/reqVis", timeout=2.5))
     firmware = extract_firmware_banner(vis.get("firm")) or str(vis.get("firm") or "").strip()
@@ -2802,6 +2694,8 @@ try {{
             ["powershell", "-NoProfile", "-Command", ps_script],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(DATA_ROOT),
             timeout=max(6, int(timeout) + 4),
         )
@@ -3006,6 +2900,8 @@ try {{
             ["powershell", "-NoProfile", "-Command", ps_script],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(DATA_ROOT),
             timeout=max(5, int(timeout) + 5),
         )
@@ -3089,6 +2985,8 @@ while ((Get-Date) -lt $deadline) {{
             ["powershell", "-NoProfile", "-Command", ps_script],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(DATA_ROOT),
             timeout=max(10, int(timeout) + 10),
         )
@@ -3116,6 +3014,11 @@ def firmware_slot(base_url: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {"raw": data}
 
 
+# ---------------------------------------------------------------------------
+# Firmware update & migration-readiness checks
+# Compares the device's current firmware version against the remote repo
+# version/migration thresholds (MIGRATION_MIN_VERSION / _TARGET_VERSION).
+# ---------------------------------------------------------------------------
 def current_firmware_version(base_url: str) -> tuple[str, tuple[int, int, int]]:
     slot = firmware_slot(base_url)
     version = str(slot.get("firmware", "")).strip()
@@ -3277,6 +3180,11 @@ def restore_job(job: Job, base_url: str, filename: str, content: bytes) -> dict[
     return result
 
 
+# ---------------------------------------------------------------------------
+# Backup management
+# Local JSON config backups: create/list/restore/rename/delete, plus the
+# user-note metadata (backup_info.json) kept alongside them.
+# ---------------------------------------------------------------------------
 def backup_file_path(filename: str) -> pathlib.Path:
     clean = pathlib.PurePath(str(filename)).name.strip()
     if not clean or clean in {".", ".."}:
@@ -3554,6 +3462,12 @@ def restore_backup_and_wait(base_url: str, filename: str, content: bytes, timeou
     return result
 
 
+# ---------------------------------------------------------------------------
+# WiFi provisioning & migration package/version helpers
+# WiFi scan/save/reset over network or serial, plus the package validation
+# used before/around a firmware migration (version checks, WiFi capture and
+# restore across the migration flash).
+# ---------------------------------------------------------------------------
 def wifi_reset(base_url: str, serial_port: str = "", serial_baud: int = 115200) -> dict[str, Any]:
     if serial_port:
         data = serial_json_command(serial_port, serial_baud, {"cmd": "wifi_reset"})
@@ -3890,6 +3804,11 @@ def validate_migration_package_source(package_source: str, package_ref: str, pac
     return migration_target_version(package_source, package_ref, package_dir)
 
 
+# ---------------------------------------------------------------------------
+# Inventory management (mash plans, fermenter plans, profiles, config)
+# CRUD + sync between local inventory files (DEFAULT_INVENTORY_DIR) and the
+# corresponding device paths, driven by the per-kind INVENTORY_SPECS entries.
+# ---------------------------------------------------------------------------
 def inventory_spec(kind: str) -> dict[str, str]:
     spec = INVENTORY_SPECS.get(kind)
     if not spec:
@@ -4548,6 +4467,13 @@ def rename_device_inventory(base_url: str, kind: str, old_name: str, new_name: s
     return {"renamed": old_clean, "target": new_clean, "mode": "fs"}
 
 
+# ---------------------------------------------------------------------------
+# Flash / firmware-backup / migration jobs
+# The actual Job targets run in background threads: flash_job() shells out to
+# esptool, backup_firmware_job() reads back the flashed firmware, and
+# migration_job() drives the full pre-1.70 migration sequence (WiFi capture,
+# flash, wait-for-ready, WiFi restore).
+# ---------------------------------------------------------------------------
 def ensure_esptool_port_available(port: str) -> None:
     port = normalize_serial_port_name(port)
     if not port:
@@ -4876,6 +4802,13 @@ def migration_job(
     return result
 
 
+# ---------------------------------------------------------------------------
+# HTTP request handler / API routing
+# One handler instance per request (ThreadingHTTPServer spawns a thread per
+# connection). Serves the static frontend and dispatches /api/* routes via
+# manual if-chains in _route_api_get() (GET) and do_POST(); all real work is
+# delegated to the module-level functions defined above.
+# ---------------------------------------------------------------------------
 class AppHandler(BaseHTTPRequestHandler):
     server_version = "BrautomatServiceTool/0.1"
 
@@ -4888,7 +4821,14 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # The browser polls these JSON endpoints constantly and routinely
+            # drops a connection mid-response (tab reload, navigation). That is
+            # not an application error, so swallow it instead of letting it
+            # bubble up as a noisy traceback from the socketserver thread.
+            pass
 
     def _send_file(self, path: pathlib.Path) -> None:
         if not path.exists() or not path.is_file():
@@ -5085,6 +5025,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 data = self._read_json()
                 self._send_json(test_telegraf_device(str(data.get("device_url") or "")))
                 return
+            if path == "/api/telegraf/resolve-binary":
+                data = self._read_json()
+                self._send_json(describe_telegraf_binary({"binary": str(data.get("binary") or "")}))
+                return
             if path == "/api/telegraf/start":
                 data = self._read_json()
                 config = normalize_telegraf_config(data.get("config"))
@@ -5098,6 +5042,24 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/telegraf/clear":
                 self._send_json(STATE.telegraf.clear())
+                return
+            if path == "/api/telegraf/binary/pick":
+                selected = pick_file("Telegraf-Programmdatei wählen")
+                self._send_json({"selected": selected})
+                return
+            if path == "/api/telegraf/templates/pick":
+                selected = pick_directory("Verzeichnis mit eigenen Telegraf-Templates wählen")
+                self._send_json({"selected": selected})
+                return
+            if path == "/api/telegraf/export-templates":
+                selected = pick_directory("Zielverzeichnis für die Telegraf-Templates wählen")
+                written = export_telegraf_templates(selected) if selected else []
+                self._send_json({"selected": selected, "written": written})
+                return
+            if path == "/api/telegraf/download":
+                job = STATE.jobs.create("telegraf-download", "Telegraf herunterladen")
+                run_job(job, telegraf_download_job)
+                self._send_json({"job_id": job.id})
                 return
             if path == "/api/package/pick":
                 selected = pick_directory()
@@ -5311,6 +5273,11 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, status=500)
 
 
+# ---------------------------------------------------------------------------
+# Startup
+# main() wires everything together: pick a free port, start the threaded
+# HTTP server, advertise via mDNS, and open the default browser.
+# ---------------------------------------------------------------------------
 def choose_listen_port(host: str, preferred_port: int) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

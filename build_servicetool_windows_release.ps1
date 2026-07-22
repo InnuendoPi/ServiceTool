@@ -27,7 +27,6 @@ try {
     if (-not (Test-Path $versionPath)) {
         throw "Missing version manifest: $versionPath"
     }
-
     Remove-Item -Recurse -Force $artifactDir -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $esptoolPackageDir | Out-Null
 

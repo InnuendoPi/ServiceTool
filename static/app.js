@@ -118,6 +118,15 @@ const I18N = {
     restoreBtn: "Restore ausführen",
     refreshPorts: "Ports neu laden",
     choosePackageDir: "Verzeichnis öffnen",
+    telegrafBinaryPickBtn: "Programmdatei wählen",
+    telegrafTemplatesPickBtn: "Templates-Verzeichnis wählen",
+    telegrafBinaryFound: "Verwendet",
+    telegrafBinarySourcePath: "im Suchpfad (PATH) gefunden",
+    telegrafBinarySourceConfigured: "konfiguriert",
+    telegrafBinarySourceBundled: "mitgeliefert",
+    telegrafBinarySourceCached: "heruntergeladen",
+    telegrafBinaryPending: "Nicht gefunden – Telegraf wird beim Start automatisch heruntergeladen.",
+    telegrafBinaryMissing: "Angegebene Programmdatei nicht gefunden.",
     backupFirmwareBtn: "Firmware sichern",
     managementRefreshBtn: "Liste aktualisieren",
     managementDeleteDeviceBtn: "Datei auf dem Device löschen",
@@ -304,6 +313,15 @@ const I18N = {
     restoreBtn: "Run restore",
     refreshPorts: "Reload ports",
     choosePackageDir: "Open directory",
+    telegrafBinaryPickBtn: "Choose executable",
+    telegrafTemplatesPickBtn: "Choose templates directory",
+    telegrafBinaryFound: "Using",
+    telegrafBinarySourcePath: "found in PATH",
+    telegrafBinarySourceConfigured: "configured",
+    telegrafBinarySourceBundled: "bundled",
+    telegrafBinarySourceCached: "downloaded",
+    telegrafBinaryPending: "Not found – Telegraf will be downloaded automatically on start.",
+    telegrafBinaryMissing: "Configured executable not found.",
     backupFirmwareBtn: "Backup firmware",
     managementRefreshBtn: "Refresh list",
     managementDeleteDeviceBtn: "Delete file on device",
@@ -672,6 +690,10 @@ function applyLanguage() {
   $("refreshPorts").innerHTML = '<i class="icon-refresh button-icon" aria-hidden="true"></i>';
   $("choosePackageDir").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
   if ($("chooseInventoryRoot")) $("chooseInventoryRoot").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
+  $("telegrafBinaryPickBtn").innerHTML = '<span class="button-icon" aria-hidden="true">📄</span>';
+  $("telegrafBinaryPickBtn").setAttribute("aria-label", text("telegrafBinaryPickBtn"));
+  $("telegrafTemplatesPickBtn").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
+  $("telegrafTemplatesPickBtn").setAttribute("aria-label", text("telegrafTemplatesPickBtn"));
   $("backupFirmwareBtn").innerHTML = '<i class="icon-download button-icon" aria-hidden="true"></i>';
   Object.keys(MANAGEMENT_KINDS).forEach(kind => {
     $(`${kind}RefreshDevice`).innerHTML = '<i class="icon-refresh button-icon" aria-hidden="true"></i>';
@@ -755,6 +777,7 @@ function applyLanguage() {
   updateDeviceConnectionState($("deviceConnectionState").dataset.state || "offline");
   renderGuide();
   renderTestRunnerSuiteInfo($("testRunnerSuite")?.value || "");
+  refreshTelegrafBinaryPath();
 }
 
 function buttonTooltip(key) {
@@ -783,6 +806,8 @@ function applyButtonTooltips() {
     restoreBtn: "restoreBtn",
     choosePackageDir: "choosePackageDir",
     chooseInventoryRoot: "chooseInventoryRoot",
+    telegrafBinaryPickBtn: "telegrafBinaryPickBtn",
+    telegrafTemplatesPickBtn: "telegrafTemplatesPickBtn",
     refreshPorts: "refreshPorts",
     backupFirmwareBtn: "backupFirmwareBtn",
     checkFirmwareUpdateBtn: "checkFirmwareUpdateBtn",
@@ -2459,8 +2484,10 @@ function telegrafFormConfig() {
   const value = id => $(id).value.trim();
   return {
     binary: value("telegrafBinary"),
-    device_url: value("telegrafDeviceUrl") || "http://brautomat.local",
+    device_url: $("deviceUrl").value.trim() || "http://brautomat.local",
     interval: value("telegrafInterval") || "30s",
+    log_level: $("telegrafLogLevel").value || "info",
+    templates_dir: value("telegrafTemplatesDir"),
     save_passwords: $("telegrafSavePasswords").checked,
     csv: { enabled: $("telegrafCsvEnabled").checked, path: value("telegrafCsvPath") || "brautomat.csv" },
     influxdb: { enabled: $("telegrafInfluxEnabled").checked, url: value("telegrafInfluxUrl"), token: $("telegrafInfluxToken").value, org: value("telegrafInfluxOrg"), bucket: value("telegrafInfluxBucket") },
@@ -2471,52 +2498,215 @@ function telegrafFormConfig() {
 }
 
 function applyTelegrafConfig(raw) {
-  const defaults = { binary: "", device_url: "http://brautomat.local", interval: "30s", save_passwords: false, csv: {}, influxdb: {}, postgres: {}, mysql: {}, mqtt: {} };
+  const defaults = { binary: "", device_url: "http://brautomat.local", interval: "30s", log_level: "info", templates_dir: "", save_passwords: false, csv: {}, influxdb: {}, postgres: {}, mysql: {}, mqtt: {} };
   const config = { ...defaults, ...(raw || {}) };
   const setValue = (id, value) => { $(id).value = value == null ? "" : String(value); };
   const setChecked = (id, value) => { $(id).checked = !!value; };
   setValue("telegrafBinary", config.binary);
-  setValue("telegrafDeviceUrl", config.device_url);
   setValue("telegrafInterval", config.interval);
+  setValue("telegrafLogLevel", config.log_level || "info");
+  setValue("telegrafTemplatesDir", config.templates_dir);
   setChecked("telegrafSavePasswords", config.save_passwords);
   setChecked("telegrafCsvEnabled", config.csv.enabled); setValue("telegrafCsvPath", config.csv.path || "brautomat.csv");
   setChecked("telegrafInfluxEnabled", config.influxdb.enabled); setValue("telegrafInfluxUrl", config.influxdb.url || "http://localhost:8086"); setValue("telegrafInfluxToken", config.influxdb.token); setValue("telegrafInfluxOrg", config.influxdb.org); setValue("telegrafInfluxBucket", config.influxdb.bucket || "brautomat");
   setChecked("telegrafPostgresEnabled", config.postgres.enabled); ["Host", "Port", "Database", "User", "Password"].forEach(name => setValue(`telegrafPostgres${name}`, config.postgres[name.toLowerCase()]));
   setChecked("telegrafMySqlEnabled", config.mysql.enabled); ["Host", "Port", "Database", "User", "Password"].forEach(name => setValue(`telegrafMySql${name}`, config.mysql[name.toLowerCase()]));
   setChecked("telegrafMqttEnabled", config.mqtt.enabled); setValue("telegrafMqttServer", config.mqtt.server || "tcp://localhost:1883"); setValue("telegrafMqttTopic", config.mqtt.topic || "brautomat/telemetry"); setValue("telegrafMqttClientId", config.mqtt.client_id || "brautomat-telegraf"); setValue("telegrafMqttUsername", config.mqtt.username); setValue("telegrafMqttPassword", config.mqtt.password); setValue("telegrafMqttQos", config.mqtt.qos || 0);
+  updateTelegrafTabIndicators();
+  refreshTelegrafBinaryPath();
+}
+
+// Maps each Telegraf destination sub-tab to its "enabled" checkbox so the tab
+// can be marked (green dot) whenever that destination is active.
+const telegrafEnabledCheckboxByTab = {
+  csv: "telegrafCsvEnabled",
+  influxdb: "telegrafInfluxEnabled",
+  postgres: "telegrafPostgresEnabled",
+  mysql: "telegrafMySqlEnabled",
+  mqtt: "telegrafMqttEnabled",
+};
+
+function updateTelegrafTabIndicators() {
+  let anyEnabled = false;
+  Object.entries(telegrafEnabledCheckboxByTab).forEach(([tab, checkboxId]) => {
+    const btn = document.querySelector(`[data-telegraf-tab="${tab}"]`);
+    const checkbox = $(checkboxId);
+    if (checkbox?.checked) anyEnabled = true;
+    if (btn && checkbox) btn.classList.toggle("enabled", checkbox.checked);
+  });
+  // Warnhinweis im "Ziele konfigurieren"-Handle, wenn kein Ziel aktiviert ist.
+  $("telegrafTargetsWarning")?.classList.toggle("hidden-panel", anyEnabled);
+}
+
+// UI-Meldungen (Test/Start/Stop/Speichern/Download) landen jetzt im
+// Ausgabefenster statt in einer eigenen Statuszeile. Die Server-Ausgabe wird bei
+// jedem Poll komplett ersetzt, deshalb halten wir die clientseitigen Meldungen
+// getrennt und setzen das <pre> aus beiden Teilen zusammen.
+let telegrafServerLines = [];
+const telegrafClientLog = [];
+let telegrafLastError = "";
+
+function composeTelegrafLog() {
+  const node = $("telegrafLog");
+  if (!node) return;
+  const parts = [];
+  if (telegrafServerLines.length) parts.push(telegrafServerLines.join("\n"));
+  if (telegrafClientLog.length) parts.push(telegrafClientLog.join("\n"));
+  node.textContent = parts.join("\n");
+  scrollOutputToEnd("telegrafLog");
+}
+
+let telegrafLastLogged = "";
+function telegrafLogMessage(message) {
+  const text = String(message ?? "").trim();
+  if (!text || text === telegrafLastLogged) return;
+  telegrafLastLogged = text;
+  const ts = new Date().toLocaleTimeString(currentLang === "de" ? "de-DE" : "en-US");
+  telegrafClientLog.push(`[${ts}] ${text}`);
+  while (telegrafClientLog.length > 200) telegrafClientLog.shift();
+  composeTelegrafLog();
 }
 
 function renderTelegraf(state) {
   const running = !!state?.running;
   $("telegrafStartBtn").disabled = running;
   $("telegrafStopBtn").disabled = !running;
-  $("telegrafLog").textContent = (state?.lines || []).join("\n");
-  scrollOutputToEnd("telegrafLog");
-  if (state?.error) setInlineStatus("telegrafInlineStatus", state.error);
+  const runState = $("telegrafRunState");
+  if (runState) {
+    runState.classList.toggle("online", running);
+    runState.classList.toggle("offline", !running);
+    runState.dataset.state = running ? "online" : "offline";
+    runState.textContent = running
+      ? (currentLang === "de" ? "Telegraf läuft" : "Telegraf running")
+      : (currentLang === "de" ? "Telegraf gestoppt" : "Telegraf stopped");
+  }
+  telegrafServerLines = state?.lines || [];
+  composeTelegrafLog();
+  // Fehler nur einmal ins Ausgabefenster schreiben, nicht bei jedem Sekundenpoll.
+  const error = state?.error ? String(state.error) : "";
+  if (error && error !== telegrafLastError) telegrafLogMessage(error);
+  telegrafLastError = error;
 }
 
 async function pollTelegraf() { renderTelegraf(await api("/api/telegraf/status")); }
 async function testTelegrafDevice() {
-  setSpinner("telegrafSpinner", true);
-  try {
-    const result = await api("/api/telegraf/test-device", { method: "POST", body: { device_url: $("telegrafDeviceUrl").value } });
-    setInlineStatus("telegrafInlineStatus", `Telemetrie erreichbar: ${result.url}`);
-  } finally { setSpinner("telegrafSpinner", false); }
+  const result = await api("/api/telegraf/test-device", { method: "POST", body: { device_url: $("deviceUrl").value } });
+  telegrafLogMessage(currentLang === "de" ? `Telemetrie erreichbar: ${result.url}` : `Telemetry reachable: ${result.url}`);
 }
 async function saveTelegrafConfig() {
   const config = telegrafFormConfig();
   await saveConfig({ telegraf: config });
-  setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf-Konfiguration gespeichert." : "Telegraf configuration saved.");
+  telegrafLogMessage(currentLang === "de" ? "Telegraf-Konfiguration gespeichert." : "Telegraf configuration saved.");
+}
+// Zeigt unter dem Programmdatei-Feld den tatsächlich genutzten Telegraf-Pfad an
+// (konfiguriert / PATH / mitgeliefert / heruntergeladen). Rein lesend - löst
+// keinen Download aus.
+// Blendet den Warnhinweis im "Telegraf konfigurieren"-Handle ein, solange die
+// Telegraf-Programmdatei fehlt (und nicht automatisch geladen werden kann).
+function setTelegrafConfigWarning(missing) {
+  $("telegrafConfigWarning")?.classList.toggle("hidden-panel", !missing);
+}
+async function refreshTelegrafBinaryPath() {
+  const node = $("telegrafBinaryResolved");
+  if (!node) return;
+  try {
+    const info = await api("/api/telegraf/resolve-binary", { method: "POST", body: { binary: $("telegrafBinary").value.trim() } });
+    if (info?.available && info.path) {
+      const sourceKey = {
+        path: "telegrafBinarySourcePath",
+        configured: "telegrafBinarySourceConfigured",
+        bundled: "telegrafBinarySourceBundled",
+        cached: "telegrafBinarySourceCached"
+      }[info.source] || "telegrafBinarySourceConfigured";
+      node.textContent = `${text("telegrafBinaryFound")}: ${info.path} (${text(sourceKey)})`;
+      node.classList.remove("missing");
+      setTelegrafConfigWarning(false);
+    } else if (info?.source === "download") {
+      node.textContent = text("telegrafBinaryPending");
+      node.classList.remove("missing");
+      // Noch nicht vorhanden (wird bei Bedarf geladen) - der Nutzer soll es sehen,
+      // solange das Panel eingeklappt ist.
+      setTelegrafConfigWarning(true);
+    } else {
+      node.textContent = text("telegrafBinaryMissing");
+      node.classList.add("missing");
+      setTelegrafConfigWarning(true);
+    }
+  } catch {
+    node.textContent = "";
+    node.classList.remove("missing");
+    setTelegrafConfigWarning(false);
+  }
+}
+async function pickTelegrafBinary() {
+  const result = await api("/api/telegraf/binary/pick", { method: "POST", body: {} });
+  if (result?.selected) {
+    $("telegrafBinary").value = result.selected;
+    telegrafLogMessage(currentLang === "de" ? "Telegraf-Programmdatei übernommen." : "Telegraf executable set.");
+    refreshTelegrafBinaryPath();
+  }
+}
+async function pickTelegrafTemplatesDir() {
+  const result = await api("/api/telegraf/templates/pick", { method: "POST", body: {} });
+  if (result?.selected) {
+    $("telegrafTemplatesDir").value = result.selected;
+    telegrafLogMessage(currentLang === "de" ? "Templates-Verzeichnis übernommen." : "Templates directory set.");
+  }
+}
+async function exportTelegrafTemplates() {
+  const result = await api("/api/telegraf/export-templates", { method: "POST", body: {} });
+  if (result?.selected) {
+    const count = (result.written || []).length;
+    telegrafLogMessage(currentLang === "de" ? `${count} Template-Dateien nach ${result.selected} exportiert.` : `Exported ${count} template files to ${result.selected}.`);
+  } else {
+    telegrafLogMessage(currentLang === "de" ? "Export abgebrochen." : "Export cancelled.");
+  }
+}
+async function downloadTelegraf() {
+  const btn = $("telegrafDownloadBtn");
+  btn.disabled = true;
+  setSpinner("telegrafDownloadSpinner", true);
+  try {
+    const { job_id } = await api("/api/telegraf/download", { method: "POST", body: {} });
+    await new Promise((resolve, reject) => {
+      const tick = async () => {
+        try {
+          const job = await api(`/api/jobs/${job_id}`);
+          const last = ((job.logs || [])[job.logs.length - 1] || "").replace(/^\[[^\]]*\]\s*/, "");
+          const pct = job.progress ? ` ${job.progress}%` : "";
+          const file = job.current_file ? ` (${job.current_file})` : "";
+          setInlineStatus("telegrafDownloadStatus", `${last}${pct}${file}`);
+          if (job.status === "done") { resolve(job); return; }
+          if (job.status === "failed") { reject(new Error(job.error || "Download failed")); return; }
+          setTimeout(tick, 500);
+        } catch (err) { reject(err); }
+      };
+      tick();
+    });
+    setInlineStatus("telegrafDownloadStatus", currentLang === "de" ? "Telegraf ist bereit." : "Telegraf is ready.");
+    refreshTelegrafBinaryPath();
+  } finally {
+    setSpinner("telegrafDownloadSpinner", false);
+    btn.disabled = false;
+  }
 }
 async function startTelegraf() {
-  setSpinner("telegrafSpinner", true);
-  try {
-    renderTelegraf(await api("/api/telegraf/start", { method: "POST", body: { config: telegrafFormConfig() } }));
-    setInlineStatus("telegrafInlineStatus", currentLang === "de" ? "Telegraf wurde gestartet." : "Telegraf started.");
-  } finally { setSpinner("telegrafSpinner", false); }
+  renderTelegraf(await api("/api/telegraf/start", { method: "POST", body: { config: telegrafFormConfig() } }));
+  telegrafLogMessage(currentLang === "de" ? "Telegraf wurde gestartet." : "Telegraf started.");
+  // Telegrafs Startausgabe erscheint erst kurz nach dem Start - schnelle
+  // Nachfassung, damit sie nicht erst beim nächsten Sekunden-Poll auftaucht.
+  setTimeout(() => pollTelegraf().catch(console.error), 300);
 }
-async function stopTelegraf() { renderTelegraf(await api("/api/telegraf/stop", { method: "POST", body: {} })); }
-async function clearTelegrafLog() { renderTelegraf(await api("/api/telegraf/clear", { method: "POST", body: {} })); }
+async function stopTelegraf() {
+  renderTelegraf(await api("/api/telegraf/stop", { method: "POST", body: {} }));
+  setTimeout(() => pollTelegraf().catch(console.error), 300);
+}
+async function clearTelegrafLog() {
+  telegrafClientLog.length = 0;
+  telegrafLastError = "";
+  telegrafLastLogged = "";
+  renderTelegraf(await api("/api/telegraf/clear", { method: "POST", body: {} }));
+}
 
 function applyWifiNetworksResult(data) {
   const select = $("wifiNetworks");
@@ -3941,6 +4131,11 @@ function activateTab(name) {
   }
   document.querySelectorAll(".tab").forEach(btn => btn.classList.toggle("active", btn.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach(panel => panel.classList.toggle("active", panel.dataset.panel === name));
+  if (name === "telegraf") {
+    // Sofort aktualisieren, damit der Reiter beim Öffnen den aktuellen
+    // Laufzustand und die Ausgabe zeigt, statt bis zum nächsten Poll zu warten.
+    pollTelegraf().catch(console.error);
+  }
   if (name === "firmware") {
     writeStartupTrace("activateTab firmware");
     const spinner = $("wifiSpinner");
@@ -4116,10 +4311,15 @@ function attachEvents() {
   $("serialAutoscrollBtn").addEventListener("click", toggleSerialAutoscroll);
   $("serialRebootBtn").addEventListener("click", rebootSerialDevice);
   $("serialCopyBtn").addEventListener("click", copySerialLog);
-  $("telegrafTestBtn").addEventListener("click", () => testTelegrafDevice().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
-  $("telegrafSaveBtn").addEventListener("click", () => saveTelegrafConfig().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
-  $("telegrafStartBtn").addEventListener("click", () => startTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
-  $("telegrafStopBtn").addEventListener("click", () => stopTelegraf().catch(err => setInlineStatus("telegrafInlineStatus", String(err))));
+  $("telegrafTestBtn").addEventListener("click", () => testTelegrafDevice().catch(err => telegrafLogMessage(String(err))));
+  $("telegrafSaveBtn").addEventListener("click", () => saveTelegrafConfig().catch(err => telegrafLogMessage(String(err))));
+  $("telegrafTemplatesPickBtn").addEventListener("click", () => pickTelegrafTemplatesDir().catch(err => telegrafLogMessage(String(err))));
+  $("telegrafExportTemplatesBtn").addEventListener("click", () => exportTelegrafTemplates().catch(err => telegrafLogMessage(String(err))));
+  $("telegrafDownloadBtn").addEventListener("click", () => downloadTelegraf().catch(err => setInlineStatus("telegrafDownloadStatus", String(err))));
+  $("telegrafBinaryPickBtn").addEventListener("click", () => pickTelegrafBinary().catch(err => telegrafLogMessage(String(err))));
+  $("telegrafBinary").addEventListener("change", () => refreshTelegrafBinaryPath());
+  $("telegrafStartBtn").addEventListener("click", () => startTelegraf().catch(err => telegrafLogMessage(String(err))));
+  $("telegrafStopBtn").addEventListener("click", () => stopTelegraf().catch(err => telegrafLogMessage(String(err))));
   $("telegrafClearBtn").addEventListener("click", () => clearTelegrafLog().catch(console.error));
   $("telegrafCopyBtn").addEventListener("click", () => copyOutputLog("telegrafLog").catch(console.error));
   [
@@ -4145,6 +4345,10 @@ function attachEvents() {
   document.querySelectorAll(".tab").forEach(btn => btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
   document.querySelectorAll("[data-management-tab]").forEach(btn => btn.addEventListener("click", () => activateManagementTab(btn.dataset.managementTab)));
   document.querySelectorAll("[data-telegraf-tab]").forEach(btn => btn.addEventListener("click", () => activateTelegrafTab(btn.dataset.telegrafTab)));
+  Object.values(telegrafEnabledCheckboxByTab).forEach(id => {
+    const checkbox = $(id);
+    if (checkbox) checkbox.addEventListener("change", updateTelegrafTabIndicators);
+  });
   Object.keys(MANAGEMENT_KINDS).forEach(kind => {
     $(`${kind}RefreshDevice`).addEventListener("click", () => loadInventory(kind));
     $(`${kind}RefreshLocal`).addEventListener("click", () => loadInventory(kind));
@@ -4192,7 +4396,6 @@ async function init() {
     setInlineStatus("firmwareBackupInlineStatus", "");
     setInlineStatus("migrationInlineStatus", "");
     setInlineStatus("testRunnerInlineStatus", "");
-    setInlineStatus("telegrafInlineStatus", "");
     Object.keys(MANAGEMENT_KINDS).forEach(kind => setInlineStatus(`${kind}InlineStatus`, ""));
     setSpinner("flashSpinner", false);
     setSpinner("wifiSpinner", false);
@@ -4202,7 +4405,7 @@ async function init() {
     setSpinner("firmwareBackupSpinner", false);
     setSpinner("migrationSpinner", false);
     setSpinner("testRunnerSpinner", false);
-    setSpinner("telegrafSpinner", false);
+    setSpinner("telegrafDownloadSpinner", false);
     Object.keys(MANAGEMENT_KINDS).forEach(kind => setSpinner(`${kind}Spinner`, false));
     updateFlashBackupWarning();
     queueDeferredLoad("loadPackages", () => loadPackages(), 0);

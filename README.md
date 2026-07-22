@@ -272,6 +272,7 @@ commits `version.json` with the matching release URLs and SHA256 values.
 ## Repository Layout
 
 - `app.py`: local HTTP backend, device communication, and tool orchestration
+- `telegraf.py`: Telegraf config generation, process management, and binary download
 - `static/`: browser UI
 - `img/`: README screenshots
 - `Brautomat32ServiceTool.spec`: PyInstaller configuration
