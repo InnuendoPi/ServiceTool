@@ -1,7 +1,5 @@
 # Changelog
 
-## Unreleased
-
 ## 1.7.2 - 2026-07-22
 
 - Erweitert die Telegraf-Integration um lesbare Feldnamen, feste CSV-Spalten,
