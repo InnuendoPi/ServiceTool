@@ -251,6 +251,45 @@ is only shown when a complete local Brautomat32 development checkout is
 configured through `BRAUTOMAT32_SOURCE_ROOT`. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the required files and setup.
 
+### Testing without hardware
+
+The Telegraf integration can be tested locally without a Brautomat32 device.
+
+Start a mock telemetry endpoint:
+
+```powershell
+python tools/mock_server.py
+```
+
+Then enter `http://localhost:8080` as the Brautomat URL in the ServiceTool.
+Use `python tools/mock_server.py --addr :9090` when port `8080` is already in
+use.
+
+Optional local backend services for Telegraf targets are available through
+Docker Compose:
+
+```powershell
+docker compose up -d
+```
+
+This starts PostgreSQL, MariaDB, InfluxDB v2, Mosquitto, and Grafana with
+local test credentials only. Stop them with `docker compose down`; add
+`--volumes` to remove their test data as well.
+
+The services are reachable on `localhost`:
+
+| Service | Address / Port | Local test access |
+| --- | --- | --- |
+| Grafana | <http://localhost:3000> | `brautomat` / `brautomat` |
+| InfluxDB | <http://localhost:8086> | org/bucket `brautomat`, token `brautomat-token` |
+| Mosquitto | `localhost:1883` | anonymous MQTT |
+| PostgreSQL | `localhost:5432` | database/user/password `brautomat` |
+| MariaDB | `localhost:3306` | database/user/password `brautomat` |
+
+Portable Grafana dashboard examples are stored in `examples/grafana/`. They
+can be imported into a separate Grafana instance and then pointed at an
+existing InfluxDB, PostgreSQL, or MySQL datasource.
+
 ## Builds
 
 Windows can be built locally with:
@@ -274,6 +313,9 @@ commits `version.json` with the matching release URLs and SHA256 values.
 - `app.py`: local HTTP backend, device communication, and tool orchestration
 - `telegraf.py`: Telegraf config generation, process management, and binary download
 - `static/`: browser UI
+- `tools/mock_server.py`: local `/telemetry` mock device for Telegraf testing
+- `docker-compose.yml`, `docker/`: local Telegraf backend test services
+- `examples/grafana/`: portable Grafana dashboard examples
 - `img/`: README screenshots
 - `Brautomat32ServiceTool.spec`: PyInstaller configuration
 - `build_servicetool_windows_release.ps1`: local Windows release build

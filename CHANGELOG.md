@@ -9,6 +9,8 @@
 - Speichert relative CSV-Dateien dauerhaft im ServiceTool-Datenverzeichnis.
 - Behebt PowerShell-/Serial-Probleme mit nicht-lateinischen Zeichen unter
   Windows.
+- Ergänzt lokale Telegraf-Testhilfen: Mock-Telemetrie, Docker-Testdienste und
+  portable Grafana-Dashboards.
 
 ## 1.7.1
 

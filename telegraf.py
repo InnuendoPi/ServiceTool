@@ -1,16 +1,14 @@
 """Telegraf-Funktionalität des ServiceTools.
 
-Erste in sich geschlossene Scheibe des in doc/Refactor-Plan-Telegraf-Split.md
-beschriebenen Umbaus: die gesamte Telegraf-Logik (Session, Config-Generierung,
-Binary-Download) lebt hier statt in app.py.
+Die gesamte Telegraf-Logik (Session, Config-Generierung, Binary-Download) lebt
+hier statt in app.py.
 
 Die wenigen weiterhin in app.py verbleibenden, generisch genutzten Helfer
 (CACHE_DIR, TOOLS_CACHE_DIR, APP_ROOT, normalize_base_url, now_iso,
 mark_executable, download_to_file, extract_esptool_archive) werden bewusst als
 **funktionslokale** Importe aus app.py geholt. Das entkoppelt dieses Modul von
 der Position der `from telegraf import ...`-Zeile in app.py und vermeidet
-Zirkularitäts-/Reihenfolgeprobleme beim Import (siehe Refactor-Plan,
-Abschnitt "Design-Entscheidung: Import-Richtung & Zirkularität").
+Zirkularitäts-/Reihenfolgeprobleme beim Import.
 """
 from __future__ import annotations
 
