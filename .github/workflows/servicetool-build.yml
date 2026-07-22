@@ -119,9 +119,8 @@ jobs:
           ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 \
             ./appimagetool.AppImage AppDir artifact/package/Brautomat32ServiceTool.AppImage
           cp README.md artifact/package/README.md
-          cp -r examples artifact/package/examples
           cd artifact/package
-          zip -r ../../Brautomat32ServiceTool-linux.zip Brautomat32ServiceTool.AppImage README.md examples
+          zip -r ../../Brautomat32ServiceTool-linux.zip Brautomat32ServiceTool.AppImage README.md
 
       - name: Upload Linux package
         uses: actions/upload-artifact@v5
@@ -172,9 +171,6 @@ jobs:
           mkdir -p artifact/package
           ditto -c -k --sequesterRsrc --keepParent \
             dist/Brautomat32ServiceTool.app Brautomat32ServiceTool-macos.zip
-          # Portable Beispiel-Dashboards (examples/grafana) neben dem App-Bundle
-          # in dasselbe Archiv legen.
-          zip -r Brautomat32ServiceTool-macos.zip examples
 
       - name: Upload macOS package
         uses: actions/upload-artifact@v5

@@ -282,9 +282,7 @@ def normalize_telegraf_config(raw: Any) -> dict[str, Any]:
     config["mqtt"]["qos"] = int(config["mqtt"].get("qos", 0))
     if config["mqtt"]["qos"] not in (0, 1, 2):
         raise RuntimeError("MQTT QoS must be 0, 1, or 2.")
-    # Bei eigenen Templates bestimmt der Nutzer selbst, welche Ausgaben es gibt -
-    # die enabled-Schalter des Formulars steuern dann nichts mehr.
-    if not config["templates_dir"] and not any(bool(config[target].get("enabled")) for target in ("csv", "influxdb", "postgres", "mysql", "mqtt")):
+    if not any(bool(config[target].get("enabled")) for target in ("csv", "influxdb", "postgres", "mysql", "mqtt")):
         raise RuntimeError("Enable at least one Telegraf destination.")
     return config
 

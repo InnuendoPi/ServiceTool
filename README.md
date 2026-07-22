@@ -251,64 +251,6 @@ is only shown when a complete local Brautomat32 development checkout is
 configured through `BRAUTOMAT32_SOURCE_ROOT`. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the required files and setup.
 
-### Testing without hardware
-
-Two optional helpers make it possible to exercise the Telegraf integration
-without a real Brautomat and without external databases:
-
-- **Mock device** — `python tools/mock_server.py` starts a minimal
-  `/telemetry` endpoint (pure standard library) that returns the same JSON as
-  a real device, with slowly changing values. Enter its URL (for example
-  `http://localhost:8080`) as the Brautomat URL on the Telegraf tab. Use
-  `--addr` to change the listen address (e.g. `--addr :9090`).
-- **Test backends** — `docker compose up -d` starts local PostgreSQL,
-  MariaDB, InfluxDB v2, and Mosquitto (MQTT) instances plus a Grafana with
-  pre-provisioned datasources and example dashboards for PostgreSQL, MySQL,
-  and InfluxDB. The credentials match the Telegraf form defaults
-  (database/user `brautomat`, InfluxDB bucket `brautomat`, token
-  `brautomat-token`, Grafana login `brautomat` / `brautomat`). Stop with
-  `docker compose down` (add `--volumes` to also drop the data).
-
-These are development aids only, never a production configuration.
-
-#### Using the docker compose services
-
-After `docker compose up -d`, point the Telegraf tab at the matching
-destination (the form defaults already use the credentials below) and enable
-it. The services are reachable on `localhost`:
-
-| Service    | Address / Port          | Notes                                              |
-| ---------- | ----------------------- | -------------------------------------------------- |
-| Grafana    | <http://localhost:3000> | Login `brautomat` / `brautomat`                    |
-| InfluxDB   | <http://localhost:8086> | Login `brautomat` / `brautomat`                    |
-| Mosquitto  | `localhost:1883`        | MQTT, no authentication                            |
-| PostgreSQL | `localhost:5432`        | database/user/password `brautomat`                 |
-| MariaDB    | `localhost:3306`        | database/user/password `brautomat`, root `root`    |
-
-**Grafana** (<http://localhost:3000>) already has PostgreSQL, MariaDB, and
-InfluxDB wired up as datasources. After logging in, open the **Brautomat**
-dashboard folder for the ready-made example dashboards — *Brautomat
-(InfluxDB)*, *Brautomat (PostgreSQL)*, and *Brautomat (MySQL)* — each showing
-the same Brautomat telemetry from its respective backend. They are provisioned
-automatically, so no manual import is needed; start Telegraf, wait one poll
-interval, and the panels fill with data.
-
-To use these dashboards in your own Grafana (with your own, differently named
-datasources), import the portable copies from `examples/grafana/` — they prompt
-for a datasource on import. See `examples/grafana/README.md` for details.
-
-**InfluxDB** (<http://localhost:8086>) can be inspected directly in its web UI.
-Log in with `brautomat` / `brautomat` and use the *Data Explorer* on
-organization `brautomat`, bucket `brautomat`, to browse the incoming
-`brautomat_telemetry` measurement. The pre-provisioned admin token is
-`brautomat-token`.
-
-**MQTT** has no built-in web UI. To verify that Telegraf actually publishes to
-Mosquitto, use a standalone MQTT client such as
-[MQTT Explorer](https://mqtt-explorer.com/): connect it to host `localhost`,
-port `1883`, without credentials, and subscribe to the configured topic (the
-form default is `brautomat/telemetry`) to watch the messages arrive.
-
 ## Builds
 
 Windows can be built locally with:
@@ -332,10 +274,6 @@ commits `version.json` with the matching release URLs and SHA256 values.
 - `app.py`: local HTTP backend, device communication, and tool orchestration
 - `telegraf.py`: Telegraf config generation, process management, and binary download
 - `static/`: browser UI
-- `tools/mock_server.py`: standalone `/telemetry` mock device for development
-- `docker-compose.yml`, `docker/`: test databases and provisioned Grafana for development
-- `examples/grafana/`: portable copies of the example dashboards for importing
-  into any Grafana; also bundled into the release archives
 - `img/`: README screenshots
 - `Brautomat32ServiceTool.spec`: PyInstaller configuration
 - `build_servicetool_windows_release.ps1`: local Windows release build

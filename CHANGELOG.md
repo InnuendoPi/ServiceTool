@@ -15,9 +15,6 @@
   before use and refuses unverified downloads.
 - Telegraf now writes relative CSV files to a persistent location instead of a
   temporary directory that was deleted on stop.
-- Adds development helpers for testing without hardware: a `/telemetry` mock
-  server (`tools/mock_server.py`) and a `docker compose` stack with test
-  databases and a pre-provisioned Grafana.
 - Fixes startup crashes when PowerShell/serial output contained non-Latin-1
   bytes (e.g. German device names) on a German Windows.
 
