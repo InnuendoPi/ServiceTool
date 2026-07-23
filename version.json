@@ -2,7 +2,7 @@
   "tool": "Brautomat32 ServiceTool",
   "version": "1.7.4",
   "released_at": "2026-07-23",
-  "notes": "ServiceTool 1.7.4: stabilizes the Windows self-update restart path and adds early updater diagnostics.",
+  "notes": "ServiceTool 1.7.4: stabilizes the Windows self-update restart path with early diagnostics and a scheduled-task restart.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
     "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.4/Brautomat32ServiceTool-win.zip",

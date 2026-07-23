@@ -287,6 +287,20 @@ jobs:
             git push origin HEAD:main
           fi
 
+      - name: Remove existing GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.manifest.outputs.tag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release delete "$tag" --yes --cleanup-tag
+          else
+            git push origin ":refs/tags/$tag" 2>/dev/null || true
+          fi
+          git tag -d "$tag" 2>/dev/null || true
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

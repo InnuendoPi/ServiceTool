@@ -1361,8 +1361,43 @@ $ErrorActionPreference = 'Stop'
 $updateRoot = Split-Path -Parent $Archive
 $logPath = Join-Path $updateRoot 'install-update.log'
 $stagingDir = Join-Path (Split-Path -Parent $Archive) ('install-' + [guid]::NewGuid().ToString('N'))
+$targetExecutable = Join-Path $InstallDir 'Brautomat32ServiceTool.exe'
 function Write-UpdateLog([string]$Message) {
     Add-Content -LiteralPath $logPath -Encoding utf8 -Value ("[{0}] {1}" -f (Get-Date -Format s), $Message)
+}
+function Get-ServiceToolProcesses {
+    $targetPath = [System.IO.Path]::GetFullPath($targetExecutable)
+    @(Get-CimInstance Win32_Process -Filter "Name = 'Brautomat32ServiceTool.exe'" -ErrorAction SilentlyContinue | Where-Object {
+        $_.ExecutablePath -and ([System.IO.Path]::GetFullPath($_.ExecutablePath) -ieq $targetPath)
+    })
+}
+function Start-ServiceToolViaScheduledTask {
+    $taskName = 'Brautomat32ServiceTool-StartAfterUpdate'
+    $taskLogPath = Join-Path $updateRoot 'start-servicetool-after-update.log'
+    $taskScriptPath = Join-Path $updateRoot 'start-servicetool-after-update.ps1'
+    $taskScript = @"
+`$ErrorActionPreference = 'Continue'
+Add-Content -LiteralPath '$taskLogPath' -Encoding utf8 -Value ("[{0}] scheduled task started" -f (Get-Date -Format s))
+Start-Sleep -Seconds 3
+Add-Content -LiteralPath '$taskLogPath' -Encoding utf8 -Value ("[{0}] starting ServiceTool" -f (Get-Date -Format s))
+Start-Process -FilePath '$targetExecutable' -WorkingDirectory '$InstallDir'
+Start-Sleep -Seconds 5
+`$running = @(Get-CimInstance Win32_Process -Filter "Name = 'Brautomat32ServiceTool.exe'" -ErrorAction SilentlyContinue | Where-Object {
+    `$_.ExecutablePath -and ([System.IO.Path]::GetFullPath(`$_.ExecutablePath) -ieq [System.IO.Path]::GetFullPath('$targetExecutable'))
+})
+Add-Content -LiteralPath '$taskLogPath' -Encoding utf8 -Value ("[{0}] running ServiceTool PIDs: {1}" -f (Get-Date -Format s), ((`$running | ForEach-Object { `$_.ProcessId }) -join ', '))
+Unregister-ScheduledTask -TaskName '$taskName' -Confirm:`$false -ErrorAction SilentlyContinue
+"@
+    Set-Content -LiteralPath $taskScriptPath -Encoding utf8 -Value $taskScript
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    $action = New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$taskScriptPath`""
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1)
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+    Write-UpdateLog "Registered scheduled restart task: $taskName"
+    Start-ScheduledTask -TaskName $taskName
+    Write-UpdateLog "Started scheduled restart task: $taskName"
 }
 try {
     Write-UpdateLog "Updater started. Waiting for ServiceTool PID $ProcessId."
@@ -1377,7 +1412,16 @@ try {
         }
         Start-Sleep -Milliseconds 250
     }
-    Write-UpdateLog "ServiceTool process exited. Extracting update archive."
+    Write-UpdateLog "Primary ServiceTool process exited. Waiting for remaining packaged child processes."
+    $waitDeadline = (Get-Date).AddSeconds(60)
+    while (@(Get-ServiceToolProcesses).Count -gt 0) {
+        if ((Get-Date) -gt $waitDeadline) {
+            $remaining = @(Get-ServiceToolProcesses | ForEach-Object { $_.ProcessId }) -join ', '
+            throw "Timed out waiting for remaining ServiceTool processes to exit: $remaining"
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    Write-UpdateLog "All ServiceTool processes exited. Extracting update archive."
     Expand-Archive -LiteralPath $Archive -DestinationPath $stagingDir -Force
     $newExecutable = Join-Path $stagingDir 'Brautomat32ServiceTool.exe'
     if (-not (Test-Path -LiteralPath $newExecutable -PathType Leaf)) {
@@ -1387,9 +1431,10 @@ try {
     Get-ChildItem -LiteralPath $stagingDir -Force | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination $InstallDir -Recurse -Force
     }
-    Write-UpdateLog "Starting updated ServiceTool."
-    Start-Process -FilePath (Join-Path $InstallDir 'Brautomat32ServiceTool.exe') -WorkingDirectory $InstallDir
-    Write-UpdateLog "Updater completed."
+    Write-UpdateLog "Waiting briefly before starting updated ServiceTool."
+    Start-Sleep -Seconds 2
+    Start-ServiceToolViaScheduledTask
+    Write-UpdateLog "Updater completed; scheduled task will start ServiceTool."
 } catch {
     Write-UpdateLog ("ERROR: " + $_.Exception.Message)
     $_ | Out-File -LiteralPath $logPath -Encoding utf8 -Append

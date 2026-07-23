@@ -3,8 +3,8 @@
 ## 1.7.4 - 2026-07-23
 
 - Stabilisiert den automatischen Windows-Self-Update:
-  separater PowerShell-Startpfad, Job-Breakaway und Diagnose-Log ab
-  Updater-Start.
+  separater PowerShell-Startpfad, Job-Breakaway, Diagnose-Log ab
+  Updater-Start und entkoppelter Neustart per Windows Task Scheduler.
 
 ## 1.7.3 - 2026-07-23
 
