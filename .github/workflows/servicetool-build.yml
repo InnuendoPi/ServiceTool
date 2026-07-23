@@ -36,7 +36,7 @@ jobs:
         run: .\build_servicetool_windows_release.ps1
 
       - name: Upload Windows package
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: Brautomat32ServiceTool-windows
           path: Brautomat32ServiceTool-win.zip
@@ -128,7 +128,7 @@ jobs:
           zip -r ../../Brautomat32ServiceTool-linux.zip Brautomat32ServiceTool.AppImage README.md docker-compose.yml docker examples tools
 
       - name: Upload Linux package
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: Brautomat32ServiceTool-linux
           path: Brautomat32ServiceTool-linux.zip
@@ -185,7 +185,7 @@ jobs:
           zip -r ../../Brautomat32ServiceTool-macos.zip docker-compose.yml docker examples tools
 
       - name: Upload macOS package
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: Brautomat32ServiceTool-macos
           path: Brautomat32ServiceTool-macos.zip
@@ -220,19 +220,19 @@ jobs:
           fi
 
       - name: Download Windows package
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: Brautomat32ServiceTool-windows
           path: release/windows
 
       - name: Download Linux package
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: Brautomat32ServiceTool-linux
           path: release/linux
 
       - name: Download macOS package
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: Brautomat32ServiceTool-macos
           path: release/macos
