@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.3 - 2026-07-23
+
+- Nimmt die lokalen Telegraf-Testhilfen in die Release-Pakete auf:
+  Mock-Telemetrie, Docker-Compose-Testdienste und portable Grafana-Dashboards.
+
 ## 1.7.2 - 2026-07-22
 
 - Erweitert die Telegraf-Integration um lesbare Feldnamen, feste CSV-Spalten,

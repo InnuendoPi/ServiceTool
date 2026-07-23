@@ -32,6 +32,11 @@ try {
 
     Copy-Item $exePath (Join-Path $packageDir "Brautomat32ServiceTool.exe")
     Copy-Item $readmePath (Join-Path $packageDir "README.md")
+    Copy-Item (Join-Path $scriptDir "docker-compose.yml") (Join-Path $packageDir "docker-compose.yml")
+    Copy-Item -Recurse (Join-Path $scriptDir "docker") (Join-Path $packageDir "docker")
+    Copy-Item -Recurse (Join-Path $scriptDir "examples") (Join-Path $packageDir "examples")
+    New-Item -ItemType Directory -Force -Path (Join-Path $packageDir "tools") | Out-Null
+    Copy-Item (Join-Path $scriptDir "tools\mock_server.py") (Join-Path $packageDir "tools\mock_server.py")
 
     $localEsptool = Join-Path $scriptDir "esptool\esptool.exe"
     if (Test-Path $localEsptool) {
