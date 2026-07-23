@@ -6,16 +6,16 @@
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
     "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.4/Brautomat32ServiceTool-win.zip",
-    "sha256": "2a99cf9ce9d99fe180fd90308a312944c516e7e7dedc63fb3460515f8f62a12a"
+    "sha256": "ec1b1c7a013d307c8f9bdf31d7a149adc05e4f00aef9878ea4685691e0503e48"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
     "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.4/Brautomat32ServiceTool-linux.zip",
-    "sha256": "b38538e6644291a29f817eff29151aefa45733ba87e4f79b0c976f2be7472013"
+    "sha256": "b35d83f5ae3738b2984f5dcdb505fdd7fe0963de5f4ce3ed03c37cd07a070ddc"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
     "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.4/Brautomat32ServiceTool-macos.zip",
-    "sha256": "c9e9a949f1164d7ca6aa73fc42c9d81dae7ca227d48f5533c7a47f6ee8c491cf"
+    "sha256": "b54f39d947654e13af0bcfefa0dae769d1b0dd986d4454294cd4332065e76c29"
   }
 }
