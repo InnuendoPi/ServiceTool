@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.4 - 2026-07-23
+
+- Stabilisiert den automatischen Windows-Self-Update:
+  separater PowerShell-Startpfad, Job-Breakaway und Diagnose-Log ab
+  Updater-Start.
+
 ## 1.7.3 - 2026-07-23
 
 - Nimmt die lokalen Telegraf-Testhilfen in die Release-Pakete auf:

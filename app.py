@@ -104,7 +104,7 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.7.3"
+SERVICE_TOOL_VERSION = "1.7.4"
 ESPTOOL_VERSION = "5.3.1"
 SERVICE_TOOL_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/InnuendoPi/ServiceTool/main/version.json"
 SERVICE_TOOL_WINDOWS_EXECUTABLE = "Brautomat32ServiceTool.exe"
@@ -143,6 +143,16 @@ WEBUPDATE_TOOL_FILES = [
     "favicon.ico",
     "language/deutsch.json",
 ]
+
+
+def windows_powershell_executable() -> str:
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    bundled_path = pathlib.Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if bundled_path.is_file():
+        return str(bundled_path)
+    return shutil.which("powershell.exe") or "powershell.exe"
+
+
 INVENTORY_SPECS: dict[str, dict[str, Any]] = {
     "mashplans": {
         "device_dir": "/Rezepte",
@@ -1348,37 +1358,56 @@ def install_service_tool_update() -> dict[str, Any]:
     [string]$InstallDir
 )
 $ErrorActionPreference = 'Stop'
-$actualSha256 = (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actualSha256 -ne $ExpectedSha256.ToLowerInvariant()) {
-    throw 'Downloaded ServiceTool update failed its SHA256 verification.'
-}
-while (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) {
-    Start-Sleep -Milliseconds 250
-}
+$updateRoot = Split-Path -Parent $Archive
+$logPath = Join-Path $updateRoot 'install-update.log'
 $stagingDir = Join-Path (Split-Path -Parent $Archive) ('install-' + [guid]::NewGuid().ToString('N'))
-$logPath = Join-Path (Split-Path -Parent $Archive) 'install-update.log'
+function Write-UpdateLog([string]$Message) {
+    Add-Content -LiteralPath $logPath -Encoding utf8 -Value ("[{0}] {1}" -f (Get-Date -Format s), $Message)
+}
 try {
+    Write-UpdateLog "Updater started. Waiting for ServiceTool PID $ProcessId."
+    $actualSha256 = (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualSha256 -ne $ExpectedSha256.ToLowerInvariant()) {
+        throw 'Downloaded ServiceTool update failed its SHA256 verification.'
+    }
+    $waitDeadline = (Get-Date).AddSeconds(60)
+    while ($ProcessId -gt 0 -and (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+        if ((Get-Date) -gt $waitDeadline) {
+            throw "Timed out waiting for ServiceTool process $ProcessId to exit."
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    Write-UpdateLog "ServiceTool process exited. Extracting update archive."
     Expand-Archive -LiteralPath $Archive -DestinationPath $stagingDir -Force
     $newExecutable = Join-Path $stagingDir 'Brautomat32ServiceTool.exe'
     if (-not (Test-Path -LiteralPath $newExecutable -PathType Leaf)) {
         throw 'The update package does not contain Brautomat32ServiceTool.exe.'
     }
+    Write-UpdateLog "Copying update files to $InstallDir."
     Get-ChildItem -LiteralPath $stagingDir -Force | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination $InstallDir -Recurse -Force
     }
+    Write-UpdateLog "Starting updated ServiceTool."
     Start-Process -FilePath (Join-Path $InstallDir 'Brautomat32ServiceTool.exe') -WorkingDirectory $InstallDir
+    Write-UpdateLog "Updater completed."
 } catch {
-    $_ | Out-File -LiteralPath $logPath -Encoding utf8
+    Write-UpdateLog ("ERROR: " + $_.Exception.Message)
+    $_ | Out-File -LiteralPath $logPath -Encoding utf8 -Append
     exit 1
 } finally {
     Remove-Item -LiteralPath $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 """
     updater_path.write_text(script, encoding="utf-8-sig")
-    flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
-    subprocess.Popen(
+    powershell_exe = windows_powershell_executable()
+    flags = (
+        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        | getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
+    )
+    updater_process = subprocess.Popen(
         [
-            "powershell.exe",
+            powershell_exe,
             "-NoProfile",
             "-NonInteractive",
             "-ExecutionPolicy",
@@ -1397,13 +1426,20 @@ try {
             str(install_dir),
         ],
         cwd=str(archive.parent),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         creationflags=flags,
     )
+    time.sleep(0.2)
+    if updater_process.poll() is not None:
+        raise RuntimeError(f"ServiceTool updater exited immediately with code {updater_process.returncode}")
     schedule_service_tool_shutdown()
     return {
         **update,
         "install_started": True,
         "restart_required": True,
+        "install_log": str(archive.parent / "install-update.log"),
     }
 
 
