@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.5 - 2026-07-24
+
+- Verhindert einen zweiten Neustart nach einem Reboot über die Geräte-API,
+  wenn die HTTP-Verbindung während des Neustarts abbricht.
+
 ## 1.7.4 - 2026-07-23
 
 - Stabilisiert den automatischen Windows-Self-Update:

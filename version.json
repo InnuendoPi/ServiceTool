@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "1.7.4",
-  "released_at": "2026-07-23",
-  "notes": "ServiceTool 1.7.4: stabilizes the Windows self-update restart path with early diagnostics and a scheduled-task restart.",
+  "version": "1.7.5",
+  "released_at": "2026-07-24",
+  "notes": "ServiceTool 1.7.5: prevents a second reboot if the HTTP connection drops while the device is restarting.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.4/Brautomat32ServiceTool-win.zip",
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.5/Brautomat32ServiceTool-win.zip",
     "sha256": "67ccf6047202e8f785c2bde095720b3a0aacabc992a4219c667832fde3e8b2e4"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.4/Brautomat32ServiceTool-linux.zip",
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.5/Brautomat32ServiceTool-linux.zip",
     "sha256": "7e23dec6e5802ca76a59805b80b90d7c12bc718dd06fc18b51f101abfefd61f9"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.4/Brautomat32ServiceTool-macos.zip",
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.5/Brautomat32ServiceTool-macos.zip",
     "sha256": "098fdf2e04fc713d34293540e42df07d7ec706840b95a9c14461f3156c08b4cd"
   }
 }

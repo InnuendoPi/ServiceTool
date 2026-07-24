@@ -104,7 +104,7 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.7.4"
+SERVICE_TOOL_VERSION = "1.7.5"
 ESPTOOL_VERSION = "5.3.1"
 SERVICE_TOOL_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/InnuendoPi/ServiceTool/main/version.json"
 SERVICE_TOOL_WINDOWS_EXECUTABLE = "Brautomat32ServiceTool.exe"
@@ -746,17 +746,43 @@ def post_empty(url: str, timeout: float = 20.0) -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
+def is_disruptive_post_accept_error(exc: Exception) -> bool:
+    if isinstance(exc, error.HTTPError):
+        return False
+    if isinstance(
+        exc,
+        (
+            TimeoutError,
+            socket.timeout,
+            ConnectionResetError,
+            BrokenPipeError,
+            http.client.RemoteDisconnected,
+        ),
+    ):
+        return True
+    if isinstance(exc, error.URLError):
+        reason = getattr(exc, "reason", None)
+        if isinstance(
+            reason,
+            (
+                TimeoutError,
+                socket.timeout,
+                ConnectionResetError,
+                BrokenPipeError,
+                http.client.RemoteDisconnected,
+            ),
+        ):
+            return True
+        return "timed out" in str(exc).lower()
+    return False
+
+
 def post_disruptive_empty(url: str, timeout: float = 45.0) -> str:
     try:
         return post_empty(url, timeout=timeout)
-    except (
-        error.URLError,
-        TimeoutError,
-        socket.timeout,
-        ConnectionResetError,
-        BrokenPipeError,
-        http.client.RemoteDisconnected,
-    ) as exc:
+    except Exception as exc:
+        if not is_disruptive_post_accept_error(exc):
+            raise
         return f"accepted without final HTTP response: {exc}"
 
 
@@ -3582,7 +3608,7 @@ def reboot_device(base_url: str, serial_port: str = "", serial_baud: int = 11520
     http_error: str | None = None
     if base_url:
         try:
-            base, response = try_base_urls(base_url, lambda candidate: post_empty(f"{candidate}/reboot"))
+            base, response = try_base_urls(base_url, lambda candidate: post_disruptive_empty(f"{candidate}/reboot", timeout=20.0))
             return {"base_url": base, "response": response.strip() or "ok", "transport": "http"}
         except Exception as exc:  # noqa: BLE001
             http_error = str(exc)
