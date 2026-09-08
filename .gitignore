@@ -41,6 +41,7 @@ config.json
 
 # Local internal work instructions (never commit)
 /ARBEITSANWEISUNG-BUILD.md
+/CODE-ANALYSE.md
 
 # Editors and operating systems
 .idea/

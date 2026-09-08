@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.6 - 2026-09-08
+
+- Zeigt unter Verwaltung > Konfiguration auch lokal erstellte nummerierte
+  Dateiversionen an, die bisher vom Dateifilter ausgeblendet wurden.
+- Startet einen zuvor laufenden Serial Monitor auch nach fehlgeschlagenen
+  Flash-, Backup- und Migrationsschritten wieder.
+- Verwendet die AP-Adresse nur noch als Fallback bei Verbindungsfehlern und
+  erhält HTTP-Fehler des ausgewählten Geräts.
+- Veröffentlicht Release-Artefakte commitgebunden und aktualisiert das
+  Update-Manifest erst nach erfolgreicher Prüfung.
+
 ## 1.7.5 - 2026-07-24
 
 - Verhindert einen zweiten Neustart nach einem Reboot über die Geräte-API,

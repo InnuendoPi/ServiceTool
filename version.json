@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "1.7.5",
-  "released_at": "2026-07-24",
-  "notes": "ServiceTool 1.7.5: prevents a second reboot if the HTTP connection drops while the device is restarting.",
+  "version": "1.7.6",
+  "released_at": "2026-09-08",
+  "notes": "ServiceTool 1.7.6: shows numbered configuration file versions, restores the serial monitor after failed maintenance steps, limits AP fallback to connection failures, and hardens release publishing.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.5/Brautomat32ServiceTool-win.zip",
-    "sha256": "ef351a819e87633459185ee721e62344ba06c067fa698186ba3d67c21c2d4816"
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.6/Brautomat32ServiceTool-win.zip",
+    "sha256": "3cfd617c8767c7f58d1e30bb901b1a2977646c5bd3c26467a0630f80d9b6267a"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.5/Brautomat32ServiceTool-linux.zip",
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.6/Brautomat32ServiceTool-linux.zip",
     "sha256": "b6630576461152d56a908ebd7d787bbe01ec2aefd0848fd677b7cd572040b9ca"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.5/Brautomat32ServiceTool-macos.zip",
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.6/Brautomat32ServiceTool-macos.zip",
     "sha256": "2471144317e0bdbb4694b3b1c60ffd12d2571ae02653197dc9a4158fd6aff86e"
   }
 }

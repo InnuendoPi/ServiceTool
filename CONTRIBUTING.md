@@ -26,12 +26,14 @@ The build creates:
    - [Build workflow](.github/workflows/servicetool-build.yml)
 
    The workflow builds `Windows`, `Linux`, and `macOS` packages and uploads
-   them as GitHub Actions artifacts.
+   them as GitHub Actions artifacts. Each platform runs the unit tests before
+   building; failed tests stop that platform's build.
 
 1. Download and review the artifacts. To publish a release, run the workflow
-   with `Publish release` enabled. It updates `version.json`, commits the
-   manifest to `main`, and creates a GitHub Release containing all three ZIP
-   packages.
+   with `Publish release` enabled. The workflow creates and verifies the
+   GitHub Release containing all three ZIP packages first. Only after the
+   release is available does it update `version.json` and commit the manifest
+   to `main`.
 
 ## Release Rules
 
@@ -42,8 +44,14 @@ The build creates:
 - `Linux` and `macOS` are not built locally.
 - Release ZIP files are not stored in git history.
 - Releases may only be published from `main`.
+- Every build and release job uses the exact commit that started the workflow.
+- Publishing stops if `main` changes while the workflow is running.
+- Published version tags and release assets are immutable. Increase the
+  ServiceTool version instead of replacing an existing release.
 - The release workflow sets the download URLs and SHA256 values in
   `version.json`.
+- The update manifest is published only after the release tag and all three
+  assets have been verified.
 - The `release` GitHub Environment must require maintainer approval before the
   `publish-release` job can run.
 

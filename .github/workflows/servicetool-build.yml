@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: servicetool-release
+  cancel-in-progress: false
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -19,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -30,6 +36,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests
 
       - name: Build Windows package
         shell: pwsh
@@ -49,6 +58,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -60,6 +71,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests
 
       - name: Build ServiceTool for Linux
         shell: bash
@@ -141,6 +155,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -152,6 +168,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests
 
       - name: Build ServiceTool app
         shell: bash
@@ -205,17 +224,23 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout main
+      - name: Checkout release source
         uses: actions/checkout@v6
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Verify main branch
+      - name: Verify unchanged main branch
         shell: bash
         run: |
+          set -euo pipefail
           if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
             echo "Publishing is only allowed from main."
+            exit 1
+          fi
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" != "${GITHUB_SHA}" ]; then
+            echo "main changed after this workflow started. Run the release workflow again for the current main commit."
             exit 1
           fi
 
@@ -237,7 +262,7 @@ jobs:
           name: Brautomat32ServiceTool-macos
           path: release/macos
 
-      - name: Update manifest from verified packages
+      - name: Prepare manifest from verified packages
         id: manifest
         shell: bash
         run: |
@@ -275,19 +300,8 @@ jobs:
           PY
           echo "tag=$(cat release-tag.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Commit release manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add version.json
-          if ! git diff --cached --quiet; then
-            git commit -m "Publish ServiceTool ${{ steps.manifest.outputs.tag }}"
-            git push origin HEAD:main
-          fi
-
-      - name: Remove existing GitHub Release
+      - name: Create or resume immutable draft release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -295,22 +309,144 @@ jobs:
           set -euo pipefail
           tag="${{ steps.manifest.outputs.tag }}"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release delete "$tag" --yes --cleanup-tag
+            is_draft="$(gh release view "$tag" --json isDraft --jq .isDraft)"
+            target="$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)"
+            if [ "$is_draft" = "true" ]; then
+              if [ "$target" != "${GITHUB_SHA}" ]; then
+                echo "Draft release $tag targets $target instead of ${GITHUB_SHA}."
+                exit 1
+              fi
+              gh release upload "$tag" \
+                release/windows/Brautomat32ServiceTool-win.zip \
+                release/linux/Brautomat32ServiceTool-linux.zip \
+                release/macos/Brautomat32ServiceTool-macos.zip \
+                --clobber
+              echo "Resumed draft release $tag."
+            else
+              echo "Published release $tag already exists; verify it without replacing assets."
+            fi
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            echo "publish=$is_draft" >> "$GITHUB_OUTPUT"
           else
-            git push origin ":refs/tags/$tag" 2>/dev/null || true
+            gh release create "$tag" \
+              release/windows/Brautomat32ServiceTool-win.zip \
+              release/linux/Brautomat32ServiceTool-linux.zip \
+              release/macos/Brautomat32ServiceTool-macos.zip \
+              --target "${GITHUB_SHA}" \
+              --title "Brautomat32 ServiceTool $tag" \
+              --generate-notes \
+              --draft
+            echo "created=true" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
-          git tag -d "$tag" 2>/dev/null || true
 
-      - name: Create GitHub Release
+      - name: Verify release source and assets
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "${{ steps.manifest.outputs.tag }}" \
-            release/windows/Brautomat32ServiceTool-win.zip \
-            release/linux/Brautomat32ServiceTool-linux.zip \
-            release/macos/Brautomat32ServiceTool-macos.zip \
-            --target main \
-            --title "Brautomat32 ServiceTool ${{ steps.manifest.outputs.tag }}" \
-            --generate-notes
+          tag="${{ steps.manifest.outputs.tag }}"
+          target="$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)"
+          if [ "$target" != "${GITHUB_SHA}" ]; then
+            echo "Release $tag targets $target instead of ${GITHUB_SHA}."
+            echo "Published versions are immutable; increase the ServiceTool version."
+            exit 1
+          fi
+
+          gh release view "$tag" --json assets \
+            --jq '.assets[] | [.name, .size] | @tsv' > release-assets.tsv
+          python - <<'PY'
+          from pathlib import Path
+
+          expected_paths = [
+              Path("release/windows/Brautomat32ServiceTool-win.zip"),
+              Path("release/linux/Brautomat32ServiceTool-linux.zip"),
+              Path("release/macos/Brautomat32ServiceTool-macos.zip"),
+          ]
+          expected = {path.name: path.stat().st_size for path in expected_paths}
+          actual = {}
+          for line in Path("release-assets.tsv").read_text(encoding="utf-8").splitlines():
+              name, size = line.split("\t", 1)
+              actual[name] = int(size)
+          if actual != expected:
+              raise SystemExit(
+                  "Release assets differ from this workflow run.\n"
+                  f"Expected: {expected}\n"
+                  f"Actual:   {actual}\n"
+                  "Published versions are immutable; increase the ServiceTool version."
+              )
+          PY
+
+      - name: Publish verified draft release
+        if: steps.release.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit "${{ steps.manifest.outputs.tag }}" --draft=false --latest
+
+      - name: Verify published release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.manifest.outputs.tag }}"
+          if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" != "false" ]; then
+            echo "Release $tag is still a draft."
+            exit 1
+          fi
+          git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+          if [ "$(git rev-list -n 1 "$tag")" != "${GITHUB_SHA}" ]; then
+            echo "Release tag $tag does not point to ${GITHUB_SHA}."
+            exit 1
+          fi
+          mkdir -p release/verified
+          gh release download "$tag" \
+            --dir release/verified \
+            --pattern 'Brautomat32ServiceTool-*.zip'
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          source_dirs = {
+              "Brautomat32ServiceTool-win.zip": Path("release/windows"),
+              "Brautomat32ServiceTool-linux.zip": Path("release/linux"),
+              "Brautomat32ServiceTool-macos.zip": Path("release/macos"),
+          }
+
+          def sha256(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          for filename, source_dir in source_dirs.items():
+              source = source_dir / filename
+              downloaded = Path("release/verified") / filename
+              if not downloaded.is_file():
+                  raise SystemExit(f"Verified release asset is missing: {filename}")
+              if sha256(source) != sha256(downloaded):
+                  raise SystemExit(f"Release asset checksum mismatch: {filename}")
+          PY
+
+      - name: Publish release manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" != "${GITHUB_SHA}" ]; then
+            echo "main changed before the manifest could be published."
+            echo "The release exists, but no update was announced. Re-run from the current main commit with a new version."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish ServiceTool ${{ steps.manifest.outputs.tag }}"
+            git push origin HEAD:main
+          fi

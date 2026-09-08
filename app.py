@@ -104,7 +104,7 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.7.5"
+SERVICE_TOOL_VERSION = "1.7.6"
 ESPTOOL_VERSION = "5.3.1"
 SERVICE_TOOL_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/InnuendoPi/ServiceTool/main/version.json"
 SERVICE_TOOL_WINDOWS_EXECUTABLE = "Brautomat32ServiceTool.exe"
@@ -184,13 +184,7 @@ INVENTORY_SPECS: dict[str, dict[str, Any]] = {
         "device_files": ["config.txt", "log_cfg.json"],
     },
 }
-BRAUTOMAT32_SOURCE_ROOT = os.environ.get("BRAUTOMAT32_SOURCE_ROOT", "").strip()
-TEST_TASKS_DIR_CANDIDATES = [APP_ROOT / "tasks", APP_ROOT.parent / "tasks", DATA_ROOT / "tasks"]
-TEST_TOOLS_DIR_CANDIDATES = [APP_ROOT / "tools", APP_ROOT.parent / "tools", DATA_ROOT / "tools"]
-if BRAUTOMAT32_SOURCE_ROOT:
-    brautomat32_root = pathlib.Path(BRAUTOMAT32_SOURCE_ROOT).expanduser()
-    TEST_TASKS_DIR_CANDIDATES.append(brautomat32_root / "tasks")
-    TEST_TOOLS_DIR_CANDIDATES.append(brautomat32_root / "tools")
+TEST_RUNNER_SOURCE_ROOT_ENV = "BRAUTOMAT32_SOURCE_ROOT"
 
 
 def ensure_runtime_dirs() -> None:
@@ -252,6 +246,57 @@ def first_existing_dir(candidates: list[pathlib.Path], relative: str) -> pathlib
         if target.is_dir():
             return target
     return None
+
+
+def unique_paths(paths: list[pathlib.Path]) -> list[pathlib.Path]:
+    seen: set[str] = set()
+    result: list[pathlib.Path] = []
+    for path in paths:
+        key = str(path).lower() if os.name == "nt" else str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
+
+
+def normalize_configured_source_root(value: str) -> pathlib.Path | None:
+    cleaned = str(value or "").strip().strip('"').strip("'").strip()
+    if not cleaned:
+        return None
+    return pathlib.Path(cleaned).expanduser()
+
+
+def looks_like_test_runner_source_root(root: pathlib.Path) -> bool:
+    return (
+        (root / "tasks" / "test-automation" / "README.md").is_file()
+        and (root / "tasks" / "test-automation" / "ACTIVE.md").is_file()
+        and (root / "tools" / "test-runner" / "package.json").is_file()
+        and (root / "tools" / "test-runner" / "src" / "index.js").is_file()
+    )
+
+
+def discover_test_runner_source_roots() -> list[pathlib.Path]:
+    roots: list[pathlib.Path] = []
+    env_root = normalize_configured_source_root(os.environ.get(TEST_RUNNER_SOURCE_ROOT_ENV, ""))
+    if env_root is not None:
+        roots.append(env_root)
+
+    roots.extend([APP_ROOT, APP_ROOT.parent, DATA_ROOT])
+
+    sibling_parent = APP_ROOT.parent
+    try:
+        for sibling in sibling_parent.iterdir():
+            if sibling.is_dir() and looks_like_test_runner_source_root(sibling):
+                roots.append(sibling)
+    except OSError:
+        pass
+
+    return unique_paths(roots)
+
+
+def test_runner_dir_candidates(kind: str) -> list[pathlib.Path]:
+    return [root / kind for root in discover_test_runner_source_roots()]
 
 
 # ---------------------------------------------------------------------------
@@ -374,8 +419,8 @@ def build_test_runner_results_markdown(payload: dict[str, Any]) -> str:
 
 
 def detect_test_runner_environment() -> dict[str, Any]:
-    tasks_dir = first_existing_dir(TEST_TASKS_DIR_CANDIDATES, "test-automation")
-    tools_dir = first_existing_dir(TEST_TOOLS_DIR_CANDIDATES, "test-runner")
+    tasks_dir = first_existing_dir(test_runner_dir_candidates("tasks"), "test-automation")
+    tools_dir = first_existing_dir(test_runner_dir_candidates("tools"), "test-runner")
     reasons: list[str] = []
 
     if tasks_dir is None:
@@ -722,14 +767,58 @@ def candidate_base_urls(base_url: str) -> list[str]:
     return candidates
 
 
+def is_connection_failure(exc: Exception) -> bool:
+    if isinstance(exc, error.HTTPError):
+        return False
+    if isinstance(exc, error.URLError):
+        reason = getattr(exc, "reason", None)
+        if isinstance(reason, Exception) and reason is not exc:
+            return is_connection_failure(reason)
+        reason_text = str(reason or exc).lower()
+        return any(
+            marker in reason_text
+            for marker in (
+                "timed out",
+                "timeout",
+                "connection refused",
+                "connection reset",
+                "connection aborted",
+                "name or service not known",
+                "nodename nor servname provided",
+                "getaddrinfo failed",
+                "temporary failure in name resolution",
+                "network is unreachable",
+                "no route to host",
+            )
+        )
+    return isinstance(
+        exc,
+        (
+            TimeoutError,
+            socket.timeout,
+            socket.gaierror,
+            ConnectionRefusedError,
+            ConnectionResetError,
+            ConnectionAbortedError,
+            BrokenPipeError,
+            http.client.RemoteDisconnected,
+            http.client.BadStatusLine,
+        ),
+    )
+
+
 def try_base_urls(base_url: str, action):
     last_error: Exception | None = None
-    for candidate in candidate_base_urls(base_url):
+    candidates = candidate_base_urls(base_url)
+    for index, candidate in enumerate(candidates):
         try:
             return candidate, action(candidate)
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-    assert last_error is not None
+            if index >= len(candidates) - 1 or not is_connection_failure(exc):
+                raise
+    if last_error is None:
+        raise RuntimeError("No device URL candidates available")
     raise last_error
 
 
@@ -4060,7 +4149,15 @@ def local_inventory_file_allowed(kind: str, path: pathlib.Path) -> bool:
     allowed_names = {str(name).lower() for name in spec.get("device_files", [])}
     allowed_exts = {str(ext).lower() for ext in spec.get("extensions", [".json"])}
     if allowed_names:
-        return lower_name in allowed_names
+        if lower_name in allowed_names:
+            return True
+        return any(
+            re.fullmatch(
+                rf"{re.escape(pathlib.Path(name).stem)}_[1-9][0-9]*{re.escape(pathlib.Path(name).suffix)}",
+                lower_name,
+            ) is not None
+            for name in allowed_names
+        )
     return path.suffix.lower() in allowed_exts
 
 
@@ -4618,8 +4715,8 @@ def flash_job(
     erase_flash: bool,
     include_littlefs: bool,
     restart_monitor_after: bool = True,
+    handover_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    handover = prepare_esptool_serial_handover(port, baud, "Firmware flash")
     require_base_files = bool(erase_flash)
     package = resolve_package(job, package_source, package_dir, include_littlefs, package_ref, require_base_files=require_base_files)
     esptool_path = ensure_esptool_available(job)
@@ -4640,6 +4737,10 @@ def flash_job(
             job.log(f"Optional flash file missing, skip: {filename}")
     if not any(name == "firmware.bin" for name, _, _ in flash_files):
         raise FileNotFoundError(f"firmware.bin missing in package: {package}")
+    handover = prepare_esptool_serial_handover(port, baud, "Firmware flash")
+    if handover_state is not None:
+        handover_state.clear()
+        handover_state.update(handover)
     try:
         serial_guard = exclusive_serial_access(timeout=30.0)
         serial_guard.__enter__()
@@ -4746,7 +4847,6 @@ def flash_job(
 
 
 def backup_firmware_job(job: Job, base_url: str, port: str, baud: int) -> dict[str, Any]:
-    handover = prepare_esptool_serial_handover(port, baud, "Firmware backup")
     esptool_path = ensure_esptool_available(job)
     job.set_progress(1)
     job.set_current_file("firmware.bin")
@@ -4762,6 +4862,7 @@ def backup_firmware_job(job: Job, base_url: str, port: str, baud: int) -> dict[s
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     target = BACKUP_DIR / f"brautomat-fw-{label}-{version_token}-{stamp}.bin"
     job.log(f"Firmware backup from slot {label} address={hex(int(address))} size={hex(int(size))}")
+    handover = prepare_esptool_serial_handover(port, baud, "Firmware backup")
     try:
         serial_guard = exclusive_serial_access(timeout=30.0)
         serial_guard.__enter__()
@@ -4887,26 +4988,44 @@ def migration_job(
     else:
         job.log("Migration: no WiFi credentials available for transfer")
 
-    job.log("Migration: erase flash")
-    job.log("Migration: write new partition layout, target firmware and LittleFS")
-    result["flash"] = flash_job(job, port, baud, package_source, package_dir, package_ref, True, include_littlefs, restart_monitor_after=False)
-    job.log("Migration: rescan device state after flash")
-    result["post_flash_state"] = wait_for_migration_target_ready(job, base_url, port, 115200)
-    if wifi_snapshot.get("ssid"):
-        job.log("Migration: restore WiFi credentials on target firmware")
-        result["wifi_restore"] = restore_migration_wifi(job, port, 115200, wifi_snapshot)
-    backup_file = str(result.get("backup", {}).get("backup_file") or "").strip()
-    if backup_file:
-        job.log("Migration: wait for HTTP reconnect before automatic restore")
-        result["post_wifi_http_state"] = wait_for_device_http_ready(job, base_url)
-        job.log(f"Migration: restore configuration backup automatically ({backup_file})")
-        backup_name = pathlib.Path(backup_file).name
-        result["restore"] = restore_local_backup(base_url, backup_name)
-        job.log("Migration: configuration restore completed")
-    active = STATE.active_serial_config(port)
-    if active and not active.get("running"):
-        schedule_serial_restart(port, baud, delay_seconds=2.0)
-    return result
+    migration_handover: dict[str, Any] = {}
+    try:
+        job.log("Migration: erase flash")
+        job.log("Migration: write new partition layout, target firmware and LittleFS")
+        result["flash"] = flash_job(
+            job,
+            port,
+            baud,
+            package_source,
+            package_dir,
+            package_ref,
+            True,
+            include_littlefs,
+            restart_monitor_after=False,
+            handover_state=migration_handover,
+        )
+        job.log("Migration: rescan device state after flash")
+        result["post_flash_state"] = wait_for_migration_target_ready(job, base_url, port, 115200)
+        if wifi_snapshot.get("ssid"):
+            job.log("Migration: restore WiFi credentials on target firmware")
+            result["wifi_restore"] = restore_migration_wifi(job, port, 115200, wifi_snapshot)
+        backup_file = str(result.get("backup", {}).get("backup_file") or "").strip()
+        if backup_file:
+            job.log("Migration: wait for HTTP reconnect before automatic restore")
+            result["post_wifi_http_state"] = wait_for_device_http_ready(job, base_url)
+            job.log(f"Migration: restore configuration backup automatically ({backup_file})")
+            backup_name = pathlib.Path(backup_file).name
+            result["restore"] = restore_local_backup(base_url, backup_name)
+            job.log("Migration: configuration restore completed")
+        return result
+    finally:
+        if migration_handover.get("restart"):
+            STATE.append_serial_line("Restart serial monitor")
+            schedule_serial_restart(
+                str(migration_handover["port"]),
+                int(migration_handover["baud"]),
+                delay_seconds=2.0,
+            )
 
 
 # ---------------------------------------------------------------------------
