@@ -153,45 +153,15 @@ class SerialHandoverTests(unittest.TestCase):
 
         handover.assert_not_called()
 
-    def test_migration_restarts_monitor_when_flash_or_followup_fails(self) -> None:
-        restart = Mock()
-
-        def fail_flash(*args, **kwargs):
-            kwargs["handover_state"].update(
-                {"restart": True, "port": "COM1", "baud": 115200}
-            )
-            raise RuntimeError("flash failed")
-
+    def test_migration_rejects_out_of_range_before_handover(self) -> None:
         with (
-            patch.object(
-                app,
-                "current_firmware_version",
-                return_value=("1.62.0", (1, 62, 0)),
-            ),
-            patch.object(
-                app,
-                "validate_migration_package_source",
-                return_value=("1.70.0", (1, 70, 0)),
-            ),
-            patch.object(app, "capture_migration_wifi", return_value={}),
-            patch.object(app, "flash_job", side_effect=fail_flash),
-            patch.object(app, "schedule_serial_restart", restart),
+            patch.object(app, "current_firmware_version", return_value=("1.65.6", (1, 65, 6))),
+            patch.object(app, "prepare_esptool_serial_handover") as handover,
         ):
-            with self.assertRaisesRegex(RuntimeError, "flash failed"):
-                app.migration_job(
-                    self.job,
-                    "http://brautomat.local",
-                    False,
-                    "COM1",
-                    115200,
-                    "release",
-                    "",
-                    "",
-                    True,
-                    False,
-                )
-
-        restart.assert_called_once_with("COM1", 115200, delay_seconds=2.0)
+            with self.assertRaisesRegex(RuntimeError, "1.62.0 through 1.65.5"):
+                app.migration_job(self.job, "http://device", False, "COM1", 921600,
+                                  "release", "", "", False, True)
+        handover.assert_not_called()
 
 
 class TestRunnerEnvironmentTests(unittest.TestCase):

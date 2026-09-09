@@ -64,6 +64,8 @@
     <section class="tab-panel span-2 firmware-panel active" data-panel="firmware">
       <section class="card card-stack">
         <h2 id="flashTitle">Firmware Flash</h2>
+        <div id="firmwareSelectionHome">
+        <div id="sharedFirmwareSelection">
         <div class="grid-2">
           <label>
             <span id="packageSourceLabel">Package source</span>
@@ -102,7 +104,7 @@
               <button id="refreshPorts">Ports neu laden</button>
             </div>
           </label>
-          <div class="checkstack">
+          <div id="firmwareOnlyOptions" class="checkstack">
             <label class="checkline">
               <span id="eraseFlashLabel">Flash erase</span>
               <input id="eraseFlashSelect" type="checkbox" checked>
@@ -113,9 +115,22 @@
             </label>
           </div>
         </div>
+        </div>
+        </div>
         <div class="actions end">
           <button id="flashBtn">Firmware flashen</button>
           <span id="flashBackupWarning" class="flash-backup-warning hidden-panel"></span>
+        </div>
+        <div class="section-divider" aria-hidden="true"></div>
+        <div class="actions maintenance-actions">
+          <button id="maintenanceToggle" class="success" type="button" title="Wartungsmodus starten" aria-label="Wartungsmodus starten">
+            <svg class="maintenance-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0L21.5 5.5a6 6 0 0 1-7.9 7.9l-7 7a2.1 2.1 0 0 1-3-3l7-7a6 6 0 0 1 7.9-7.9z"/></svg>
+            <span id="maintenanceToggleLabel">Wartungsmodus starten</span>
+          </button>
+          <button id="maintenanceResetBrew" class="danger" type="button">Braustatus zurücksetzen</button>
+          <span id="maintenanceSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
+          <span id="maintenanceUnavailable" class="hidden-panel" role="status"></span>
+          <span id="maintenanceStatus" role="status" aria-live="polite"></span>
         </div>
         <div id="firmwareProgressPanel" class="progress-panel hidden">
           <div class="progress-head">
@@ -678,26 +693,32 @@
 
     <section class="tab-panel span-2" data-panel="migration">
       <section class="card span-2">
-        <h2 id="migrationTitle">Migration</h2>
-        <p id="migrationHint" class="hint">Migration von 1.62 auf 1.70 mit verändertem Partitions-Schema. Ablauf: Backup, Erase Flash, neue Partitionen + Firmware + LittleFS flashen. WLAN wird übernommen, danach Gerät neu einrichten oder Restore.</p>
-          <div id="migrationRequirements" class="hint">
-          <div id="migrationRequirementSource">Quelle: Brautomat32 1.62.x</div>
-          <div id="migrationRequirementTarget">Ziel: Brautomat32 1.70.x</div>
-          <div id="migrationRequirementTransport">Erforderlich: Online + serieller COM-Port</div>
-        </div>
-        <div class="grid-2">
-          <label class="checkline">
-            <span id="migrationBackupLabel">Backup vor Migration</span>
-            <input id="migrationBackup" type="checkbox" checked disabled>
-          </label>
-        </div>
+        <h2 id="migrationTitle">Migration auf Version 1.7</h2>
+        <p id="migrationHint" class="hint">Migration der Brautomat32 Firmware 1.6x auf Version 1.7x</p>
+        <input id="migrationBackup" type="checkbox" checked disabled hidden>
+        <p id="migrationPackageHint" class="hint">Wähle die Firmware 1.7 und den COM Port aus. Anschließend starte die Migration</p>
+        <p id="migrationBackupHint" class="hint">Hinweis: die Migration erstellt zuerst ein vollständiges Backup. Das Backup kann jederzeit wiederhergestellt werden. Eine Migration dauert ca. 8 Minuten.</p>
+        <div id="migrationFirmwareSelection"></div>
         <div class="actions">
           <button id="migrateBtn" class="danger" type="button">Migration starten</button>
+          <button id="migrationRestore" class="danger" type="button">Restore Backup</button>
+        </div>
+        <div id="migrationRecoveryPanel" class="hidden-panel">
+        <p id="migrationRecoveryLabel" class="hint">Migration unterbrochen</p>
+        <label id="migrationSessionChoice">
+          <select id="migrationSession"></select>
+        </label>
+        <div class="actions">
+          <button id="migrationRefresh" type="button">Liste aktualisieren</button>
+          <button id="migrationResume" type="button">Migration fortsetzen</button>
+        </div>
+        <p id="migrationRecoveryHint" class="hint">Dasselbe Gerät per USB anschließen.</p>
         </div>
         <div class="status-inline">
           <span id="migrationSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
           <p id="migrationInlineStatus" class="status-line"></p>
         </div>
+        <progress id="migrationProgress" max="100" value="0" aria-label="Migration" style="width:100%"></progress>
         <div class="debug-panel">
           <pre id="migrationStatus" class="output"></pre>
           <div class="actions logging-actions">

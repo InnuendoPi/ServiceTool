@@ -1,5 +1,32 @@
 # Aktive ServiceTool-Aufgaben
 
+## Geräteabnahme für Migration und Wartung
+
+**Status:** Implementiert; vollständige Geräteabnahme offen.
+
+**Betroffene Dateien:** `migration.py`, `maintenance.py`, `app.py`, `static/`, Tests.
+
+**Bereits am Gerät bestätigt:** Migration, Start der ServiceApp, LittleFS-Zugriff
+und Speicherung von WLAN-Zugangsdaten im Wartungsmodus.
+
+**Noch prüfen:**
+
+- Migration aus beiden alten OTA-Slots und mit unterstützten älteren Versionen;
+  Wiederherstellung nach Strom-/USB-Unterbrechung.
+- Wartungseinstieg bei abstürzender Hauptfirmware und gespeichertem Braustatus.
+- Firmware-Reparatur mit Erhalt der übrigen Partitionen; persistenter Braustatusreset.
+- Ersetzen und Löschen von Dateien; Erhalt der bisherigen Datei bei Uploadabbruch.
+- Rückkehr zur Hauptfirmware, Timeoutfälle und WLAN-Verbindung nach Speicherung.
+- Bedienung mit älterer Firmware sowie Windows-, Linux- und macOS-Releasepakete.
+
+**Akzeptanz:** Fehler dürfen nicht als Erfolg erscheinen. Reparaturen müssen
+unbeteiligte Einstellungen und Dateien erhalten. Geräteprüfungen ergänzen die
+automatisierten Tests und werden vor Enduser-Freigabe abgeschlossen.
+
+**Offene Schnittstellen:** Erkennung eines vorhandenen Braustatus sowie WLAN-
+Auslesen, Scan und Reset in der ServiceApp. Entwicklungsversion 1.66 verwendet
+bereits den Migrations- und Wartungsweg der Zielversion 1.70.
+
 ## Repository-Ausgliederung
 
 **Status:** abgeschlossen

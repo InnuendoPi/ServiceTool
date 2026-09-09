@@ -102,3 +102,10 @@ ServiceTool requires all of the following before it enables the Test Runner:
 
 Without these requirements, the tab remains hidden. `?hide_test=1` always
 hides it, regardless of the development environment.
+
+## Migration packages
+
+ServiceApp migration uses existing firmware binaries and a mandatory verified
+full flash backup. See [MIGRATION.md](MIGRATION.md) for firmware sources,
+supported devices and recovery. Outstanding hardware acceptance work is tracked
+in [tasks/ACTIVE.md](tasks/ACTIVE.md). Unit tests alone do not qualify a release.

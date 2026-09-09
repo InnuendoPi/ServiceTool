@@ -529,6 +529,10 @@ input, select {
   gap: 0.8rem;
   align-items: start;
 }
+#sharedFirmwareSelection {
+  display: grid;
+  gap: 0.8rem;
+}
 .checkstack {
   display: flex;
   flex-direction: column;
@@ -1182,3 +1186,9 @@ button:disabled:hover {
   }
   .checkstack { padding-top: 0; }
 }
+
+.maintenance-actions { align-items: center; }
+.maintenance-icon { width: 1.25rem; height: 1.25rem; flex: 0 0 auto; }
+#maintenanceStatus { flex-basis: 100%; }
+
+.maintenance-actions > button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.75rem; padding: 0.56rem 0.92rem; line-height: 1.25rem; }

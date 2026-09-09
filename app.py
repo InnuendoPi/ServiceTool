@@ -5,6 +5,8 @@ import hashlib
 import http.client
 import json
 import mimetypes
+import migration as migration_engine
+import maintenance as maintenance_engine
 import os
 import pathlib
 import platform
@@ -105,7 +107,10 @@ DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
 SERVICE_TOOL_VERSION = "1.7.6"
-ESPTOOL_VERSION = "5.3.1"
+ESPTOOL_VERSION = "5.3.1"  # Legacy cache lookup only; downloads use GitHub latest.
+ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
+ESPTOOL_SELECTED_PATH = None
+ESPTOOL_SELECTED_VERSION = None
 SERVICE_TOOL_UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/InnuendoPi/ServiceTool/main/version.json"
 SERVICE_TOOL_WINDOWS_EXECUTABLE = "Brautomat32ServiceTool.exe"
 MIGRATION_MIN_VERSION = (1, 62, 0)
@@ -1273,37 +1278,37 @@ def remote_language_catalog_url(key: str) -> str:
     return f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/language?ref={package['branch']}"
 
 
-def esptool_platform_asset() -> tuple[str, str, str]:
+def esptool_platform_asset(version: str = ESPTOOL_VERSION) -> tuple[str, str, str]:
     system = platform.system().lower()
     machine = platform.machine().lower()
 
     if system == "windows":
         if machine in {"amd64", "x86_64"}:
-            return (f"esptool-v{ESPTOOL_VERSION}-windows-amd64.zip", "esptool-windows-amd64", "esptool.exe")
+            return (f"esptool-v{version}-windows-amd64.zip", "esptool-windows-amd64", "esptool.exe")
         raise RuntimeError(f"Unsupported Windows architecture for esptool: {machine}")
 
     if system == "darwin":
         if machine in {"arm64", "aarch64"}:
-            return (f"esptool-v{ESPTOOL_VERSION}-macos-arm64.tar.gz", "esptool-macos-arm64", "esptool")
+            return (f"esptool-v{version}-macos-arm64.tar.gz", "esptool-macos-arm64", "esptool")
         if machine in {"x86_64", "amd64"}:
-            return (f"esptool-v{ESPTOOL_VERSION}-macos-amd64.tar.gz", "esptool-macos-amd64", "esptool")
+            return (f"esptool-v{version}-macos-amd64.tar.gz", "esptool-macos-amd64", "esptool")
         raise RuntimeError(f"Unsupported macOS architecture for esptool: {machine}")
 
     if system == "linux":
         if machine in {"x86_64", "amd64"}:
-            return (f"esptool-v{ESPTOOL_VERSION}-linux-amd64.tar.gz", "esptool-linux-amd64", "esptool")
+            return (f"esptool-v{version}-linux-amd64.tar.gz", "esptool-linux-amd64", "esptool")
         if machine in {"armv7l", "armv7"}:
-            return (f"esptool-v{ESPTOOL_VERSION}-linux-armv7.tar.gz", "esptool-linux-armv7", "esptool")
+            return (f"esptool-v{version}-linux-armv7.tar.gz", "esptool-linux-armv7", "esptool")
         if machine in {"aarch64", "arm64"}:
-            return (f"esptool-v{ESPTOOL_VERSION}-linux-aarch64.tar.gz", "esptool-linux-aarch64", "esptool")
+            return (f"esptool-v{version}-linux-aarch64.tar.gz", "esptool-linux-aarch64", "esptool")
         raise RuntimeError(f"Unsupported Linux architecture for esptool: {machine}")
 
     raise RuntimeError(f"Unsupported platform for esptool: {platform.system()} {platform.machine()}")
 
 
-def esptool_cached_dir() -> pathlib.Path:
-    _, extracted_dir_name, _ = esptool_platform_asset()
-    return TOOLS_CACHE_DIR / f"esptool-v{ESPTOOL_VERSION}" / extracted_dir_name
+def esptool_cached_dir(version: str = ESPTOOL_VERSION) -> pathlib.Path:
+    _, extracted_dir_name, _ = esptool_platform_asset(version)
+    return TOOLS_CACHE_DIR / f"esptool-v{version}" / extracted_dir_name
 
 
 def esptool_executable_name() -> str:
@@ -1319,8 +1324,8 @@ def bundled_esptool_path() -> pathlib.Path | None:
     return None
 
 
-def cached_esptool_path() -> pathlib.Path:
-    return esptool_cached_dir() / esptool_executable_name()
+def cached_esptool_path(version: str = ESPTOOL_VERSION) -> pathlib.Path:
+    return esptool_cached_dir(version) / esptool_executable_name()
 
 
 def mark_executable(path: pathlib.Path) -> None:
@@ -1618,34 +1623,85 @@ def extract_esptool_archive(archive_path: pathlib.Path, target_dir: pathlib.Path
         raise RuntimeError(f"Unsupported esptool archive: {archive_path.name}")
 
 
+def esptool_binary_version(path: pathlib.Path) -> str:
+    result = subprocess.run([str(path), "version"], capture_output=True, text=True,
+                            errors="replace", timeout=15)
+    match = re.search(r"(?m)^\s*(?:esptool\s+v?)?(\d+\.\d+\.\d+)\s*$", result.stdout)
+    if result.returncode or not match:
+        raise RuntimeError("Unable to verify esptool version")
+    return match.group(1)
+
+
 def ensure_esptool_available(job: Job | None = None) -> pathlib.Path:
-    bundled = bundled_esptool_path()
-    if bundled:
+    global ESPTOOL_SELECTED_PATH, ESPTOOL_SELECTED_VERSION
+    def log(message):
         if job:
-            job.log(f"Using bundled esptool: {bundled}")
-        return bundled
+            job.log(message)
 
-    cached = cached_esptool_path()
-    if cached.exists():
-        if job:
-            job.log(f"Using cached esptool: {cached}")
-        return cached
+    def select(path, version):
+        global ESPTOOL_SELECTED_PATH, ESPTOOL_SELECTED_VERSION
+        ESPTOOL_SELECTED_PATH, ESPTOOL_SELECTED_VERSION = path, version
+        return path
 
-    asset_name, _, _ = esptool_platform_asset()
-    base_dir = esptool_cached_dir()
-    archive_path = TOOLS_CACHE_DIR / asset_name
-    url = f"{ESPTOOL_REPO_BASE}/{asset_name}"
-    if job:
-        job.log(f"Download esptool v{ESPTOOL_VERSION}: {url}")
-    download_to_file(url, archive_path, timeout=180.0)
-    extract_esptool_archive(archive_path, base_dir.parent)
-    cached = cached_esptool_path()
-    if not cached.exists():
-        raise RuntimeError(f"esptool executable missing after extract: {cached}")
-    mark_executable(cached)
-    if job:
-        job.log(f"esptool ready: {cached}")
-    return cached
+    with ESPTOOL_DOWNLOAD_LOCK:
+        try:
+            release = json_request("https://api.github.com/repos/espressif/esptool/releases/latest", timeout=15)
+        except (OSError, ValueError) as exc:
+            log(f"esptool latest release unavailable: {exc}; checking local copies")
+            candidates = []
+            for folder in TOOLS_CACHE_DIR.glob("esptool-v*"):
+                version = folder.name.removeprefix("esptool-v")
+                if re.fullmatch(r"\d+\.\d+\.\d+", version):
+                    path = cached_esptool_path(version)
+                    if path.is_file():
+                        candidates.append((tuple(map(int, version.split("."))), path))
+            bundled = bundled_esptool_path()
+            if bundled:
+                try:
+                    version = esptool_binary_version(bundled)
+                    candidates.append((tuple(map(int, version.split("."))), bundled))
+                except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                    pass
+            for _, path in sorted(candidates, key=lambda item: item[0], reverse=True):
+                try:
+                    version = esptool_binary_version(path)
+                    log(f"Using local esptool {version}: {path}")
+                    return select(path, version)
+                except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                    continue
+            raise RuntimeError("GitHub is unavailable and no usable local esptool exists") from exc
+        tag = str(release.get("tag_name", ""))
+        if release.get("draft") or release.get("prerelease") or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+            raise RuntimeError("Invalid stable esptool release")
+        version = tag[1:]
+        asset_name, _, _ = esptool_platform_asset(version)
+        assets = [item for item in release.get("assets", []) if item.get("name") == asset_name]
+        if len(assets) != 1:
+            raise RuntimeError(f"Latest esptool {version} has no matching asset: {asset_name}")
+        log(f"Latest stable esptool: {version}")
+        cached = cached_esptool_path(version)
+        bundled = bundled_esptool_path()
+        for path in (cached, bundled):
+            if path and path.is_file():
+                try:
+                    if esptool_binary_version(path) == version:
+                        log(f"Using esptool {version}: {path}")
+                        return select(path, version)
+                except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                    pass
+        url = f"https://github.com/espressif/esptool/releases/download/{tag}/{asset_name}"
+        archive = TOOLS_CACHE_DIR / asset_name
+        log(f"Download esptool {version}: {url}")
+        download_to_file(url, archive, timeout=180)
+        digest = assets[0].get("digest")
+        if digest and digest != "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest():
+            raise RuntimeError("esptool download checksum mismatch")
+        extract_esptool_archive(archive, esptool_cached_dir(version).parent)
+        mark_executable(cached)
+        if esptool_binary_version(cached) != version:
+            raise RuntimeError("Downloaded esptool version does not match release")
+        log(f"esptool ready: {cached}")
+        return select(cached, version)
 
 
 def write_package_metadata(path: pathlib.Path, source_key: str) -> None:
@@ -2271,6 +2327,7 @@ class ServiceState:
         self.serial_access_lock = threading.Lock()
 
     def start_serial(self, port: str, baud: int, initial_lines: list[str] | None = None, announce_start: bool = True) -> dict[str, Any]:
+        ensure_migration_port_unlocked(port)
         with self.lock:
             if initial_lines is not None:
                 self.serial_lines = deque(initial_lines, maxlen=400)
@@ -2781,6 +2838,7 @@ def firmware_banner_from_lines(lines: list[str] | tuple[str, ...] | deque[str]) 
 
 
 def serial_firmware_version(port: str, baud: int = 115200, timeout: float = 12.0, allow_reset: bool = False) -> dict[str, Any]:
+    ensure_migration_port_unlocked(port)
     if not port:
         raise RuntimeError("Serial port missing")
     port = normalize_serial_port_name(port)
@@ -2954,6 +3012,21 @@ def combined_device_status(
         return status
     except Exception as exc:  # noqa: BLE001
         http_error = str(exc)
+
+    if serial_port and not serial_info and has_pyserial():
+        mode = maintenance_status(base_url, serial_port)
+        if mode.get("active") is True:
+            return {
+                "state": "serial", "transport": "serial", "mode": "service",
+                "base_url": "", "hostname": "", "resolved_ip": None,
+                "firmware": "Brautomat32 ServiceApp", "lang": "",
+                "dev": False, "dashboard_only": False,
+                "raw": mode["service"], "serial_port": serial_port,
+                "serial_baud": 115200, "version_source": "maintenance-status",
+                "http_error": http_error,
+            }
+        if mode.get("active") is False and mode.get("main"):
+            serial_info = {**mode["main"], "source": "serial-info"}
 
     if serial_info:
         ip_status = serial_ip_status(serial_info)
@@ -3751,15 +3824,26 @@ def wifi_scan(base_url: str, refresh: bool = False, serial_port: str = "", seria
     return {"base_url": base, "transport": "http", "raw": data}
 
 
-def wifi_save(base_url: str, ssid: str, password: str, serial_port: str = "", serial_baud: int = 115200) -> dict[str, Any]:
+def wifi_save(base_url: str, ssid: str, password: str, serial_port: str = "", serial_baud: int = 115200, maintenance: bool = False) -> dict[str, Any]:
     if not ssid.strip():
         raise ValueError("SSID missing")
+    if maintenance:
+        if not serial_port:
+            raise ValueError("Serial port required for ServiceApp WiFi settings")
+        serial_baud = 115200
     if serial_port:
         data = serial_json_command(serial_port, serial_baud, {"cmd": "wifi_set", "ssid": ssid, "pass": password, "reboot": True})
+        if maintenance and (not isinstance(data, dict) or data.get("cmd") != "wifi_set" or data.get("ok") is not True):
+            reason = data.get("error", "invalid_response") if isinstance(data, dict) else "invalid_response"
+            raise RuntimeError(f"ServiceApp WiFi: {reason}")
         payload = data.get("data", {}) if isinstance(data, dict) else {}
+        if maintenance and (not isinstance(payload, dict) or payload.get("saved") is not True):
+            raise RuntimeError("ServiceApp WiFi: save not confirmed")
         if isinstance(payload, dict):
             payload["transport"] = "serial"
             payload["serial_port"] = serial_port
+            if maintenance:
+                return payload
             if payload.get("saved"):
                 payload["verification"] = observe_wifi_reboot(serial_port, serial_baud)
             return payload
@@ -3807,7 +3891,7 @@ def wifi_credentials(base_url: str, serial_port: str = "", serial_baud: int = 11
 
 def capture_migration_wifi(base_url: str, port: str, baud: int) -> dict[str, Any]:
     last_error = ""
-    for mode in ("http", "serial"):
+    for mode in ("serial", "http"):
         try:
             if mode == "http":
                 payload = wifi_credentials(base_url)
@@ -3820,22 +3904,27 @@ def capture_migration_wifi(base_url: str, port: str, baud: int) -> dict[str, Any
             continue
         if not isinstance(payload, dict):
             continue
-        ssid = str(payload.get("ssid") or "").strip()
-        password = str(payload.get("pass") or payload.get("password") or "").strip()
-        if ssid:
+        ssid = payload.get("ssid")
+        password = payload.get("pass", payload.get("password"))
+        if (
+            payload.get("found") is not False
+            and isinstance(ssid, str) and ssid
+            and isinstance(password, str)
+            and not (payload.get("hasPassword") is True and not password)
+        ):
             return {
                 "ssid": ssid,
                 "password": password,
                 "transport": payload.get("transport") or mode,
             }
-    return {"ssid": "", "password": "", "error": last_error}
+    raise RuntimeError("Migration stopped before erase: complete WiFi credentials could not be read via serial or HTTP")
 
 
 def restore_migration_wifi(job: Job, port: str, baud: int, wifi: dict[str, Any]) -> dict[str, Any]:
-    ssid = str(wifi.get("ssid") or "").strip()
-    if not ssid:
-        return {"restored": False, "reason": "missing-ssid"}
-    password = str(wifi.get("password") or "").strip()
+    ssid = wifi.get("ssid")
+    password = wifi.get("password")
+    if not isinstance(ssid, str) or not ssid or not isinstance(password, str):
+        raise RuntimeError("Complete WiFi credentials required for migration restore")
     last_error = ""
     for attempt in range(1, 7):
         time.sleep(2.5 if attempt > 1 else 3.5)
@@ -3844,18 +3933,26 @@ def restore_migration_wifi(job: Job, port: str, baud: int, wifi: dict[str, Any])
             STATE.stop_serial()
         try:
             payload = wifi_save("", ssid, password, serial_port=port, serial_baud=baud)
-            verification = payload.get("verification") if isinstance(payload, dict) else None
+            if not isinstance(payload, dict) or payload.get("saved") is not True:
+                raise RuntimeError("Device did not confirm saving WiFi credentials")
+            verification = payload.get("verification")
             if isinstance(verification, dict):
                 result = str(verification.get("result") or "").strip().lower()
                 reason = str(verification.get("reason") or "").strip().lower()
                 if result == "failed" or reason == "config-portal":
                     raise RuntimeError("Device returned to config portal after WiFi restore")
+            if not isinstance(verification, dict) or verification.get("result") != "success":
+                raise RuntimeError("WiFi connection after reboot was not confirmed")
+            readback = wifi_credentials("", serial_port=port, serial_baud=baud)
+            if (readback.get("found") is False or readback.get("ssid") != ssid
+                    or readback.get("pass", readback.get("password")) != password):
+                raise RuntimeError("WiFi credentials read back after reboot do not match")
             job.log(f"Migration: restored WiFi credentials for SSID '{ssid}'")
             return {
                 "restored": True,
                 "ssid": ssid,
                 "attempt": attempt,
-                "response": payload,
+                "verified": True,
             }
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)
@@ -3964,7 +4061,7 @@ def local_package_version(package_dir: str) -> tuple[str, tuple[int, int, int]]:
                 version = match.group(1).strip()
                 if version:
                     return version, require_version_tuple(version, f"Local package {idedata}")
-    raise RuntimeError("Local package version.json not found or invalid")
+    raise RuntimeError("Local firmware version not found in existing version or PlatformIO build metadata")
 
 
 def migration_target_version(package_source: str, package_ref: str, package_dir: str) -> tuple[str, tuple[int, int, int]]:
@@ -3983,21 +4080,10 @@ def migration_target_version(package_source: str, package_ref: str, package_dir:
 
 
 def validate_migration_package_source(package_source: str, package_ref: str, package_dir: str) -> tuple[str, tuple[int, int, int]]:
-    release_version, release_parsed = remote_repo_version("main")
-    if release_parsed[:2] == MIGRATION_TARGET_VERSION[:2]:
-        if package_source != "release":
-            raise RuntimeError(
-                f"Migration expects package source 'release' because Brautomat32 main already provides {release_version}."
-            )
-        return release_version, release_parsed
-
-    if package_source != "open":
-        raise RuntimeError(
-            f"Migration target {version_line_label(MIGRATION_TARGET_VERSION)} is not yet available in Brautomat32 release "
-            f"(current release: {release_version}). Use 'Open directory' with the local {version_line_label(MIGRATION_TARGET_VERSION)} package during development."
-        )
-
-    return migration_target_version(package_source, package_ref, package_dir)
+    version, parsed = migration_target_version(package_source, package_ref, package_dir)
+    if parsed[:2] not in ((1, 66), (1, 70)):
+        raise RuntimeError("Migration target must be 1.66.x or 1.70.x")
+    return version, parsed
 
 
 # ---------------------------------------------------------------------------
@@ -4679,12 +4765,14 @@ def rename_device_inventory(base_url: str, kind: str, old_name: str, new_name: s
 # flash, wait-for-ready, WiFi restore).
 # ---------------------------------------------------------------------------
 def ensure_esptool_port_available(port: str) -> None:
+    ensure_migration_port_unlocked(port)
     port = normalize_serial_port_name(port)
     if not port:
         raise RuntimeError("Serial port missing.")
 
 
 def ensure_serial_command_port_available(port: str, allow_running_monitor: bool = False) -> None:
+    ensure_migration_port_unlocked(port)
     port = normalize_serial_port_name(port)
     if not port:
         raise RuntimeError("Serial port missing.")
@@ -4929,103 +5017,449 @@ def backup_firmware_job(job: Job, base_url: str, port: str, baud: int) -> dict[s
             schedule_serial_restart(str(handover["port"]), int(handover["baud"]), delay_seconds=2.0)
 
 
-def migration_job(
-    job: Job,
-    base_url: str,
-    include_api: bool,
-    port: str,
-    baud: int,
-    package_source: str,
-    package_dir: str,
-    package_ref: str,
-    include_littlefs: bool,
-    create_backup: bool,
-) -> dict[str, Any]:
-    ensure_esptool_port_available(port)
-    result: dict[str, Any] = {}
-    wifi_snapshot: dict[str, Any] = {}
-    if package_source == "open":
-        validated_dir = validate_package_dir(package_dir, include_littlefs=include_littlefs, require_base_files=True)
-        package_dir = str(validated_dir)
-        job.log(f"Migration package source: open ({package_dir})")
-    elif package_source == "special":
-        job.log(f"Migration package source: special ({package_ref.strip()})")
-    else:
-        job.log(f"Migration package source: {package_source}")
-    current_version, current_parsed = current_firmware_version(base_url)
-    job.log(f"Migration source version: {current_version}")
-    target_version, target_parsed = validate_migration_package_source(package_source, package_ref, package_dir)
-    job.log(f"Migration target version: {target_version}")
+MIGRATION_LOCK = threading.Lock()
+MIGRATION_CONTEXT = threading.local()
 
-    if target_parsed[:2] != MIGRATION_TARGET_VERSION[:2]:
-        raise RuntimeError(
-            f"Migration target must be in line {version_line_label(MIGRATION_TARGET_VERSION)}. Selected target is {target_version}."
-        )
 
-    if current_parsed < (1, 60, 0):
-        raise RuntimeError("Migration requires at least Brautomat32 1.60.x")
+def ensure_migration_port_unlocked(port: str) -> None:
+    if getattr(MIGRATION_CONTEXT, "active", False):
+        return
+    if MIGRATION_LOCK.locked():
+        raise RuntimeError("Serial access blocked while migration/recovery is running")
+    for session in migration_sessions():
+        if session.get("phase") == "unreadable":
+            raise RuntimeError("Migration report is unreadable; inspect saved recovery data before serial access")
+        if (normalize_serial_port_name(str(session.get("port") or "")) == normalize_serial_port_name(port)
+                and session.get("phase") in ("writing", "verifying", "flash-verified", "booting", "updating-webfiles", "restoring", "recovery-verified")):
+            raise RuntimeError("Incomplete migration on this port; use Migration resume/recovery first")
 
-    if current_parsed < MIGRATION_MIN_VERSION:
-        result["preupdate"] = start_http_preupdate_to_minimum_migration_version(job, base_url)
-        current_version, current_parsed = current_firmware_version(base_url)
-        job.log(f"Migration continues with version: {current_version}")
 
-    if current_parsed < MIGRATION_MIN_VERSION:
-        raise RuntimeError(f"Migration requires Brautomat32 {version_line_label(MIGRATION_MIN_VERSION)} after pre-update")
-
-    if create_backup:
-        job.log("Create required configuration backup")
-        result["backup"] = create_backup_job(job, base_url, include_api)
-        backup_file = str(result.get("backup", {}).get("backup_file") or "").strip()
-        if backup_file:
-            job.log(f"Migration: configuration backup created ({backup_file})")
-
-    job.log("Migration: read WiFi credentials before erase flash")
-    wifi_snapshot = capture_migration_wifi(base_url, port, baud)
-    if wifi_snapshot.get("ssid"):
-        job.log(f"Migration: captured WiFi SSID '{wifi_snapshot['ssid']}'")
-        result["wifi_backup"] = {"ssid": wifi_snapshot["ssid"], "transport": wifi_snapshot.get("transport", "")}
-    else:
-        job.log("Migration: no WiFi credentials available for transfer")
-
-    migration_handover: dict[str, Any] = {}
+def maintenance_status(base_url: str, port: str) -> dict:
+    if not port:
+        return {"active": None, "reason": "serial_port_missing"}
+    if MIGRATION_LOCK.locked():
+        return {"active": None, "reason": "operation_busy"}
     try:
-        job.log("Migration: erase flash")
-        job.log("Migration: write new partition layout, target firmware and LittleFS")
-        result["flash"] = flash_job(
-            job,
-            port,
-            baud,
-            package_source,
-            package_dir,
-            package_ref,
-            True,
-            include_littlefs,
-            restart_monitor_after=False,
-            handover_state=migration_handover,
-        )
-        job.log("Migration: rescan device state after flash")
-        result["post_flash_state"] = wait_for_migration_target_ready(job, base_url, port, 115200)
-        if wifi_snapshot.get("ssid"):
-            job.log("Migration: restore WiFi credentials on target firmware")
-            result["wifi_restore"] = restore_migration_wifi(job, port, 115200, wifi_snapshot)
-        backup_file = str(result.get("backup", {}).get("backup_file") or "").strip()
-        if backup_file:
-            job.log("Migration: wait for HTTP reconnect before automatic restore")
-            result["post_wifi_http_state"] = wait_for_device_http_ready(job, base_url)
-            job.log(f"Migration: restore configuration backup automatically ({backup_file})")
-            backup_name = pathlib.Path(backup_file).name
-            result["restore"] = restore_local_backup(base_url, backup_name)
-            job.log("Migration: configuration restore completed")
+        return maintenance_job(Job(id="maintenance-status", type="maintenance", title="Status"),
+                               base_url, port, 115200, "status")
+    except (OSError, RuntimeError, ValueError) as exc:
+        return {"active": None, "reason": "state_unknown", "error": str(exc)}
+
+
+def maintenance_http(base_url: str, path: str, payload: bytes | None = None) -> dict:
+    headers = {}
+    if payload is not None:
+        headers.update({"Content-Length": str(len(payload)), "Content-Type": "application/octet-stream",
+                        "X-SHA256": hashlib.sha256(payload).hexdigest()})
+    req = request.Request(normalize_base_url(base_url) + path, data=payload,
+                          headers=headers, method="PUT" if payload is not None else "POST")
+    # Never retry a repair request automatically: its writes may already have begun.
+    try:
+        with request.urlopen(req, timeout=200 if payload is not None else 15, context=ssl_context()) as response:
+            response.read()
+            return {"ok": response.status == 200, "status": response.status}
+    except error.HTTPError as exc:
+        return {"ok": False, "status": exc.code}
+
+
+def maintenance_firmware_job(job: Job, base_url: str, source: str, directory: str, ref: str) -> dict:
+    if not MIGRATION_LOCK.acquire(blocking=False):
+        raise RuntimeError("Another device operation is running")
+    try:
+        package = resolve_package(job, source, directory, False, ref, require_base_files=False)
+        payload = (package / "firmware.bin").read_bytes()
+        if len(payload) > 0x210000:
+            raise ValueError("Firmware exceeds App0 partition size")
+        migration_engine.check_image(payload, "BrautomatMain")
+        job.set_current_file("firmware.bin")
+        job.log("Repair App0 via ServiceApp HTTP; filesystem and partition table are not uploaded")
+        result = maintenance_http(base_url, "/api/firmware", payload)
+        if not result["ok"]:
+            raise RuntimeError(f"ServiceApp firmware repair: HTTP {result['status']}")
+        job.set_progress(100)
+        job.log("App0 verified by ServiceApp; maintenance mode remains active")
         return result
     finally:
-        if migration_handover.get("restart"):
-            STATE.append_serial_line("Restart serial monitor")
-            schedule_serial_restart(
-                str(migration_handover["port"]),
-                int(migration_handover["baud"]),
-                delay_seconds=2.0,
-            )
+        MIGRATION_LOCK.release()
+
+
+def maintenance_reset_brew_state(base_url: str) -> dict:
+    if not MIGRATION_LOCK.acquire(blocking=False):
+        raise RuntimeError("Another device operation is running")
+    try:
+        return maintenance_http(base_url, "/api/brew-state/reset")
+    finally:
+        MIGRATION_LOCK.release()
+
+
+def maintenance_job(job: Job, base_url: str, port: str, baud: int, action: str) -> dict:
+    if action not in ("start", "stop", "status"):
+        raise ValueError("Unknown maintenance action")
+    ensure_migration_port_unlocked(port)
+    changes_device = action != "status"
+    if changes_device and not MIGRATION_LOCK.acquire(blocking=False):
+        raise RuntimeError("Another device operation is running")
+    MIGRATION_CONTEXT.active = changes_device
+    handover = {}
+    restart_monitor = True
+    port = normalize_serial_port_name(port)
+    try:
+        handover = prepare_esptool_serial_handover(port, 115200, "Maintenance")
+        with exclusive_serial_access(timeout=30):
+            if not changes_device:
+                ensure_migration_port_unlocked(port)
+            job.set_current_file("maintenanceDetecting")
+            with open_serial_port(port, 115200, timeout=0.1) as handle:
+                if action == "stop":
+                    result = maintenance_engine.leave_service(handle, job.set_current_file)
+                    job.set_progress(100)
+                    return result
+                mode = maintenance_engine.detect(handle)
+            if action == "status" or mode.get("active") is True:
+                return mode
+            # Entry still works with a crashing/offline main application. Process
+            # state, layout, pending updates and target image are checked from flash.
+            try:
+                migration_require_idle(normalize_base_url(base_url))
+            except (OSError, ValueError):
+                pass
+            executable = ensure_esptool_available(job)
+            directory = CACHE_DIR / "maintenance" / uuid.uuid4().hex
+            directory.mkdir(parents=True)
+            job.log(f"Maintenance boot selection backup: {directory}")
+            device = migration_engine.Esptool(executable, port, baud, job.log)
+            restart_monitor = False
+            maintenance_engine.select_service(device, directory, job.set_current_file)
+            job.set_current_file("maintenanceStarting")
+            device.boot()
+            restart_monitor = True
+            with open_serial_port(port, 115200, timeout=0.1) as handle:
+                result = maintenance_engine.wait_for_mode(handle, True)
+            job.set_progress(100)
+            return result
+    finally:
+        if restart_monitor and handover.get("restart"):
+            schedule_serial_restart(handover["port"], handover["baud"], delay_seconds=2)
+        MIGRATION_CONTEXT.active = False
+        if changes_device:
+            MIGRATION_LOCK.release()
+
+
+def migration_root() -> pathlib.Path:
+    return BACKUP_DIR / "migrations"
+
+
+def migration_sessions() -> list[dict[str, Any]]:
+    root = migration_root()
+    if not root.exists():
+        return []
+    entries = []
+    for path in sorted(root.glob("*/report.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            report = migration_engine.Session.load(root, path.parent.name).report
+            entries.append({key: report.get(key) for key in
+                            ("id", "phase", "source_version", "target_version", "backup_verified", "error", "port")})
+        except (ValueError, OSError):
+            entries.append({"id": path.parent.name, "phase": "unreadable", "backup_verified": False,
+                            "error": "Migration report cannot be read; keep the recovery directory"})
+    return entries
+
+
+def migration_require_idle(base_url: str) -> None:
+    # Do not use device_process_status(): its legacy fallback treats errors as idle.
+    base = normalize_base_url(base_url)
+    try:
+        data = json_request(f"{base}/reqProcessStatus", timeout=5.0)
+    except error.HTTPError as exc:
+        if exc.code != 404:
+            raise
+        # Legacy firmware: combine its existing live flag with the persisted
+        # NVS resume/actuator checks performed before the first flash write.
+        vis = json_request(f"{base}/reqVis", timeout=5.0)
+        if not isinstance(vis, dict) or vis.get("brauen") is not False:
+            raise RuntimeError("Legacy device process state is active or unknown")
+        return
+    if not isinstance(data, dict) or data.get("state") != "idle":
+        raise RuntimeError("Migration requires a confirmed idle device; process active or status unknown")
+
+
+def prepare_migration_package(job: Job, source: str, directory: str, ref: str) -> tuple[pathlib.Path, dict]:
+    if source == "open":
+        if not directory:
+            raise ValueError("Select a migration package directory in the Firmware tab")
+        package = pathlib.Path(directory).expanduser().resolve()
+        version, _ = local_package_version(package)
+    else:
+        if source not in REMOTE_PACKAGES:
+            raise ValueError("Unsupported migration package source")
+        branch = ref if source == "special" else REMOTE_PACKAGES[source]["branch"]
+        commit = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits/{parse.quote(branch, safe='')}")
+        sha = str(commit.get("sha", ""))
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("Unable to pin migration source to a commit")
+        build_dir = "ESP32-IDF5dev" if source == "development" else "ESP32-IDF5"
+        base = f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/build/{build_dir}"
+        package = CACHE_DIR / ("migration-" + uuid.uuid4().hex)
+        package.mkdir(parents=True)
+        version, _ = remote_repo_version(sha)
+        for name in migration_engine.IMAGES:
+            target = package / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(download_bytes(f"{base}/{name}", timeout=120.0))
+        for name in WEBUPDATE_TOOL_FILES:
+            target = package / "webfiles" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(download_bytes(github_raw_tools_base(sha) + name, timeout=120.0))
+    metadata = migration_engine.validate_package(package, version)
+    migration_webfiles(package)
+    job.log("Migration package validated: " + str(package))
+    return package, metadata
+
+
+def migration_webfile_allowed(name: str) -> bool:
+    if not isinstance(name, str) or not name.startswith("webfiles/"):
+        return False
+    relative = name[len("webfiles/"):]
+    return relative in WEBUPDATE_TOOL_FILES or bool(re.fullmatch(r"language/[A-Za-z0-9_-]+\.json", relative))
+
+
+def migration_webfiles(package: pathlib.Path) -> dict[str, bytes]:
+    candidates = [package / "webfiles", package / "data"]
+    project = package.parent.parent
+    if package.parent.name == "build" and (project / "platformio.ini").is_file():
+        candidates.append(project / "data")
+    root = next((path for path in candidates if path.is_dir()), None)
+    if root is None:
+        raise ValueError("Matching webfiles missing: select the firmware build directory with its project data directory")
+    entries = set(WEBUPDATE_TOOL_FILES)
+    entries.update("language/" + path.name for path in (root / "language").glob("*.json"))
+    result = {}
+    for name in sorted(entries):
+        if not migration_webfile_allowed("webfiles/" + name):
+            raise ValueError("Migration webfiles must not overwrite user configuration or plans")
+        path = root / name
+        if not path.resolve().is_relative_to(root.resolve()) or path.is_symlink():
+            raise ValueError("Unsafe migration webfile path")
+        content = path.read_bytes()
+        if not content:
+            raise ValueError(f"Invalid migration webfile: {name}")
+        result["/" + name] = content
+    return result
+
+
+def migration_read_file(base_url: str, path: str) -> bytes:
+    try:
+        return download_fs_file(base_url, path)
+    except error.HTTPError as exc:
+        if exc.code != 500 or exc.read(256).strip() != b"Invalid data in handler":
+            raise RuntimeError(f"Migration download failed for {path}: HTTP {exc.code}") from exc
+        # Older firmware cannot stream an empty file. Confirm its current
+        # existence and zero size rather than ignoring a failed download.
+        parent, name = path.rsplit("/", 1)
+        entries = json_request(f"{base_url}/list?dir={parse.quote(parent or '/', safe='')}")
+        matches = [entry for entry in entries if entry.get("type") == "file"
+                   and entry.get("name") in (name, path, path.lstrip("/"))] if isinstance(entries, list) else []
+        if len(matches) == 1 and type(matches[0].get("size")) is int and matches[0]["size"] == 0:
+            return b""
+        raise RuntimeError(f"Migration download failed for {path}: HTTP 500; empty file not confirmed") from exc
+
+
+def migration_user_files(base_url: str, webfiles: dict[str, bytes]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    pending = ["/"]
+    seen = set()
+    while pending:
+        directory = pending.pop()
+        if directory in seen or len(seen) > 128 or len(result) > 4096:
+            raise RuntimeError("Invalid or excessive device directory listing")
+        seen.add(directory)
+        entries = json_request(f"{base_url}/list?dir={parse.quote(directory, safe='')}")
+        if not isinstance(entries, list):
+            raise RuntimeError("Unable to inventory user files before migration")
+        for entry in entries:
+            name = str(entry.get("name", ""))
+            if not name or ".." in name.split("/") or "\\" in name:
+                raise RuntimeError("Invalid device filename")
+            full = "/" + name.lstrip("/")
+            if directory != "/" and not full.startswith(directory.rstrip("/") + "/"):
+                full = directory.rstrip("/") + "/" + name
+            if entry.get("type") == "dir":
+                pending.append(full)
+            elif entry.get("type") == "file" and full not in webfiles:
+                result[full] = migration_engine.digest(migration_read_file(base_url, full))
+            elif entry.get("type") not in ("dir", "file"):
+                raise RuntimeError("Unknown device file entry type")
+    if "/config.txt" not in result:
+        raise RuntimeError("Required config.txt could not be secured")
+    return result
+
+
+def finish_migration(job: Job, session: migration_engine.Session, base_url: str) -> dict[str, Any]:
+    package = session.work / "package"
+    if migration_engine.validate_package(package, session.report["package"]["version"]) != session.report["package"]:
+        raise RuntimeError("Saved migration package changed")
+    files = migration_webfiles(package)
+    if {name: migration_engine.digest(data) for name, data in files.items()} != session.report["webfiles"]:
+        raise RuntimeError("Saved migration webfiles changed")
+    job.set_current_file("migrationStepReconnect")
+    expected_version = migration_engine.version_tuple(session.report["target_version"])
+    deadline = time.time() + 120
+    while True:
+        try:
+            vis = json_request(f"{base_url}/reqVis", timeout=3.0)
+            if require_version_tuple(str(vis.get("firm", "")), "Target") != expected_version:
+                raise RuntimeError("Unexpected target firmware")
+            migration_require_idle(base_url)
+            break
+        except Exception:
+            if time.time() >= deadline:
+                raise RuntimeError("Target is not reachable with the expected version and idle state; keep recovery backup")
+            time.sleep(3)
+    expected_files = session.report["user_files"]
+    job.set_current_file("migrationStepUserCheck")
+    for name, expected in expected_files.items():
+        if migration_engine.digest(migration_read_file(base_url, name)) != expected:
+            raise RuntimeError(f"User file changed after target boot: {name}; recovery available")
+    job.set_current_file("migrationStepWebfiles")
+    session.save("updating-webfiles")
+    for index, (name, content) in enumerate(files.items()):
+        # Retry is idempotent; already verified files are not written again.
+        try:
+            matches = download_fs_file(base_url, name) == content
+        except error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+            matches = False
+        if not matches:
+            post_file_to_fs(base_url, name, content)
+        if download_fs_file(base_url, name) != content:
+            raise RuntimeError(f"Webfile verification failed: {name}")
+        job.set_progress(75 + round(20 * (index + 1) / len(files)))
+    job.set_current_file("migrationStepUserCheck")
+    for name, expected in expected_files.items():
+        if migration_engine.digest(migration_read_file(base_url, name)) != expected:
+            raise RuntimeError(f"User file changed during webfile update: {name}")
+    migration_require_idle(base_url)
+    session.save("complete", user_files_verified=True, webfiles_verified=True, error="",
+                 service_image_verified=True, service_runtime_tested=False)
+    job.set_progress(100)
+    return {"migration_id": session.report["id"], "backup_dir": str(session.directory),
+            "target_version": session.report["target_version"], "preserved_verified": True,
+            "user_files_verified": True, "service_image_verified": True,
+            "service_runtime_tested": False}
+
+
+def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: int,
+                  package_source: str, package_dir: str, package_ref: str,
+                  include_littlefs: bool, create_backup: bool) -> dict[str, Any]:
+    ensure_migration_port_unlocked(port)
+    if not MIGRATION_LOCK.acquire(blocking=False):
+        raise RuntimeError("Another migration or recovery is running")
+    MIGRATION_CONTEXT.active = True
+    session = None
+    handover = {}
+    safe_restart = True
+    try:
+        job.set_current_file("migrationStepPrerequisites")
+        ensure_esptool_port_available(port)
+        base = normalize_base_url(base_url)
+        source, parsed = current_firmware_version(base)
+        if not MIGRATION_MIN_VERSION <= parsed <= (1, 65, 5):
+            raise RuntimeError("Migration source must be 1.62.0 through 1.65.5; no intermediate update is required")
+        migration_require_idle(base)
+        job.set_current_file("migrationStepPackage")
+        package, metadata = prepare_migration_package(job, package_source, package_dir, package_ref)
+        webfiles = migration_webfiles(package)
+        job.set_current_file("migrationStepInventory")
+        user_files = migration_user_files(base, webfiles)
+        job.set_current_file("migrationStepTool")
+        executable = ensure_esptool_available(job)
+        session = migration_engine.Session.create(migration_root(), package, metadata, webfiles, source, CACHE_DIR / "migration-work")
+        session.status = job.set_current_file
+        session.save(source_version=source, target_version=metadata["version"], port=port,
+                     base_url=base, user_files=user_files)
+        job.log(f"Migration backup and report: {session.directory}")
+        migration_require_idle(base)
+        handover = prepare_esptool_serial_handover(port, 115200, "Migration")
+        with exclusive_serial_access(timeout=30):
+            safe_restart = False
+            device = migration_engine.Esptool(executable, port, baud, job.log)
+            session.capture(device)
+            job.set_progress(25)
+            session.install(device, job.set_progress)
+            session.save("booting")
+            job.set_current_file("migrationStepRestart")
+            device.boot()
+            safe_restart = True
+        return finish_migration(job, session, base)
+    except Exception as exc:
+        if session:
+            session.save(error=str(exc))
+            job.log(f"Migration incomplete. Recovery session: {session.report['id']}")
+        raise
+    finally:
+        if safe_restart and handover.get("restart"):
+            schedule_serial_restart(handover["port"], handover["baud"], delay_seconds=2.0)
+        MIGRATION_CONTEXT.active = False
+        MIGRATION_LOCK.release()
+
+
+def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, action: str, backup_dir: str = "") -> dict[str, Any]:
+    if action not in ("resume", "restore"):
+        raise ValueError("Unknown migration recovery action")
+    if not MIGRATION_LOCK.acquire(blocking=False):
+        raise RuntimeError("Another migration or recovery is running")
+    MIGRATION_CONTEXT.active = True
+    session = None
+    handover = {}
+    safe_restart = False
+    try:
+        session = (migration_engine.Session.load_directory(pathlib.Path(backup_dir)) if backup_dir and action == "restore"
+                   else migration_engine.Session.load(migration_root(), session_id))
+        session.status = job.set_current_file
+        job.set_current_file("migrationStepBackupCheck")
+        session.backup()
+        if action == "restore":
+            session.report["work_dir"] = str((CACHE_DIR / "migration-work" / uuid.uuid4().hex).resolve())
+        if session.report["phase"] == "complete" and action == "resume":
+            raise RuntimeError("Migration is already complete")
+        session.save(port=port)
+        job.set_current_file("migrationStepTool")
+        executable = ensure_esptool_available(job)
+        handover = prepare_esptool_serial_handover(port, 115200, "Migration recovery")
+        device = migration_engine.Esptool(executable, port, baud, job.log)
+        with exclusive_serial_access(timeout=30):
+            if device.identity() != session.report["mac"]:
+                raise RuntimeError("Backup belongs to another device")
+            if action == "restore":
+                session.restore(device, job.set_progress)
+                job.set_current_file("migrationStepRestart")
+                device.boot()
+                safe_restart = True
+                session.save("restored", error="")
+                job.set_progress(100)
+                return {"restored": True, "backup_dir": str(session.directory)}
+            phase = session.report["phase"]
+            if phase in ("backup-verified", "writing", "verifying", "flash-verified"):
+                session.install(device, job.set_progress)
+            elif phase in ("booting", "updating-webfiles"):
+                session.verify_installed(device)
+            else:
+                raise RuntimeError("Cannot resume this phase; use verified full backup recovery")
+            session.save("booting")
+            job.set_current_file("migrationStepRestart")
+            device.boot()
+            safe_restart = True
+        return finish_migration(job, session, session.report["base_url"])
+    except Exception as exc:
+        if session:
+            session.save(error=str(exc))
+        raise
+    finally:
+        if safe_restart and handover.get("restart"):
+            schedule_serial_restart(handover["port"], handover["baud"], delay_seconds=2.0)
+        MIGRATION_CONTEXT.active = False
+        MIGRATION_LOCK.release()
 
 
 # ---------------------------------------------------------------------------
@@ -5088,8 +5522,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     "app_root": str(APP_ROOT),
                     "data_root": str(DATA_ROOT),
                     "bundle_root": str(BUNDLE_ROOT),
-                    "esptool": str(bundled_esptool_path() or cached_esptool_path()),
-                    "esptool_version": ESPTOOL_VERSION,
+                    "esptool": str(ESPTOOL_SELECTED_PATH or bundled_esptool_path() or cached_esptool_path()),
+                    "esptool_version": ESPTOOL_SELECTED_VERSION or "not checked",
                     "telegraf": STATE.telegraf.snapshot(),
                     "telegraf_cached": str(cached_telegraf_path()),
                     "telegraf_version": TELEGRAF_VERSION,
@@ -5118,6 +5552,9 @@ class AppHandler(BaseHTTPRequestHandler):
                 self._send_json({"ports": list_serial_ports()})
             except Exception as exc:  # noqa: BLE001
                 self._send_json({"error": str(exc)}, status=500)
+            return
+        if path == "/api/migration/sessions":
+            self._send_json({"sessions": migration_sessions()})
             return
         if path == "/api/jobs":
             self._send_json({"jobs": STATE.jobs.snapshot()})
@@ -5208,6 +5645,13 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         path = parse.urlparse(self.path).path
         try:
+            if MIGRATION_LOCK.locked() and path.startswith((
+                "/api/wifi/", "/api/flash", "/api/firmware/backup", "/api/firmware/update/start",
+                "/api/webfiles/", "/api/language/install", "/api/device/reboot",
+                "/api/inventory/", "/api/backups/restore", "/api/backup", "/api/restore",
+                "/api/test-runner/start", "/api/servicetool/update/download",
+            )):
+                raise RuntimeError("Device changes are blocked while migration/recovery is running")
             if path == "/api/device/status":
                 data = self._read_json()
                 self._send_json(
@@ -5353,7 +5797,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/wifi/save":
                 data = self._read_json()
-                self._send_json(wifi_save(data["base_url"], data.get("ssid", ""), data.get("password", ""), data.get("serial_port", ""), int(data.get("serial_baud", 115200))))
+                self._send_json(wifi_save(data["base_url"], data.get("ssid", ""), data.get("password", ""), data.get("serial_port", ""), int(data.get("serial_baud", 115200)), bool(data.get("maintenance", False))))
                 return
             if path == "/api/flash":
                 data = self._read_json()
@@ -5457,6 +5901,44 @@ class AppHandler(BaseHTTPRequestHandler):
             if path == "/api/backups/user-info":
                 data = self._read_json()
                 self._send_json(update_backup_user_info(data["filename"], data.get("user_info", "")))
+                return
+            if path == "/api/maintenance/brew-state/reset":
+                data = self._read_json()
+                self._send_json(maintenance_reset_brew_state(data["base_url"]))
+                return
+            if path == "/api/maintenance/firmware":
+                data = self._read_json()
+                if data.get("erase_flash") or data.get("include_littlefs"):
+                    raise ValueError("Maintenance repair only supports App0")
+                job = STATE.jobs.create("flash", "Firmware repair")
+                run_job(job, maintenance_firmware_job, data["base_url"],
+                        data.get("package_source", "release"), data.get("package_dir", ""), data.get("package_ref", ""))
+                self._send_json({"job_id": job.id})
+                return
+            if path == "/api/maintenance/status":
+                data = self._read_json()
+                self._send_json(maintenance_status(data["base_url"], data.get("port", "")))
+                return
+            if path == "/api/maintenance":
+                data = self._read_json()
+                job = STATE.jobs.create("maintenance", "Maintenance")
+                run_job(job, maintenance_job, data["base_url"], data["port"],
+                        int(data.get("baud", 921600)), data["action"])
+                self._send_json({"job_id": job.id})
+                return
+            if path == "/api/migration/backup/pick":
+                selected = pick_directory("Restore Backup", migration_root())
+                if selected:
+                    session = migration_engine.Session.load_directory(pathlib.Path(selected))
+                    session.backup()
+                self._send_json({"directory": selected})
+                return
+            if path == "/api/migration/recovery":
+                data = self._read_json()
+                job = STATE.jobs.create("migration", "Migration recovery")
+                run_job(job, migration_recovery_job, data.get("session_id", ""), data["port"],
+                        int(data.get("baud", 921600)), data["action"], **({"backup_dir": data["backup_dir"]} if data.get("backup_dir") else {}))
+                self._send_json({"job_id": job.id})
                 return
             if path == "/api/migration":
                 data = self._read_json()

@@ -32,6 +32,7 @@ try {
 
     Copy-Item $exePath (Join-Path $packageDir "Brautomat32ServiceTool.exe")
     Copy-Item $readmePath (Join-Path $packageDir "README.md")
+    Copy-Item (Join-Path $scriptDir "MIGRATION.md") (Join-Path $packageDir "MIGRATION.md")
     Copy-Item (Join-Path $scriptDir "docker-compose.yml") (Join-Path $packageDir "docker-compose.yml")
     Copy-Item -Recurse (Join-Path $scriptDir "docker") (Join-Path $packageDir "docker")
     Copy-Item -Recurse (Join-Path $scriptDir "examples") (Join-Path $packageDir "examples")

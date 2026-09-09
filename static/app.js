@@ -391,17 +391,138 @@ const I18N = {
   }
 };
 
-I18N.de.migrationHint = "Migration von 1.62 auf 1.70 mit verändertem Partitions-Schema. Ablauf: Backup, Erase Flash, neue Partitionen + Firmware + LittleFS flashen. WLAN wird übernommen, danach Gerät neu einrichten oder Restore.";
-I18N.de.migrationRequirementSource = "Quelle: Brautomat32 1.62.x";
-I18N.de.migrationRequirementTarget = "Ziel: Brautomat32 1.70.x";
-I18N.de.migrationRequirementTransport = "Erforderlich: Online + serieller COM-Port";
+I18N.de.migrationPackageHint = "Wähle die Firmware 1.7 und den COM Port aus. Anschließend starte die Migration";
+I18N.en.migrationPackageHint = "Select firmware 1.7 and the COM port. Then start the migration";
+I18N.de.migrationRecoveryLabel = "Migration unterbrochen";
+I18N.en.migrationRecoveryLabel = "Migration interrupted";
+I18N.de.migrationRefresh = "Liste aktualisieren";
+I18N.en.migrationRefresh = "Refresh list";
+I18N.de.migrationResume = "Migration fortsetzen";
+I18N.en.migrationResume = "Resume migration";
+I18N.de.migrationRestore = "Restore Backup";
+I18N.en.migrationRestore = "Restore Backup";
+I18N.de.migrationRecoveryHint = "Dasselbe Gerät per USB anschließen.";
+I18N.en.migrationRecoveryHint = "Connect the same device via USB.";
+I18N.de.migrationHint = "Migration der Brautomat32 Firmware 1.6x auf Version 1.7x";
+I18N.de.migrationRequirementSource = "Quelle: 1.62–1.65.5";
+I18N.de.migrationRequirementTarget = "Ziel: 1.70";
+I18N.de.migrationRequirementTransport = "Verbindung: Online und USB";
 I18N.de.migrateBtn = "Migration starten";
 
-I18N.en.migrationHint = "Migration from 1.62 to 1.70 with changed partition scheme. Flow: backup, erase flash, flash new partitions + firmware + LittleFS. WiFi is transferred, then reconfigure or restore the device.";
-I18N.en.migrationRequirementSource = "Source: Brautomat32 1.62.x";
-I18N.en.migrationRequirementTarget = "Target: Brautomat32 1.70.x";
-I18N.en.migrationRequirementTransport = "Required: online + serial COM port";
+I18N.en.migrationHint = "Migration of Brautomat32 firmware 1.6x to version 1.7x";
+I18N.en.migrationRequirementSource = "Source: 1.62–1.65.5";
+I18N.en.migrationRequirementTarget = "Target: 1.70";
+I18N.en.migrationRequirementTransport = "Connection: online and USB";
 I18N.en.migrateBtn = "Start migration";
+
+I18N.de.migrationTitle = "Migration auf Version 1.7";
+
+I18N.en.migrationTitle = "Migration to version 1.7";
+
+I18N.de.migrationBackupHint = "Hinweis: die Migration erstellt zuerst ein vollständiges Backup. Das Backup kann jederzeit wiederhergestellt werden. Eine Migration dauert ca. 8 Minuten.";
+
+I18N.en.migrationBackupHint = "Note: migration first creates a complete backup. The backup can be restored at any time. A migration takes approximately 8 minutes.";
+
+I18N.de.migrationStepPrerequisites = "Voraussetzungen prüfen …";
+I18N.en.migrationStepPrerequisites = "Checking prerequisites …";
+I18N.de.migrationStepPackage = "Firmware vorbereiten und prüfen …";
+I18N.en.migrationStepPackage = "Preparing and checking firmware …";
+I18N.de.migrationStepInventory = "Benutzerdateien erfassen …";
+I18N.en.migrationStepInventory = "Inventorying user files …";
+I18N.de.migrationStepTool = "Flash-Werkzeug vorbereiten …";
+I18N.en.migrationStepTool = "Preparing flash tool …";
+I18N.de.migrationStepDevice = "Gerät und Flash prüfen …";
+I18N.en.migrationStepDevice = "Checking device and flash …";
+I18N.de.migrationStepBackupFirst = "Backup lesen – Durchlauf 1 von 2 …";
+I18N.en.migrationStepBackupFirst = "Reading backup – pass 1 of 2 …";
+I18N.de.migrationStepBackupSecond = "Backup lesen – Durchlauf 2 von 2 …";
+I18N.en.migrationStepBackupSecond = "Reading backup – pass 2 of 2 …";
+I18N.de.migrationStepBackupCheck = "Backup prüfen …";
+I18N.en.migrationStepBackupCheck = "Checking backup …";
+I18N.de.migrationStepPreserved = "WLAN- und Nutzdaten vor Installation prüfen …";
+I18N.en.migrationStepPreserved = "Checking Wi-Fi settings and user data before installation …";
+I18N.de.migrationStepInstall = "Firmware und ServiceApp installieren …";
+I18N.en.migrationStepInstall = "Installing firmware and ServiceApp …";
+I18N.de.migrationStepReadback = "Flash zurücklesen und Installation prüfen …";
+I18N.en.migrationStepReadback = "Reading back flash and checking installation …";
+I18N.de.migrationStepRestart = "Gerät neu starten …";
+I18N.en.migrationStepRestart = "Restarting device …";
+I18N.de.migrationStepReconnect = "Auf Verbindung zum Gerät warten …";
+I18N.en.migrationStepReconnect = "Waiting for device connection …";
+I18N.de.migrationStepUserCheck = "Benutzerdateien prüfen …";
+I18N.en.migrationStepUserCheck = "Checking user files …";
+I18N.de.migrationStepWebfiles = "Webdateien aktualisieren und prüfen …";
+I18N.en.migrationStepWebfiles = "Updating and checking webfiles …";
+I18N.de.migrationStepRestore = "Backup wiederherstellen …";
+I18N.en.migrationStepRestore = "Restoring backup …";
+
+I18N.de.maintenanceStart = "Wartungsmodus starten";
+I18N.en.maintenanceStart = "Start maintenance mode";
+I18N.de.maintenanceStop = "Wartungsmodus beenden";
+I18N.en.maintenanceStop = "Exit maintenance mode";
+I18N.de.maintenanceActive = "Wartungsmodus aktiv";
+I18N.de.maintenanceResetBrew = "Braustatus zurücksetzen";
+I18N.en.maintenanceResetBrew = "Reset brewing state";
+I18N.de.maintenanceResetConfirm = "Gespeicherten Braustatus zurücksetzen? Der gespeicherte Brauvorgang kann danach nicht fortgesetzt werden.";
+I18N.en.maintenanceResetConfirm = "Reset the saved brewing state? The saved brewing process cannot be resumed afterwards.";
+I18N.de.maintenanceResetDone = "Gespeicherter Braustatus zurückgesetzt.";
+I18N.en.maintenanceResetDone = "Saved brewing state reset.";
+I18N.en.maintenanceActive = "Maintenance mode active";
+I18N.de.maintenanceEnded = "Wartungsmodus beendet";
+I18N.en.maintenanceEnded = "Maintenance mode ended";
+I18N.de.maintenanceChecking = "Gerät und Bootauswahl prüfen …";
+I18N.en.maintenanceChecking = "Checking device and boot selection …";
+I18N.de.maintenanceCheckingImage = "ServiceApp prüfen …";
+I18N.en.maintenanceCheckingImage = "Checking ServiceApp …";
+I18N.de.maintenanceSelecting = "ServiceApp als Bootziel setzen …";
+I18N.en.maintenanceSelecting = "Selecting ServiceApp for boot …";
+I18N.de.maintenanceStarting = "ServiceApp starten …";
+I18N.en.maintenanceStarting = "Starting ServiceApp …";
+I18N.de.maintenanceStopping = "Hauptfirmware wird gestartet …";
+I18N.en.maintenanceStopping = "Starting main firmware …";
+
+I18N.de.maintenanceDetecting = "Betriebsmodus ermitteln …";
+I18N.en.maintenanceDetecting = "Detecting operating mode …";
+I18N.de.maintenanceError = "Wartungsmodus-Fehler";
+I18N.en.maintenanceError = "Maintenance error";
+I18N.de.maintenanceReason_state_unknown = "Zustand unbekannt";
+I18N.en.maintenanceReason_state_unknown = "State unknown";
+I18N.de.maintenanceReason_main_start_unconfirmed = "Start der Hauptfirmware nicht bestätigt – Zustand unbekannt";
+I18N.en.maintenanceReason_main_start_unconfirmed = "Main firmware start not confirmed – state unknown";
+I18N.de.maintenanceReason_service_start_unconfirmed = "Start der ServiceApp nicht bestätigt – Zustand unbekannt";
+I18N.en.maintenanceReason_service_start_unconfirmed = "ServiceApp start not confirmed – state unknown";
+I18N.de.maintenanceReason_boot_reply_missing = "Keine Bootantwort; Betriebsmodus erneut geprüft";
+I18N.en.maintenanceReason_boot_reply_missing = "No boot reply; operating mode checked again";
+I18N.de.maintenanceReason_serial_port_missing = "COM-Port auswählen";
+I18N.en.maintenanceReason_serial_port_missing = "Select a COM port";
+I18N.de.maintenanceReason_operation_busy = "Gerät führt einen anderen Vorgang aus";
+I18N.en.maintenanceReason_operation_busy = "Device is busy";
+I18N.de.maintenanceReason_layout_invalid = "Partitionslayout nicht unterstützt";
+I18N.en.maintenanceReason_layout_invalid = "Unsupported partition layout";
+I18N.de.maintenanceReason_persistence_unavailable = "Geräteeinstellungen nicht verfügbar";
+I18N.en.maintenanceReason_persistence_unavailable = "Device settings unavailable";
+I18N.de.maintenanceReason_filesystem_unavailable = "Dateisystem nicht verfügbar";
+I18N.en.maintenanceReason_filesystem_unavailable = "Filesystem unavailable";
+I18N.de.maintenanceReason_reboot_pending = "Neustart bereits vorgemerkt";
+I18N.en.maintenanceReason_reboot_pending = "Reboot already scheduled";
+I18N.de.maintenanceReason_app_update_incomplete = "Firmwareupdate unvollständig";
+I18N.en.maintenanceReason_app_update_incomplete = "Firmware update incomplete";
+I18N.de.maintenanceReason_filesystem_update_incomplete = "Dateisystemupdate unvollständig";
+I18N.en.maintenanceReason_filesystem_update_incomplete = "Filesystem update incomplete";
+I18N.de.maintenanceReason_app_image_invalid = "Hauptfirmware ungültig";
+I18N.en.maintenanceReason_app_image_invalid = "Invalid main firmware image";
+I18N.de.maintenanceReason_update_not_ready = "Update noch nicht startbereit";
+I18N.en.maintenanceReason_update_not_ready = "Update not ready";
+I18N.de.maintenanceReason_update_handoff_failed = "Updateübergabe fehlgeschlagen";
+I18N.en.maintenanceReason_update_handoff_failed = "Update handoff failed";
+I18N.de.maintenanceReason_status_write_failed = "Status konnte nicht gespeichert werden";
+I18N.en.maintenanceReason_status_write_failed = "Could not save status";
+I18N.de.maintenanceReason_boot_selection_failed = "Bootziel konnte nicht gesetzt werden";
+I18N.en.maintenanceReason_boot_selection_failed = "Could not set boot target";
+I18N.de.maintenanceReason_unknown_command = "Wartungsbefehl nicht unterstützt";
+I18N.en.maintenanceReason_unknown_command = "Maintenance command not supported";
+I18N.de.maintenanceReason_line_too_long = "Wartungsbefehl zu lang";
+I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
@@ -650,7 +771,7 @@ function applyLanguage() {
       "wifiTitle", "wifiScanLabel", "wifiSsidLabel", "wifiPasswordLabel",
     "restoreTitle", "restoreFileLabel", "flashTitle", "firmwareBackupTitle", "firmwareBackupHint", "webfilesTitle", "webfilesHint", "webfilesLanguageLabel", "firmwareStatusTitle", "managementStatusTitle", "managementDeviceFilesTitle", "managementDeviceFilesTitle2", "managementDeviceFilesTitle3", "managementDeviceFilesTitle4", "managementLocalFilesTitle", "managementLocalFilesTitle2", "managementLocalFilesTitle3", "managementLocalFilesTitle4", "inventoryRootLabel", "managementMashplansTab", "managementFermenterplansTab", "managementProfilesTab", "managementConfigTab", "packageSourceLabel", "packageVersionLabel", "activeFirmwareLabel", "portLabel", "baudLabel", "eraseFlashLabel",
       "littlefsLabel", "flashBackupWarning", "firmwareProgressTitle", "packageLabel", "migrationTitle", "migrationHint",
-      "migrationBackupLabel", "serialTitle",
+      "serialTitle",
       "serialPortLabel", "serialBaudLabel", "guideTitle", "testRunnerTitle", "testRunnerHint", "testRunnerSuiteLabel", "testRunnerSuiteInfoTitle",
       "testRunnerDeviceKeyLabel", "testRunnerResultTitle", "testRunnerSummarySuiteLabel", "testRunnerSummaryStatusLabel",
       "testRunnerSummaryCountsLabel", "testRunnerSummaryReportLabel", "testRunnerStatusTitle"
@@ -723,14 +844,15 @@ function applyLanguage() {
   if ($("checkFirmwareUpdateBtn")) $("checkFirmwareUpdateBtn").textContent = text("checkFirmwareUpdateBtn");
   $("installLanguageBtn").textContent = text("installLanguageBtn");
   $("flashBtn").textContent = text("flashBtn");
+  renderMaintenanceButton();
+  for (const id of ["migrationBackupHint", "migrationPackageHint", "migrationRecoveryLabel", "migrationRefresh", "migrationResume", "migrationRestore", "migrationRecoveryHint"]) {
+    if ($(id)) $(id).textContent = text(id);
+  }
   $("migrateBtn").textContent = text("migrateBtn");
   $("migrationHint").textContent = text("migrationHint");
   if ($("migrationRequirementSource")) $("migrationRequirementSource").textContent = text("migrationRequirementSource");
   if ($("migrationRequirementTarget")) $("migrationRequirementTarget").textContent = text("migrationRequirementTarget");
   if ($("migrationRequirementTransport")) $("migrationRequirementTransport").textContent = text("migrationRequirementTransport");
-  $("migrationHint").textContent = currentLang === "de"
-    ? "Migration von 1.62 auf 1.70 mit verändertem Partitions-Schema. Vor der Migration wird immer ein Konfigurations-Backup erstellt."
-    : "Migration from 1.62 to 1.70 with single-app layout. A configuration backup is always created before migration.";
   $("serialStartBtn").innerHTML = text("serialStartBtn");
   $("migrationHint").textContent = text("migrationHint");
   if ($("migrationRequirementSource")) $("migrationRequirementSource").textContent = text("migrationRequirementSource");
@@ -1940,7 +2062,7 @@ async function openInventoryDetail(kind, side, filename) {
   modal?.classList.remove("hidden-panel");
   try {
     const endpoint = side === "device" ? "/api/inventory/device/detail" : "/api/inventory/local/detail";
-    const extra = side === "device" ? `&base_url=${encodeURIComponent($("deviceUrl").value)}` : "";
+    const extra = side === "device" ? `&base_url=${encodeURIComponent(managementDeviceUrl())}` : "";
     const data = await api(`${endpoint}?kind=${encodeURIComponent(kind)}&filename=${encodeURIComponent(filename)}${extra}`);
     inventoryDetailState = { kind, side, filename, user_info: data.user_info || "" };
     loading?.classList.add("hidden-panel");
@@ -2261,15 +2383,34 @@ function renderInventoryList(listId, files, emptyMessage = null, options = {}) {
   setManagementSelected(kind, side, nextSelection ? (nextSelection.rel_path || nextSelection.name) : "", nextSelection?.type || "", nextSelection?.name || "");
 }
 
+function managementServiceActive() {
+  return maintenanceActive === true && maintenanceSelection === maintenanceSelectionKey();
+}
+
+function managementDeviceAvailable() {
+  return deviceIsOnline() || managementServiceActive();
+}
+
+function managementDeviceUrl() {
+  const value = $("deviceUrl").value;
+  if (!managementServiceActive()) return value;
+  try {
+    const url = new URL(value.includes("://") ? value : `http://${value}`);
+    if (url.hostname.toLowerCase() === "brautomat.local") url.hostname = "brautomat-service.local";
+    return url.toString().replace(/\/$/, "");
+  } catch (_) { return value; }
+}
+
 async function loadInventory(kind, options = {}) {
   const includeDevice = options.includeDevice !== false;
   setSpinner(`${kind}Spinner`, true);
   setInlineStatus(`${kind}InlineStatus`, currentLang === "de" ? "Lade Inventar. Bitte warten ..." : "Loading inventory. Please wait ...");
   try {
-    const deviceOnline = ($("deviceConnectionState")?.dataset?.state || "") === "online";
+    const deviceOnline = managementDeviceAvailable();
+    const unavailable = currentLang === "de" ? "Device nicht erreichbar." : "Device not available.";
     const localDir = managementCurrentDir(kind);
     const loadDevice = includeDevice && deviceOnline;
-    const data = await api(`/api/inventory/list?kind=${encodeURIComponent(kind)}&base_url=${encodeURIComponent($("deviceUrl").value)}&device=${loadDevice ? "1" : "0"}&local_dir=${encodeURIComponent(localDir)}`);
+    const data = await api(`/api/inventory/list?kind=${encodeURIComponent(kind)}&base_url=${encodeURIComponent(managementDeviceUrl())}&device=${loadDevice ? "1" : "0"}&local_dir=${encodeURIComponent(localDir)}`);
     if (data.inventory_root) {
       appConfig.inventory_root = data.inventory_root;
       updateInventoryRootPath();
@@ -2278,9 +2419,7 @@ async function loadInventory(kind, options = {}) {
       renderInventoryList(
         managementListId(kind, "device"),
         data.device || [],
-        deviceOnline
-          ? null
-          : (currentLang === "de" ? "Device nicht erreichbar" : "Device not available"),
+        loadDevice ? null : unavailable,
         { side: "device" }
       );
     }
@@ -2288,9 +2427,9 @@ async function loadInventory(kind, options = {}) {
     if (!includeDevice) {
       setInlineStatus(`${kind}InlineStatus`, "");
     } else if (!deviceOnline) {
-      setInlineStatus(`${kind}InlineStatus`, currentLang === "de" ? "Device nicht erreichbar." : "Device not available.");
+      setInlineStatus(`${kind}InlineStatus`, unavailable);
     } else if (data.device_error) {
-      setInlineStatus(`${kind}InlineStatus`, currentLang === "de" ? "Device nicht erreichbar." : "Device not available.");
+      setInlineStatus(`${kind}InlineStatus`, `Error: ${data.device_error}`);
     } else {
       setInlineStatus(`${kind}InlineStatus`, "");
     }
@@ -2324,7 +2463,7 @@ async function inventoryAction(kind, action, side = "") {
     return;
   }
   const requiresOnline = ["device-to-local", "local-to-device", "device-delete", "device-rename"].includes(action);
-  if (requiresOnline && !deviceIsOnline()) {
+  if (requiresOnline && !managementDeviceAvailable()) {
     const message = currentLang === "de" ? "Device nicht erreichbar." : "Device not available.";
     setInlineStatus(`${kind}InlineStatus`, message);
     appendStatus("managementStatus", managementTitle(kind), message);
@@ -2347,7 +2486,7 @@ async function inventoryAction(kind, action, side = "") {
   setSpinner(`${kind}Spinner`, true);
   setInlineStatus(`${kind}InlineStatus`, statusMap[action]);
   try {
-    const body = { kind, filename, base_url: $("deviceUrl").value };
+    const body = { kind, filename, base_url: managementDeviceUrl() };
     if (action === "device-rename" || action === "local-rename") {
       const suggestion = filename;
       const entered = window.prompt(currentLang === "de" ? "Neuer Dateiname" : "New filename", suggestion);
@@ -2377,7 +2516,7 @@ async function inventoryActionExplorer(kind, action, side = "") {
     return;
   }
   const requiresOnline = ["device-to-local", "local-to-device", "device-delete", "device-rename"].includes(action);
-  if (requiresOnline && !deviceIsOnline()) {
+  if (requiresOnline && !managementDeviceAvailable()) {
     const message = currentLang === "de" ? "Device nicht erreichbar." : "Device not available.";
     setInlineStatus(`${kind}InlineStatus`, message);
     appendStatus("managementStatus", managementTitle(kind), message);
@@ -2410,7 +2549,7 @@ async function inventoryActionExplorer(kind, action, side = "") {
     if ((action === "local-delete" || action === "local-rename") && selected?.type === "parent") {
       throw new Error(currentLang === "de" ? "Dieser Eintrag kann nicht bearbeitet werden." : "This entry cannot be modified.");
     }
-    const body = { kind, filename, base_url: $("deviceUrl").value, local_dir: managementCurrentDir(kind) };
+    const body = { kind, filename, base_url: managementDeviceUrl(), local_dir: managementCurrentDir(kind) };
     if (action === "device-to-local" && localInventoryHasFile(kind, selected?.name || filename)) {
       const conflict = await askLocalCopyConflict(selected?.name || filename);
       if (conflict === "abort") {
@@ -2460,7 +2599,7 @@ async function inventoryInfoAction(kind, side) {
     setInlineStatus(`${kind}InlineStatus`, currentLang === "de" ? "Keine Datei ausgewählt." : "No file selected.");
     return;
   }
-  if (side === "device" && !deviceIsOnline()) {
+  if (side === "device" && !managementDeviceAvailable()) {
     const message = currentLang === "de" ? "Device nicht erreichbar." : "Device not available.";
     setInlineStatus(`${kind}InlineStatus`, message);
     appendStatus("managementStatus", managementTitle(kind), message);
@@ -2851,6 +2990,7 @@ async function loadPorts() {
   if (selectedPort && available.has(selectedPort)) {
     await applySelectedSerialPort(selectedPort, false);
   }
+  refreshMaintenance();
   writeStartupTrace(`loadPorts done: ${ports.length} port(s), selected=${selectedPort || "-"}`);
   return data;
 }
@@ -2858,9 +2998,18 @@ async function loadPorts() {
 function appendStatus(id, title, value) {
   const target = $(id);
   const cleaned = sanitizeStatusValue(value);
-  const block = `${title}\n${typeof cleaned === "string" ? cleaned : JSON.stringify(cleaned, null, 2)}`;
+  const block = `${title}\n${formatStatusDetails(cleaned)}`;
   target.textContent = target.textContent ? `${target.textContent}\n\n${block}` : block;
   scrollOutputToEnd(id);
+}
+
+function formatStatusDetails(value) {
+  if (typeof value === "string") return value;
+  if (value && Array.isArray(value.logs)) {
+    const { logs, ...details } = value;
+    return `${JSON.stringify(details, null, 2)}\n\n${logs.join("\n")}`;
+  }
+  return JSON.stringify(value, null, 2);
 }
 
 function sanitizeStatusValue(value) {
@@ -3017,9 +3166,19 @@ async function pollActiveProcess() {
 }
 
 function updateDeviceVersionMeta(data = null) {
+  maintenanceVersion = {selection: maintenanceSelectionKey(), firmware: data?.firmware || ""};
+  const detectedVersion = parseDeviceFirmwareVersion(data?.firmware || "");
+  if (detectedVersion && compareVersionTuple(detectedVersion, [1, 65, 5]) <= 0) {
+    maintenanceActive = false;
+    maintenanceNeedsDetection = false;
+    clearTimeout(maintenanceRefreshTimer);
+  }
+  renderMaintenanceButton();
   const node = $("deviceConnectionState");
   const field = $("activeFirmware");
-  const version = String(data?.firmware || "").trim();
+  const version = data?.mode === "service"
+    ? `Brautomat32 ServiceApp · ${text("maintenanceActive")}`
+    : String(data?.firmware || "").trim();
   const source = String(data?.version_source || data?.transport || "").trim();
   const tooltip = version ? (source ? `${version} (${source})` : version) : "";
   if (node) node.title = tooltip;
@@ -3118,7 +3277,7 @@ async function checkDevice(options = {}) {
         prefer_serial: preferSerial
       }
     });
-    lastDeviceStatus = { ...lastDeviceStatus, ...data };
+    lastDeviceStatus = { ...lastDeviceStatus, ...data, mode: data?.mode || null };
     updateDeviceConnectionState(data?.state || (serialDeviceAvailable() ? "serial" : "offline"));
     updateDeviceVersionMeta(data);
     updateActiveProcessState(data);
@@ -3126,7 +3285,7 @@ async function checkDevice(options = {}) {
       checkFirmwareUpdate(false).catch(console.error);
     }
     writeStartupTrace(`checkDevice done: state=${data?.state || "-"} transport=${data?.transport || "-"} firmware=${String(data?.firmware || "").trim() || "-"}`);
-    if (data?.state === "serial" && !pendingOnlineUpgradeCheck) {
+    if (data?.state === "serial" && data?.mode !== "service" && !pendingOnlineUpgradeCheck) {
       writeStartupTrace("checkDevice schedules online upgrade check");
       pendingOnlineUpgradeCheck = window.setTimeout(async () => {
         pendingOnlineUpgradeCheck = null;
@@ -3171,7 +3330,10 @@ async function checkDevice(options = {}) {
       const spinner = $("wifiSpinner");
       const isScanning = spinner && !spinner.classList.contains("hidden-spinner");
       const firmwareKnown = !!String(data?.firmware || "").trim();
-      if (firmwareTabActive && !isScanning && ["serial", "online"].includes(String(data?.state || "").trim()) && firmwareKnown) {
+      if (data?.mode === "service") {
+        writeStartupTrace("checkDevice skips auto wifi scan: ServiceApp maintenance mode");
+        finishGlobalSpinner();
+      } else if (firmwareTabActive && !isScanning && ["serial", "online"].includes(String(data?.state || "").trim()) && firmwareKnown) {
         writeStartupTrace("checkDevice schedules wifi scan");
         globalSpinnerHandedOff = true;
         window.setTimeout(() => {
@@ -3384,6 +3546,10 @@ async function deleteBackup() {
 }
 
 async function resetWifi() {
+  if (managementServiceActive()) {
+    setInlineStatus("wifiInlineStatus", currentLang === "de" ? "WLAN-Einstellungen in der ServiceApp noch nicht unterstützt." : "WiFi settings are not yet supported by the ServiceApp.");
+    return;
+  }
   setButtonsDisabled(["wifiResetBtn", "wifiScanBtn", "wifiSaveBtn"], true);
   try {
     const provisioning = currentSerialProvisioning();
@@ -3415,6 +3581,10 @@ async function resetWifi() {
 }
 
 async function scanWifi(forceRefresh = true, allowHostFallback = true, options = {}) {
+  if (managementServiceActive()) {
+    setInlineStatus("wifiInlineStatus", currentLang === "de" ? "WLAN-Einstellungen in der ServiceApp noch nicht unterstützt." : "WiFi settings are not yet supported by the ServiceApp.");
+    return;
+  }
   const useGlobalSpinner = options.globalSpinner === true;
   if (useGlobalSpinner) {
     if ($("appLoadingText")) $("appLoadingText").textContent = currentLang === "de" ? "WLAN wird geprüft ..." : "Checking WiFi ...";
@@ -3549,16 +3719,17 @@ async function scanWifi(forceRefresh = true, allowHostFallback = true, options =
 }
 
 async function saveWifi() {
+  const serviceMode = managementServiceActive();
   setButtonsDisabled(["wifiResetBtn", "wifiScanBtn", "wifiSaveBtn"], true);
   try {
-    const transport = wifiTransportProvisioning();
+    const transport = serviceMode ? {serial_port: $("portSelect").value, serial_baud: 115200} : wifiTransportProvisioning();
     if (transport.serial_port && !requireSerialPortForAction(transport.serial_port, "wifiInlineStatus", "firmwareStatus", text("wifiTitle"))) {
       return;
     }
     setSpinner("wifiSpinner", true);
-    setInlineStatus("wifiInlineStatus", "Credentials saved, rebooting. Please wait ...");
+    setInlineStatus("wifiInlineStatus", (currentLang === "de" ? "WLAN-Zugangsdaten werden gespeichert …" : "Saving WiFi credentials …"));
     appendStatus("firmwareStatus", text("wifiTitle"), {
-      status: "Credentials saved, rebooting. Please wait ...",
+      status: (currentLang === "de" ? "WLAN-Zugangsdaten werden gespeichert …" : "Saving WiFi credentials …"),
       ssid: $("wifiSsid").value
     });
       const data = await api("/api/wifi/save", {
@@ -3567,10 +3738,18 @@ async function saveWifi() {
           base_url: effectiveDeviceBaseUrl(),
           ssid: $("wifiSsid").value,
           password: $("wifiPassword").value,
+          maintenance: serviceMode,
           ...transport
         }
       });
     appendStatus("firmwareStatus", text("wifiTitle"), data);
+    if (serviceMode) {
+      setInlineStatus("wifiInlineStatus", currentLang === "de"
+        ? "WLAN-Zugangsdaten gespeichert. ServiceApp-Neustart angefordert; WLAN-Verbindung noch nicht bestätigt."
+        : "WiFi credentials saved. ServiceApp restart requested; WiFi connection not yet confirmed.");
+      maintenanceRefreshTimer = setTimeout(refreshMaintenance, 3000);
+      return;
+    }
     const verification = data && typeof data === "object" ? data.verification : null;
     if (verification && verification.result === "success") {
       setInlineStatus("wifiInlineStatus", "WLAN configuration successful");
@@ -3601,10 +3780,11 @@ async function startFlash() {
     setSpinner("flashSpinner", true);
     setInlineStatus("flashInlineStatus", "Preparing firmware flash...");
     setProgressState("firmwareProgressPanel", "firmwareProgressBar", "firmwareProgressText", 0, true);
-    const data = await api("/api/flash", {
+    const data = await api(managementServiceActive() ? "/api/maintenance/firmware" : "/api/flash", {
       method: "POST",
       body: {
         port: $("portSelect").value,
+        base_url: managementDeviceUrl(),
         baud: Number($("baudSelect").value),
         package_source: $("packageSource").value,
         package_ref: $("packageVersion").value || "",
@@ -3615,7 +3795,8 @@ async function startFlash() {
     });
     setStatus("firmwareStatus", "");
     appendStatus("firmwareStatus", text("flashTitle"), { job_started: data.job_id, status: "running" });
-    watchJobToTarget(data.job_id, "firmwareStatus", text("flashTitle"), "flashInlineStatus");
+    await watchJobToTarget(data.job_id, "firmwareStatus", text("flashTitle"), "flashInlineStatus");
+    if (managementServiceActive()) await refreshMaintenance();
   } catch (err) {
     setProgressState("firmwareProgressPanel", "firmwareProgressBar", "firmwareProgressText", 0, false);
     appendStatus("firmwareStatus", text("flashTitle"), String(err));
@@ -3770,8 +3951,12 @@ async function startMigration() {
     if (!requireSerialPortForAction($("portSelect").value, "migrationInlineStatus", "migrationStatus", text("migrationTitle"), { allowRunningMonitor: true })) {
       return;
     }
+    if (!confirm(currentLang === "de"
+      ? "Die Migration wird auf dem ausgewählten Gerät gestartet.\nAlle Brauprozesse müssen beendet sein. USB und Stromversorgung bis zum Abschluss nicht trennen."
+      : "The migration will be started on the selected device.\nAll brewing processes must be stopped. Keep USB and power connected until completion.")) return;
     setButtonsDisabled(["migrateBtn"], true);
     setSpinner("migrationSpinner", true);
+    $("migrationProgress").value = 0;
     setInlineStatus(
       "migrationInlineStatus",
       currentLang === "de"
@@ -3788,7 +3973,7 @@ async function startMigration() {
         package_source: $("packageSource").value,
         package_dir: $("packageDir").value,
         package_ref: $("packageVersion").value || "",
-        include_littlefs: true,
+        include_littlefs: false,
         create_backup: true
       }
     });
@@ -3800,6 +3985,58 @@ async function startMigration() {
     setInlineStatus("migrationInlineStatus", `Error: ${String(err)}`);
     setSpinner("migrationSpinner", false);
     setButtonsDisabled(["migrateBtn"], false);
+  }
+}
+
+async function refreshMigrationSessions() {
+  const select = $("migrationSession");
+  const previous = select.value;
+  try {
+    const data = await api("/api/migration/sessions");
+    select.replaceChildren();
+    const sessions = (data.sessions || []).filter(session => session.backup_verified &&
+      ["writing", "verifying", "flash-verified", "booting", "updating-webfiles", "restoring", "recovery-verified"].includes(session.phase));
+    $("migrationRecoveryPanel").classList.toggle("hidden-panel", sessions.length === 0);
+    $("migrationSessionChoice").classList.toggle("hidden-panel", sessions.length < 2);
+    for (const session of sessions) {
+      const option = document.createElement("option");
+      option.value = session.id;
+      option.textContent = `${session.id.slice(0, 8)} · ${session.source_version || "?"} → ${session.target_version || "?"} · ${session.port || ""}`;
+      option.disabled = !session.backup_verified;
+      select.appendChild(option);
+    }
+    if ([...select.options].some(option => option.value === previous)) select.value = previous;
+  } catch (err) {
+    appendStatus("migrationStatus", text("migrationTitle"), String(err));
+  }
+}
+
+async function recoverMigration(action) {
+  try {
+    const sessionId = $("migrationSession").value;
+    const port = $("portSelect").value;
+    if (!port || (action !== "restore" && !sessionId)) throw new Error(currentLang === "de" ? "Sicherung und COM-Port auswählen." : "Select a backup and serial port.");
+    let backupDir = "";
+    if (action === "restore") {
+      const selected = await api("/api/migration/backup/pick", {method: "POST", body: {}});
+      if (!selected.directory) return;
+      backupDir = selected.directory;
+    }
+    const message = action === "restore"
+      ? (currentLang === "de" ? "Die vollständige Sicherung auf dasselbe Gerät zurückspielen? Der aktuelle Flash-Inhalt wird dadurch ersetzt." : "Restore the full backup to the same device? This replaces its current flash contents.")
+      : (currentLang === "de" ? "Migration mit der gespeicherten Sicherung und dem geprüften Paket fortsetzen?" : "Resume migration using the saved backup and verified package?");
+    if (!confirm(message)) return;
+    setButtonsDisabled(["migrateBtn", "migrationResume", "migrationRestore"], true);
+    setSpinner("migrationSpinner", true);
+    $("migrationProgress").value = 0;
+    const data = await api("/api/migration/recovery", {method: "POST", body: {
+      session_id: sessionId, backup_dir: backupDir, port, baud: Number($("baudSelect").value), action
+    }});
+    watchJobToTarget(data.job_id, "migrationStatus", text("migrationTitle"), "migrationInlineStatus", ["migrateBtn", "migrationResume", "migrationRestore"]);
+  } catch (err) {
+    appendStatus("migrationStatus", text("migrationTitle"), String(err));
+    setSpinner("migrationSpinner", false);
+    setButtonsDisabled(["migrateBtn", "migrationResume", "migrationRestore"], false);
   }
 }
 
@@ -4023,6 +4260,7 @@ async function watchJobToTarget(jobId, targetId, titleOverride = null, inlineSta
         );
       }
         if (inlineStatusId) {
+          if (inlineStatusId === "migrationInlineStatus") $("migrationProgress").value = job.progress || 0;
           const runningTitle = titleOverride || job.title;
           if (job.status === "running" || job.status === "queued") {
             if (inlineStatusId === "webfilesInlineStatus") {
@@ -4034,7 +4272,7 @@ async function watchJobToTarget(jobId, targetId, titleOverride = null, inlineSta
               if (inlineStatusId === "flashInlineStatus") {
                 setInlineStatus(inlineStatusId, "Firmware Flash in progress. Please wait ...");
               } else if (inlineStatusId === "migrationInlineStatus") {
-                setInlineStatus(inlineStatusId, currentLang === "de" ? "Migration läuft. Bitte warten ..." : "Migration in progress. Please wait ...");
+                setInlineStatus(inlineStatusId, I18N[currentLang][job.current_file] || (currentLang === "de" ? "Migration wird vorbereitet …" : "Preparing migration …"));
               } else {
                 const detail = job.current_file ? ` ${job.current_file}` : "";
                 setInlineStatus(inlineStatusId, `${runningTitle}...${detail}`);
@@ -4055,7 +4293,9 @@ async function watchJobToTarget(jobId, targetId, titleOverride = null, inlineSta
                 } else if (inlineStatusId === "firmwareBackupInlineStatus") {
                   setInlineStatus(inlineStatusId, currentLang === "de" ? "Firmware backup completed." : "Firmware backup completed.");
                 } else if (inlineStatusId === "migrationInlineStatus") {
-                  setInlineStatus(inlineStatusId, currentLang === "de" ? "Migration completed." : "Migration completed.");
+                  setInlineStatus(inlineStatusId, job.result?.restored
+                    ? (currentLang === "de" ? "Flash-Sicherung geprüft und wiederhergestellt." : "Flash backup verified and restored.")
+                    : (currentLang === "de" ? "Migration abgeschlossen" : "Migration completed"));
                 } else {
                   setInlineStatus(inlineStatusId, `${runningTitle} completed.`);
                 }
@@ -4113,6 +4353,7 @@ async function watchJobToTarget(jobId, targetId, titleOverride = null, inlineSta
         );
       }
       if (job.status !== "running" && job.status !== "queued") {
+        if (inlineStatusId === "migrationInlineStatus") refreshMigrationSessions();
         resolve(job);
       }
       } catch (err) {
@@ -4125,7 +4366,199 @@ async function watchJobToTarget(jobId, targetId, titleOverride = null, inlineSta
   });
 }
 
+let maintenanceVersion = {selection: "", firmware: ""};
+let maintenanceActive = null;
+let maintenanceExitBlocked = false;
+let maintenanceRefreshTimer = null;
+let maintenanceNeedsDetection = false;
+let maintenanceBusy = false;
+let maintenanceStatusPending = false;
+let maintenanceSelection = "";
+
+function maintenanceSelectionKey() {
+  return `${$("deviceUrl").value}|${$("portSelect").value}`;
+}
+
+function maintenanceUnsupported() {
+  if (managementServiceActive() || maintenanceVersion.selection !== maintenanceSelectionKey()) return false;
+  const version = parseDeviceFirmwareVersion(maintenanceVersion.firmware);
+  return !!version && compareVersionTuple(version, [1, 65, 5]) <= 0;
+}
+
+function renderMaintenanceButton() {
+  const unsupported = maintenanceUnsupported();
+  const service = managementServiceActive();
+  $("maintenanceUnavailable").textContent = currentLang === "de"
+    ? "Der Wartungsmodus steht ab Firmware 1.70 zur Verfügung. Bitte die Firmware aktualisieren."
+    : "Maintenance mode is available from firmware 1.70. Please update the firmware.";
+  $("maintenanceUnavailable").classList.toggle("hidden-panel", !unsupported);
+  $("maintenanceStatus").classList.toggle("hidden-panel", unsupported);
+  $("maintenanceResetBrew").textContent = text("maintenanceResetBrew");
+  $("maintenanceResetBrew").disabled = !service || maintenanceBusy || maintenanceStatusPending;
+  for (const id of ["eraseFlashSelect", "littlefsSelect"]) {
+    if (service) $(id).checked = false;
+    $(id).disabled = service || maintenanceBusy;
+  }
+  const maintenanceLabel = text(maintenanceActive ? "maintenanceStop" : "maintenanceStart");
+  $("maintenanceToggleLabel").textContent = maintenanceLabel;
+  $("maintenanceToggle").title = maintenanceLabel;
+  $("maintenanceToggle").setAttribute("aria-label", maintenanceLabel);
+  $("maintenanceToggle").classList.toggle("success", !service);
+  // No main reply is expected in recovery. The USB backend verifies App1 before selecting it.
+  $("maintenanceToggle").disabled = unsupported || !$("portSelect").value || maintenanceBusy || maintenanceStatusPending || maintenanceNeedsDetection || (service && maintenanceExitBlocked);
+}
+
+async function refreshMaintenance() {
+  clearTimeout(maintenanceRefreshTimer);
+  if (maintenanceUnsupported()) { renderMaintenanceButton(); return; }
+  if (maintenanceBusy || maintenanceStatusPending) {
+    maintenanceRefreshTimer = setTimeout(refreshMaintenance, 2000);
+    return;
+  }
+  maintenanceStatusPending = true;
+  renderMaintenanceButton();
+  const selection = maintenanceSelectionKey();
+  if (selection !== maintenanceSelection) {
+    maintenanceActive = null;
+    maintenanceNeedsDetection = false;
+    maintenanceSelection = selection;
+    renderMaintenanceButton();
+  }
+  try {
+    const state = await api("/api/maintenance/status", {method: "POST", body: {
+      base_url: $("deviceUrl").value, port: $("portSelect").value
+    }});
+    if (selection === maintenanceSelectionKey()) {
+      if (state.main?.firmware) maintenanceVersion = {selection, firmware: state.main.firmware};
+      maintenanceActive = typeof state.active === "boolean" ? state.active : null;
+      if (maintenanceActive !== null) maintenanceNeedsDetection = false;
+      showMaintenanceState(state);
+    }
+  } catch (_) {
+    maintenanceActive = null;
+    showMaintenanceState({active: null, reason: "state_unknown"});
+  } finally {
+    maintenanceStatusPending = false;
+    renderMaintenanceButton();
+  }
+}
+
+function showMaintenanceState(state) {
+  clearTimeout(maintenanceRefreshTimer);
+  maintenanceExitBlocked = state.active === true && (state.service?.can_boot_main === false || !!state.reason);
+  if (state.active === true) {
+    const reason = state.reason ? (I18N[currentLang][`maintenanceReason_${state.reason}`] || state.reason) : "";
+    const blocked = currentLang === "de" ? "Beenden derzeit nicht möglich" : "Exit currently unavailable";
+    setInlineStatus("maintenanceStatus", text("maintenanceActive") + (maintenanceExitBlocked ? ` · ${blocked}${reason ? `: ${reason}` : ""}` : ""));
+    if (state.active === true) {
+      maintenanceRefreshTimer = setTimeout(refreshMaintenance, 5000);
+    }
+    return;
+  }
+  if (state.active == null && maintenanceNeedsDetection && $("portSelect").value) {
+    maintenanceRefreshTimer = setTimeout(refreshMaintenance, 2000);
+  }
+  const key = state.reason ? `maintenanceReason_${state.reason}` :
+    (state.active === true ? "maintenanceActive" : state.active === false ? "maintenanceEnded" : "maintenanceReason_state_unknown");
+  setInlineStatus("maintenanceStatus", I18N[currentLang][key] || `${text("maintenanceError")}: ${state.reason}`);
+}
+
+async function resetMaintenanceBrewState() {
+  if (maintenanceActive !== true || maintenanceBusy) return;
+  if (!window.confirm(text("maintenanceResetConfirm"))) return;
+  maintenanceBusy = true;
+  renderMaintenanceButton();
+  try {
+    writeStartupTrace("maintenance brew-state reset requested", {force: true});
+    const result = await api("/api/maintenance/brew-state/reset", {method: "POST", body: {
+      base_url: managementDeviceUrl()
+    }});
+    const messages = currentLang === "de" ? {
+      409: "Reset derzeit gesperrt: Gerät beschäftigt, Neustart geplant oder Gerätezustand unzulässig.",
+      500: "Braustatus nicht vollständig zurückgesetzt. Auftrag erneut ausführen."
+    } : {
+      409: "Reset unavailable: device busy, reboot pending or invalid device state.",
+      500: "Brewing state was not fully reset. Repeat the request."
+    };
+    writeStartupTrace(`maintenance brew-state reset HTTP ${result.status}`, {force: true});
+    setInlineStatus("maintenanceStatus", result.ok ? text("maintenanceResetDone") : (messages[result.status] || `HTTP ${result.status}`));
+  } catch (error) {
+    setInlineStatus("maintenanceStatus", `${text("maintenanceReason_state_unknown")}: ${String(error)}`);
+    writeStartupTrace(`maintenance brew-state reset error: ${String(error)}`, {force: true});
+  } finally {
+    maintenanceBusy = false;
+    renderMaintenanceButton();
+    maintenanceRefreshTimer = setTimeout(refreshMaintenance, 2000);
+  }
+}
+
+async function toggleMaintenance() {
+  if (maintenanceUnsupported()) return;
+  if (maintenanceBusy || maintenanceStatusPending || maintenanceNeedsDetection) return;
+  if (maintenanceSelection !== maintenanceSelectionKey()) {
+    maintenanceActive = null;
+    await refreshMaintenance();
+  }
+  if (!requireSerialPortForAction($("portSelect").value, "maintenanceStatus", "firmwareStatus", text("maintenanceStart"), {allowRunningMonitor: true})) return;
+  maintenanceBusy = true;
+  renderMaintenanceButton();
+  setSpinner("maintenanceSpinner", true);
+  setInlineStatus("maintenanceStatus", text("maintenanceChecking"));
+  const action = maintenanceActive ? "stop" : "start";
+  const startedAt = performance.now();
+  let loggedLines = 0;
+  let lastStep = "";
+  const trace = message => writeStartupTrace(`maintenance ${action} [+${Math.round(performance.now() - startedAt)} ms] ${message}`, {force: true});
+  trace(`port=${$("portSelect").value} flash_baud=${$("baudSelect").value} serial_baud=115200`);
+  try {
+    const result = await api("/api/maintenance", {method: "POST", body: {
+      base_url: $("deviceUrl").value, port: $("portSelect").value,
+      baud: Number($("baudSelect").value), action
+    }});
+    trace(`job=${result.job_id}`);
+    while (true) {
+      const job = await api(`/api/jobs/${result.job_id}`);
+      const logs = job.logs || [];
+      for (const line of logs.slice(loggedLines)) trace(line);
+      loggedLines = logs.length;
+      if (job.current_file && job.current_file !== lastStep) {
+        lastStep = job.current_file;
+        trace(`step=${lastStep}`);
+      }
+      if (job.status === "failed") throw new Error(job.error);
+      if (job.status === "done") {
+        trace(`done: ${JSON.stringify(job.result)}`);
+        maintenanceActive = typeof job.result.active === "boolean" ? job.result.active : null;
+        maintenanceNeedsDetection = maintenanceActive === null;
+        showMaintenanceState(job.result);
+        break;
+      }
+      if (job.current_file) setInlineStatus("maintenanceStatus", text(job.current_file));
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    }
+  } catch (error) {
+    trace(`error: ${String(error)}`);
+    maintenanceActive = null;
+    maintenanceNeedsDetection = true;
+    showMaintenanceState({active: null, reason: "state_unknown"});
+    setInlineStatus("maintenanceStatus", `${text("maintenanceReason_state_unknown")}: ${String(error)}`);
+  } finally {
+    maintenanceBusy = false;
+    renderMaintenanceButton();
+    setSpinner("maintenanceSpinner", false);
+  }
+}
+
+function placeFirmwareSelection(name) {
+  const migration = name === "migration";
+  const destination = $(migration ? "migrationFirmwareSelection" : "firmwareSelectionHome");
+  const controls = $("sharedFirmwareSelection");
+  if (destination && controls && controls.parentElement !== destination) destination.appendChild(controls);
+  $("firmwareOnlyOptions").classList.toggle("hidden-panel", migration);
+}
+
 function activateTab(name) {
+  placeFirmwareSelection(name);
   if (name === "testrunner" && hideTestRunnerViaQuery()) {
     return;
   }
@@ -4137,6 +4570,7 @@ function activateTab(name) {
     pollTelegraf().catch(console.error);
   }
   if (name === "firmware") {
+    refreshMaintenance();
     writeStartupTrace("activateTab firmware");
     const spinner = $("wifiSpinner");
     const select = $("wifiNetworks");
@@ -4251,6 +4685,10 @@ function attachEvents() {
   $("wifiNetworks").addEventListener("change", () => {
     $("wifiSsid").value = $("wifiNetworks").value;
   });
+  $("maintenanceToggle").addEventListener("click", toggleMaintenance);
+  $("maintenanceResetBrew").addEventListener("click", resetMaintenanceBrewState);
+  renderMaintenanceButton();
+  refreshMaintenance();
   $("refreshPorts").addEventListener("click", loadPorts);
   $("choosePackageDir").addEventListener("click", choosePackageDirectory);
   $("chooseInventoryRoot")?.addEventListener("click", chooseInventoryRoot);
@@ -4295,6 +4733,7 @@ function attachEvents() {
   });
   $("portSelect").addEventListener("change", async () => {
     await applySelectedSerialPort($("portSelect").value);
+    refreshMaintenance();
   });
   $("serialPortSelect").addEventListener("change", async () => {
     await applySelectedSerialPort($("serialPortSelect").value);
@@ -4305,6 +4744,10 @@ function attachEvents() {
   $("installLanguageBtn").addEventListener("click", installLanguage);
   $("flashBtn").addEventListener("click", startFlash);
   $("migrateBtn").addEventListener("click", startMigration);
+  $("migrationRefresh").addEventListener("click", refreshMigrationSessions);
+  $("migrationResume").addEventListener("click", () => recoverMigration("resume"));
+  $("migrationRestore").addEventListener("click", () => recoverMigration("restore"));
+  refreshMigrationSessions();
   $("serialStartBtn").addEventListener("click", startSerial);
   $("serialStopBtn").addEventListener("click", stopSerial);
   $("serialClearBtn").addEventListener("click", clearSerialLog);

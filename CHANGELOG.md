@@ -1,15 +1,26 @@
 # Changelog
 
-## 1.7.6 - 2026-09-08
+## 1.7.6 - 2026-09-09
 
-- Zeigt unter Verwaltung > Konfiguration auch lokal erstellte nummerierte
-  Dateiversionen an, die bisher vom Dateifilter ausgeblendet wurden.
-- Startet einen zuvor laufenden Serial Monitor auch nach fehlgeschlagenen
-  Flash-, Backup- und Migrationsschritten wieder.
-- Verwendet die AP-Adresse nur noch als Fallback bei Verbindungsfehlern und
-  erhält HTTP-Fehler des ausgewählten Geräts.
-- Veröffentlicht Release-Artefakte commitgebunden und aktualisiert das
-  Update-Manifest erst nach erfolgreicher Prüfung.
+- Neuer Wartungsmodus zur Reparatur über die ServiceApp: Hauptfirmware ersetzen,
+  Konfiguration, Maische-/Fermenterpläne und Profile verwalten sowie gespeicherten
+  Braustatus zurücksetzen.
+- Wartungsmodus über USB starten und beenden, auch bei nicht antwortender
+  Hauptfirmware. Automatische Statusanzeige und verständliche Aktionsbuttons.
+- WLAN-Zugangsdaten auch im Wartungsmodus über USB speichern.
+- Kürzere Startdauer des Wartungsmodus und ausführliche, lesbare Debug-Ausgaben.
+- Migration von Firmware 1.62–1.65.5 auf 1.70 mit vollständigem Backup und Erhalt
+  von WLAN-Einstellungen und Nutzdaten. Firmwareauswahl, COM-Port und aktueller
+  Arbeitsschritt direkt im Migrationstab.
+- Verständliche Backupnamen mit Firmwareversion und Datum. Wiederherstellung
+  über die Ordnerauswahl, auch nach erfolgreicher Migration.
+- Behebt Migrationsabbrüche bei leeren Dateien, Fehler bei der ESP32-Prüfung
+  und eine fälschliche Migrationssperre beim Laden der WLAN-Zugangsdaten.
+- Verwendet automatisch das neueste stabile esptool; bei fehlender
+  Internetverbindung werden vorhandene lokale Versionen verwendet.
+- Zeigt nummerierte Konfigurationsversionen im lokalen Inventar korrekt an.
+- Verbessert die Wiederaufnahme des seriellen Monitors, die Verbindung über
+  die Geräte-AP-Adresse und die Bereitstellung von ServiceTool-Updates.
 
 ## 1.7.5 - 2026-07-24
 

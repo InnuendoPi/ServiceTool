@@ -20,9 +20,10 @@ It provides:
 Brautomat32 ServiceTool is distributed as a complete desktop application.
 
 The Windows package includes a bundled `esptool` copy. Linux and macOS packages
-do not bundle it. If no bundled copy is available in the current runtime
-environment, the tool downloads a matching `esptool` version automatically on
-first use.
+do not bundle it. Before use, the tool checks the latest stable esptool release
+on GitHub and downloads the matching platform asset when needed. Downloads are
+cached by version. If GitHub is unreachable, a verified local copy is used and
+the fallback is reported in the log.
 
 The ServiceTool checks its own repository manifest at
 `https://raw.githubusercontent.com/InnuendoPi/ServiceTool/main/version.json`
@@ -210,7 +211,30 @@ explicit checkbox in the Telegraf tab only when storing them in the local
 
 ### Migration
 
-Coming soon: migration to version 1.70 based on ESP-IDF 6.
+Migrate firmware 1.62.0–1.65.5 directly to 1.70.x with a verified full flash
+backup, preserved WiFi settings and user files, and backup recovery.
+See [MIGRATION.md](MIGRATION.md) for instructions and package requirements.
+
+### Maintenance mode
+
+Use the maintenance controls in the Firmware tab to start the ServiceApp over
+USB and return to the main firmware. Maintenance requires a compatible ServiceApp;
+firmware up to 1.65.5 needs migration first.
+
+While maintenance mode is active:
+
+- Repair the main firmware from the Firmware tab. Only the main application is
+  uploaded; flash erase and LittleFS flashing are disabled.
+- Use Management to read, replace and delete configuration files, mash/fermenter
+  plans and profiles over the network.
+- Reset the saved brewing state when it prevents normal operation.
+- Save WiFi credentials over USB. Saving does not by itself confirm a successful
+  WiFi connection. WiFi reading, scanning and reset are not supported by the ServiceApp.
+
+The operating mode and any restriction on returning to the main firmware are
+updated automatically. Network repairs use the ServiceApp address; an explicitly
+entered device IP is retained. The main firmware starts only after the ServiceApp
+allows the switch.
 
 ## End-User Requirements
 

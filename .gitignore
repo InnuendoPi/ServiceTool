@@ -42,6 +42,8 @@ config.json
 # Local internal work instructions (never commit)
 /ARBEITSANWEISUNG-BUILD.md
 /CODE-ANALYSE.md
+/migration_todo.md
+/MAINTENANCE.md
 
 # Editors and operating systems
 .idea/

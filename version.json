@@ -2,7 +2,7 @@
   "tool": "Brautomat32 ServiceTool",
   "version": "1.7.6",
   "released_at": "2026-09-08",
-  "notes": "ServiceTool 1.7.6: shows numbered configuration file versions, restores the serial monitor after failed maintenance steps, limits AP fallback to connection failures, and hardens release publishing.",
+  "notes": "ServiceTool 1.7.6: adds verified ServiceApp migration with NVS/LittleFS preservation and recovery, shows numbered configuration versions, improves serial handover and AP fallback, and hardens release publishing.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
     "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.6/Brautomat32ServiceTool-win.zip",
