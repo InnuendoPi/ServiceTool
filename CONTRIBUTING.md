@@ -37,6 +37,11 @@ The build creates:
 
 ## Release Rules
 
+- Local Windows builds prefer `.venv/Scripts/python.exe`; create this environment
+  with Python 3.12, matching CI, and install `requirements.txt` plus `pyinstaller`.
+  `SERVICE_TOOL_BUILD_PYTHON` can select another interpreter explicitly. The build
+  rejects missing Tcl/Tk data before packaging and verifies it inside the EXE.
+
 - When preparing a new version before its packages exist, clear the platform
   download URLs and SHA256 values in `version.json`. The release workflow fills
   them from verified assets. Never advertise a new version using old binaries.
