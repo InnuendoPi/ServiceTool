@@ -5,17 +5,17 @@
   "notes": "ServiceTool 1.7.7: fixes ServiceApp flashing, WiFi validation and scan status, migration to 1.67, restore confirmation, maintenance rename, serial access and Telegraf lifecycle.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "",
-    "sha256": "eeef5d170732897a8bcc09b75f7c618864c595e362cb7eb599b987a02a0dd927"
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.7/Brautomat32ServiceTool-win.zip",
+    "sha256": "eb8a8d49415961daad95a85bb3320dc2dd7e5fd4b9376d040534a63629303657"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.7/Brautomat32ServiceTool-linux.zip",
+    "sha256": "c57aa8b2f48763f52949dcdeb48c84613f993de360ce8f9f45adca9687701116"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.7/Brautomat32ServiceTool-macos.zip",
+    "sha256": "d198d6be840852a79d428040b69fafd9c8fee480ffaed7dea091aa612cddf799"
   }
 }
