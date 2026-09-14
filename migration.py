@@ -132,8 +132,8 @@ def check_image(data: bytes, role: str | None = None) -> str:
 
 
 def validate_package(package: Path, version: str) -> dict:
-    if version_tuple(version)[:2] not in ((1, 66), (1, 70)):
-        raise ValueError("Migration target must be 1.66.x (development) or 1.70.x")
+    if version_tuple(version)[:2] not in ((1, 66), (1, 67), (1, 70)):
+        raise ValueError("Migration target must be 1.66.x, 1.67.x or 1.70.x")
     payloads = {}
     for name, (_, limit) in IMAGES.items():
         path = package / name

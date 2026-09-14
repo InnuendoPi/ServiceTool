@@ -106,7 +106,7 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.7.6"
+SERVICE_TOOL_VERSION = "1.7.7"
 ESPTOOL_VERSION = "5.3.1"  # Legacy cache lookup only; downloads use GitHub latest.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
@@ -1075,10 +1075,7 @@ def reset_serial_device(handle: Any, delay_ms: int = 180) -> None:
 
 
 def read_serial_line(handle: Any) -> str:
-    try:
-        raw = handle.readline()
-    except Exception:
-        return ""
+    raw = handle.readline()
     if not raw:
         return ""
     if isinstance(raw, bytes):
@@ -1423,6 +1420,9 @@ def download_service_tool_update(open_target: bool = True) -> dict[str, Any]:
         raise RuntimeError("No ServiceTool update package URL for this platform")
     if not status.get("available"):
         raise RuntimeError("No newer ServiceTool version is available")
+    expected = str(status.get("sha256") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        raise RuntimeError("ServiceTool update has no valid SHA256 checksum")
     version = sanitize_version_for_filename(str(status.get("version") or "unknown"))
     filename = str(status.get("filename") or f"Brautomat32ServiceTool-{status['platform']}.zip")
     target = UPDATE_DIR / version / filename
@@ -1446,7 +1446,7 @@ def download_service_tool_update(open_target: bool = True) -> dict[str, Any]:
         "path": str(target),
         "directory": str(target.parent),
         "sha256_actual": digest,
-        "sha256_ok": not expected or digest.lower() == expected,
+        "sha256_ok": digest.lower() == expected,
     }
 
 
@@ -1795,6 +1795,7 @@ def package_details(path: pathlib.Path) -> dict[str, Any]:
         "partitions": str(path / "partitions.bin"),
         "boot_app0": str(path / "boot_app0.bin"),
         "firmware": str(path / "firmware.bin"),
+        "serviceapp": str(path / "serviceapp.bin"),
         "littlefs": str(path / "Littlefs.bin"),
     }
     return {
@@ -1895,44 +1896,57 @@ def list_special_versions() -> list[dict[str, str]]:
     return versions
 
 
-def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True) -> pathlib.Path:
+def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True, firmware_only: bool = False) -> pathlib.Path:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError(f"Unknown package source: {source_key}")
-    ref = package_ref.strip() if source_key == "special" else ""
-    if source_key == "special" and not ref:
+    ref = package_ref.strip() if source_key == "special" else REMOTE_PACKAGES[source_key]["branch"]
+    if not ref:
         raise ValueError("Special Version requires a version ref")
-    cache_key = f"special-{re.sub(r'[^A-Za-z0-9._-]+', '_', ref)}" if source_key == "special" else source_key
-    package_dir = remote_package_dir(cache_key)
-    files = [REQUIRED_FIRMWARE_FILE]
-    if require_base_files:
-        files = BASE_FLASH_FILES + files
+    commit = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits/{parse.quote(ref, safe='')}")
+    sha = str(commit.get("sha", ""))
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise ValueError("Unable to pin firmware package to a commit")
+    build_dir = "ESP32-IDF5dev" if ref == "development" else "ESP32-IDF5"
+    base = f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/build/{build_dir}"
+    package_dir = CACHE_DIR / ("flash-" + uuid.uuid4().hex)
+    package_dir.mkdir(parents=True)
+    files = [REQUIRED_FIRMWARE_FILE] if firmware_only else BASE_FLASH_FILES + [REQUIRED_FIRMWARE_FILE]
     if include_littlefs:
         files.append("Littlefs.bin")
-    package_dir.mkdir(parents=True, exist_ok=True)
     for filename in files:
+        job.set_current_file(filename)
+        job.log("Download: " + filename)
         try:
-            if source_key == "special":
-                url = f"{github_raw_package_base(ref)}/{filename}"
-                target = package_dir / filename
-                job.log(f"Download: {url}")
-                data = download_bytes(url, timeout=60.0)
-                target.write_bytes(data)
-                job.log(f"Saved: {target} ({len(data)} bytes)")
-            else:
-                download_package_file(job, source_key, package_dir, filename)
+            content = download_bytes(f"{base}/{filename}", timeout=60.0)
         except error.HTTPError as exc:
             if exc.code == 404 and filename in BASE_FLASH_FILES and not require_base_files:
-                job.log(f"Optional flash file missing on source, skip: {filename}")
                 continue
             raise
-    validate_package_partitions(package_dir, include_littlefs, require_partitions=require_base_files or include_littlefs)
-    write_package_metadata(package_dir, ref or source_key)
+        (package_dir / filename).write_bytes(content)
+    if package_uses_serviceapp(package_dir):
+        job.set_current_file("serviceapp.bin")
+        job.log("Download: serviceapp.bin")
+        (package_dir / "serviceapp.bin").write_bytes(download_bytes(f"{base}/serviceapp.bin", timeout=60.0))
+    if not firmware_only:
+        validate_package_partitions(package_dir, include_littlefs, require_partitions=require_base_files or include_littlefs)
+    metadata = {"source": source_key, "label": REMOTE_PACKAGES[source_key]["label"],
+                "ref": ref, "commit": sha, "base_url": base, "downloaded_at": now_iso(),
+                "files": sorted(item.name for item in package_dir.iterdir() if item.is_file())}
+    (package_dir / "package.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    job.log("Firmware package pinned to " + sha)
     return package_dir
 
 
-def resolve_package(job: Job, source_key: str, package_dir: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True) -> pathlib.Path:
+def resolve_package(job: Job, source_key: str, package_dir: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True, firmware_only: bool = False) -> pathlib.Path:
     if source_key in REMOTE_PACKAGES:
-        return prepare_remote_package(job, source_key, include_littlefs, package_ref, require_base_files=require_base_files)
+        return prepare_remote_package(job, source_key, include_littlefs, package_ref, require_base_files=require_base_files, firmware_only=firmware_only)
+    if firmware_only:
+        path = pathlib.Path(package_dir).expanduser()
+        if not path.is_absolute():
+            path = APP_ROOT / path
+        if not (path / "firmware.bin").is_file():
+            raise ValueError("Select a package containing firmware.bin")
+        return path.resolve()
     return validate_package_dir(package_dir, include_littlefs, require_base_files=require_base_files)
 
 
@@ -2257,24 +2271,34 @@ class SerialSession:
         self._thread.start()
 
     def _pump(self) -> None:
-        if self._serial is not None:
-            while not self._stop.is_set():
-                line = read_serial_line(self._serial)
-                if line:
-                    self.lines.append(f"[{now_iso()}] {line}")
-                    continue
-                time.sleep(SERIAL_POLL_DELAY)
-        else:
-            assert self._proc is not None
-            while not self._stop.is_set():
-                line = self._proc.stdout.readline() if self._proc.stdout else ""
-                if line:
-                    self.lines.append(f"[{now_iso()}] {line.rstrip()}")
-                    continue
-                if self._proc.poll() is not None:
-                    break
-                time.sleep(SERIAL_POLL_DELAY)
-        self.running = False
+        try:
+            if self._serial is not None:
+                while not self._stop.is_set():
+                    line = read_serial_line(self._serial)
+                    if line:
+                        self.lines.append(f"[{now_iso()}] {line}")
+                        continue
+                    time.sleep(SERIAL_POLL_DELAY)
+            else:
+                assert self._proc is not None
+                while not self._stop.is_set():
+                    line = self._proc.stdout.readline() if self._proc.stdout else ""
+                    if line:
+                        self.lines.append(f"[{now_iso()}] {line.rstrip()}")
+                        continue
+                    if self._proc.poll() is not None:
+                        break
+                    time.sleep(SERIAL_POLL_DELAY)
+        except Exception as exc:
+            if not self._stop.is_set():
+                self.add_line(f"Serial connection failed: {exc}. Reconnect the device and start the log again.")
+        finally:
+            self.running = False
+            if self._serial is not None:
+                try:
+                    self._serial.close()
+                except Exception:
+                    pass
 
     def stop(self) -> None:
         self._stop.set()
@@ -2326,20 +2350,28 @@ class ServiceState:
         self.lock = threading.Lock()
         self.serial_access_lock = threading.Lock()
 
-    def start_serial(self, port: str, baud: int, initial_lines: list[str] | None = None, announce_start: bool = True) -> dict[str, Any]:
+    def start_serial(self, port: str, baud: int, initial_lines: list[str] | None = None, announce_start: bool = True, only_if_stopped: bool = False) -> dict[str, Any]:
         ensure_migration_port_unlocked(port)
-        with self.lock:
-            if initial_lines is not None:
-                self.serial_lines = deque(initial_lines, maxlen=400)
-            if self.serial:
-                self.serial.stop()
-            self.serial_port = port
-            self.serial_baud = baud
-            self.serial = SerialSession(port, baud, self.serial_lines)
-            self.serial.start()
-            if announce_start:
-                self.serial.add_line("Start serial monitor")
-            return self.serial.snapshot()
+        if not self.serial_access_lock.acquire(blocking=False):
+            raise RuntimeError("Serial port is busy with another ServiceTool task.")
+        try:
+            ensure_migration_port_unlocked(port)
+            with self.lock:
+                if only_if_stopped and self.serial and self.serial.running:
+                    return self.serial.snapshot()
+                if initial_lines is not None:
+                    self.serial_lines = deque(initial_lines, maxlen=400)
+                if self.serial:
+                    self.serial.stop()
+                self.serial_port = port
+                self.serial_baud = baud
+                self.serial = SerialSession(port, baud, self.serial_lines)
+                self.serial.start()
+                if announce_start:
+                    self.serial.add_line("Start serial monitor")
+                return self.serial.snapshot()
+        finally:
+            self.serial_access_lock.release()
 
     def stop_serial(self) -> dict[str, Any]:
         with self.lock:
@@ -2635,10 +2667,16 @@ def exclusive_serial_access(timeout: float = 10.0):
     acquired = STATE.serial_access_lock.acquire(timeout=timeout)
     if not acquired:
         raise RuntimeError("Serial port is busy with another ServiceTool task.")
+    monitor = None
     try:
+        monitor = STATE.active_serial_config()
+        if monitor and monitor.get("running"):
+            STATE.stop_serial()
         yield
     finally:
         STATE.serial_access_lock.release()
+        if monitor and monitor.get("running"):
+            schedule_serial_restart(monitor["port"], monitor["baud"])
 
 
 def run_job(job: Job, target, *args, **kwargs) -> None:
@@ -2746,6 +2784,7 @@ def create_backup_job(job: Job, base_url: str, include_api: bool) -> dict[str, A
     job.set_progress(40)
     job.log(f"Backup-Antwort: {response.strip() or 'ok'}")
     payload = download_bytes(f"{base}/download?file=/backup.json")
+    validate_backup_content(payload)
     job.set_progress(85)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     target = BACKUP_DIR / f"brautomat-backup-{stamp}.json"
@@ -2813,10 +2852,10 @@ def device_process_status(base_url: str) -> dict[str, Any]:
     try:
         data = json_request(f"{base_url}/reqProcessStatus", timeout=2.5)
     except Exception:
-        return {"state": "idle"}
-    if not isinstance(data, dict):
-        return {"state": "idle"}
-    return data if data.get("state") == "active" else {"state": "idle"}
+        return {"state": "unknown"}
+    if not isinstance(data, dict) or data.get("state") not in ("active", "idle"):
+        return {"state": "unknown"}
+    return data
 
 
 FIRMWARE_BANNER_RE = re.compile(r"(Brautomat32(?:\s+V)?\s+[^\r\n]*\d+\.\d+(?:\.\d+)?[^\r\n]*)", re.IGNORECASE)
@@ -3106,6 +3145,14 @@ def combined_device_status(
     }
 
 
+def validate_serial_reply(value: Any, command: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or value.get("cmd") != command:
+        raise RuntimeError("Unexpected serial response")
+    if value.get("ok") is not True:
+        raise RuntimeError(f"Serial {command}: {value.get('error') or 'command rejected'}")
+    return value
+
+
 def serial_json_command(
     port: str,
     baud: int,
@@ -3132,7 +3179,13 @@ def serial_json_command(
                     line = read_serial_line(handle)
                     if not line or not line.startswith("BST:"):
                         continue
-                    return json.loads(line[4:].strip())
+                    try:
+                        value = json.loads(line[4:].strip())
+                    except ValueError:
+                        continue
+                    if not isinstance(value, dict) or value.get("cmd") != payload.get("cmd"):
+                        continue
+                    return validate_serial_reply(value, payload["cmd"])
             raise RuntimeError("No serial response")
 
         encoded = base64.b64encode((f"BST:{json.dumps(payload, separators=(',', ':'))}\n").encode("utf-8")).decode("ascii")
@@ -3156,8 +3209,12 @@ try {{
     try {{
       $line=$p.ReadLine()
       if ($line -and $line.StartsWith('BST:')) {{
-        Write-Output $line.Substring(4).Trim()
-        break
+        try {{ $reply=$line.Substring(4).Trim() | ConvertFrom-Json }} catch {{ continue }}
+        $sent=$payload.Substring(4).Trim() | ConvertFrom-Json
+        if ($reply.cmd -eq $sent.cmd) {{
+          Write-Output $line.Substring(4).Trim()
+          break
+        }}
       }}
     }} catch [TimeoutException] {{ }}
   }}
@@ -3181,7 +3238,7 @@ try {{
         if not output:
             raise RuntimeError("No serial response")
 
-        return json.loads(output)
+        return validate_serial_reply(json.loads(output), payload["cmd"])
 
 
 def observe_wifi_reboot(port: str, baud: int, timeout: float = 35.0) -> dict[str, Any]:
@@ -3204,9 +3261,9 @@ def observe_wifi_reboot(port: str, baud: int, timeout: float = 35.0) -> dict[str
                             line = read_serial_line(handle)
                             if not line:
                                 continue
-                            if "IP address:" in line or "mDNS http://" in line:
+                            if "IP address:" in line or "mDNS http://" in line or "wlan online ip=" in line:
                                 return {"result": "success", "line": line, "reason": "device-online"}
-                            if "starting WiFi Config Portal" in line or "open http://192.168.4.1" in line:
+                            if "starting WiFi Config Portal" in line or "open http://192.168.4.1" in line or "wifi recovery AP ready ip=" in line:
                                 return {"result": "failed", "line": line, "reason": "config-portal"}
                 except Exception:
                     pass
@@ -3228,12 +3285,12 @@ while ((Get-Date) -lt $deadline) {{
       try {{
         $line=$p.ReadLine().Trim()
         if (-not [string]::IsNullOrWhiteSpace($line)) {{
-          if ($line -match 'IP address:' -or $line -match 'mDNS http://') {{
+          if ($line -match 'IP address:' -or $line -match 'mDNS http://' -or $line -match 'wlan online ip=') {{
             $result=@{{result='success'; line=$line; reason='device-online'}}
             ($result | ConvertTo-Json -Compress)
             return
           }}
-          if ($line -match 'starting WiFi Config Portal' -or $line -match 'open http://192.168.4.1') {{
+          if ($line -match 'starting WiFi Config Portal' -or $line -match 'open http://192.168.4.1' -or $line -match 'wifi recovery AP ready ip=') {{
             $result=@{{result='failed'; line=$line; reason='config-portal'}}
             ($result | ConvertTo-Json -Compress)
             return
@@ -3350,8 +3407,8 @@ def firmware_webupdate_job(job: Job, base_url: str, include_api: bool) -> dict[s
     job.log("Firmware WebUpdate: prüfe Gerät")
     status = firmware_update_status(base_url)
     process = status.get("device", {}).get("active_process") or {}
-    if process.get("state") == "active":
-        raise RuntimeError("Firmware WebUpdate blocked: active mash or fermenter process")
+    if process.get("state") != "idle":
+        raise RuntimeError("Firmware WebUpdate blocked: process is active or its state is unknown")
     if not status.get("available"):
         raise RuntimeError("No newer firmware version available")
 
@@ -3363,6 +3420,7 @@ def firmware_webupdate_job(job: Job, base_url: str, include_api: bool) -> dict[s
     job.set_progress(35)
     job.log(f"Backup-Antwort: {response.strip() or 'ok'}")
     payload = download_bytes(f"{base}/download?file=/backup.json")
+    validate_backup_content(payload)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     target = BACKUP_DIR / f"brautomat-backup-{stamp}.json"
     target.write_bytes(payload)
@@ -3421,6 +3479,7 @@ def start_http_preupdate_to_minimum_migration_version(job: Job, base_url: str) -
 
 def restore_backup(base_url: str, filename: str, content: bytes) -> dict[str, Any]:
     base = normalize_base_url(base_url)
+    validate_backup_content(content)
     try:
         response = post_multipart(f"{base}/restore", "file", filename, content, timeout=25.0)
         return {"response": response.strip() or "ok", "accepted": True}
@@ -3434,17 +3493,42 @@ def restore_backup(base_url: str, filename: str, content: bytes) -> dict[str, An
         BrokenPipeError,
         http.client.RemoteDisconnected,
     ) as exc:
-        return {
-            "response": str(exc) or "connection closed after restore upload",
-            "accepted": True,
-            "device_rebooted": True,
-        }
+        raise RuntimeError("Restore not confirmed: connection failed or closed. Check the device before retrying.") from exc
+
+
+def validate_backup_content(content: bytes) -> dict:
+    try:
+        value = json.loads(content.decode("utf-8-sig"))
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError("Backup is not valid JSON") from exc
+    if not isinstance(value, dict) or not isinstance(value.get("config"), list) or not value["config"]:
+        raise ValueError("Backup configuration is missing or invalid")
+    return value
 
 
 def restore_job(job: Job, base_url: str, filename: str, content: bytes) -> dict[str, Any]:
     job.log(f"Start restore: {normalize_base_url(base_url)}")
     result = restore_backup(base_url, filename, content)
     job.log(f"Restore response: {result.get('response', 'ok')}")
+    job.set_progress(50)
+    job.log("Restore applied; waiting for device availability after restart")
+    time.sleep(3.0)
+    deadline = time.monotonic() + 75.0
+    stable = 0
+    while time.monotonic() < deadline:
+        try:
+            vis = json_request(f"{normalize_base_url(base_url)}/reqVis", timeout=3.0)
+            if not isinstance(vis, dict) or parse_version_tuple(str(vis.get("firm") or "")) is None:
+                raise ValueError("Invalid device status")
+            stable += 1
+            if stable >= 2:
+                result["readyPassed"] = True
+                break
+        except (OSError, ValueError):
+            stable = 0
+        time.sleep(1.0)
+    else:
+        raise RuntimeError("Restore applied, but device availability after restart was not confirmed")
     job.set_progress(100)
     return result
 
@@ -3755,13 +3839,18 @@ def schedule_serial_restart(port: str, baud: int, lines: list[str] | None = None
     def worker() -> None:
         time.sleep(delay_seconds)
         for _ in range(40):
-            if not STATE.serial_access_lock.locked():
-                break
-            time.sleep(0.25)
-        try:
-            STATE.start_serial(port, baud, lines, announce_start=True)
-        except Exception:
-            pass
+            active = STATE.active_serial_config()
+            if active and active.get("running"):
+                return  # A user has already started another monitor.
+            try:
+                STATE.start_serial(port, baud, lines, announce_start=True, only_if_stopped=True)
+                return
+            except RuntimeError:
+                time.sleep(0.25)
+            except Exception as exc:
+                STATE.append_serial_line(f"Serial monitor restart failed: {exc}")
+                return
+        STATE.append_serial_line("Serial monitor remains stopped: port is still busy.")
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -3788,9 +3877,11 @@ def reboot_device(base_url: str, serial_port: str = "", serial_baud: int = 11520
         restart_lines.append(f"[{now_iso()}] API reboot unavailable, fallback to serial")
         restart_lines.append(f"[{now_iso()}] Reboot device")
         STATE.stop_serial()
-    data = serial_json_command(serial_port, serial_baud, {"cmd": "reboot"})
-    if restart_needed:
-        schedule_serial_restart(serial_port, serial_baud, restart_lines)
+    try:
+        data = serial_json_command(serial_port, serial_baud, {"cmd": "reboot"})
+    finally:
+        if restart_needed:
+            schedule_serial_restart(serial_port, int(active["baud"]), restart_lines)
     payload = data.get("data", {}) if isinstance(data, dict) else {}
     if not isinstance(payload, dict):
         payload = {}
@@ -3825,7 +3916,7 @@ def wifi_scan(base_url: str, refresh: bool = False, serial_port: str = "", seria
 
 
 def wifi_save(base_url: str, ssid: str, password: str, serial_port: str = "", serial_baud: int = 115200, maintenance: bool = False) -> dict[str, Any]:
-    if not ssid.strip():
+    if not ssid:
         raise ValueError("SSID missing")
     if maintenance:
         if not serial_port:
@@ -3833,12 +3924,10 @@ def wifi_save(base_url: str, ssid: str, password: str, serial_port: str = "", se
         serial_baud = 115200
     if serial_port:
         data = serial_json_command(serial_port, serial_baud, {"cmd": "wifi_set", "ssid": ssid, "pass": password, "reboot": True})
-        if maintenance and (not isinstance(data, dict) or data.get("cmd") != "wifi_set" or data.get("ok") is not True):
-            reason = data.get("error", "invalid_response") if isinstance(data, dict) else "invalid_response"
-            raise RuntimeError(f"ServiceApp WiFi: {reason}")
+        validate_serial_reply(data, "wifi_set")
         payload = data.get("data", {}) if isinstance(data, dict) else {}
-        if maintenance and (not isinstance(payload, dict) or payload.get("saved") is not True):
-            raise RuntimeError("ServiceApp WiFi: save not confirmed")
+        if not isinstance(payload, dict) or payload.get("saved") is not True:
+            raise RuntimeError("WiFi: save not confirmed")
         if isinstance(payload, dict):
             payload["transport"] = "serial"
             payload["serial_port"] = serial_port
@@ -3859,12 +3948,14 @@ def wifi_save(base_url: str, ssid: str, password: str, serial_port: str = "", se
         raise
     try:
         parsed = json.loads(response)
-        if isinstance(parsed, dict):
-            parsed["base_url"] = base
-            parsed["transport"] = "http"
+        if not isinstance(parsed, dict) or parsed.get("ok") is not True:
+            raise RuntimeError("WiFi: save not confirmed")
+        parsed["saved"] = True
+        parsed["base_url"] = base
+        parsed["transport"] = "http"
         return parsed
-    except json.JSONDecodeError:
-        return {"base_url": base, "transport": "http", "response": response.strip() or "ok"}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("WiFi: invalid save response") from exc
 
 
 def wifi_credentials(base_url: str, serial_port: str = "", serial_baud: int = 115200) -> dict[str, Any]:
@@ -4180,6 +4271,33 @@ def find_partition(entries: list[dict[str, Any]], ptype: int, offset: int | None
             continue
         return entry
     return None
+
+
+def package_uses_serviceapp(path: pathlib.Path) -> bool:
+    table = path / "partitions.bin"
+    if not table.is_file():
+        return False
+    entries = parse_partition_table(table)
+    app1 = find_partition(entries, 0, offset=0x220000)
+    if app1 is None:
+        return False
+    migration_engine.check_layout(table.read_bytes(), migration_engine.NEW_LAYOUT)
+    return True
+
+
+def validate_flash_serviceapp(path: pathlib.Path) -> bool:
+    if not package_uses_serviceapp(path):
+        payload = (path / "firmware.bin").read_bytes()
+        if payload[288:304] == b"BrautomatMain".ljust(16, b"\0"):
+            raise ValueError("ServiceApp firmware requires its matching partition table and serviceapp.bin")
+        return False
+    payload = (path / "firmware.bin").read_bytes()
+    migration_engine.check_image(payload, "BrautomatMain")
+    service = path / "serviceapp.bin"
+    if not service.is_file() or service.stat().st_size > 0x120000:
+        raise ValueError("Matching serviceapp.bin missing or too large")
+    migration_engine.check_image(service.read_bytes(), "BrautomatSvcApp")
+    return True
 
 
 def validate_package_partitions(path: pathlib.Path, include_littlefs: bool = False, require_partitions: bool = True) -> None:
@@ -4725,12 +4843,15 @@ def create_local_inventory_file(kind: str, parent_dir: str, name: str) -> dict[s
     return {"created": target.name, "type": "file"}
 
 
-def rename_device_inventory(base_url: str, kind: str, old_name: str, new_name: str) -> dict[str, Any]:
+def rename_device_inventory(base_url: str, kind: str, old_name: str, new_name: str, maintenance: bool = False) -> dict[str, Any]:
     old_clean = normalize_inventory_filename(old_name)
     new_clean = normalize_inventory_filename(new_name)
     source = device_inventory_path(kind, old_clean)
     target = device_inventory_path(kind, new_clean)
     base = normalize_base_url(base_url)
+    if maintenance:
+        put_form(f"{base}/edit", {"src": source, "path": target}, timeout=30.0)
+        return {"renamed": old_clean, "target": new_clean, "mode": "fs"}
     if kind == "profiles":
         old_profile = pathlib.PurePosixPath(old_clean).stem
         new_profile = pathlib.PurePosixPath(new_clean).stem
@@ -4807,6 +4928,7 @@ def flash_job(
 ) -> dict[str, Any]:
     require_base_files = bool(erase_flash)
     package = resolve_package(job, package_source, package_dir, include_littlefs, package_ref, require_base_files=require_base_files)
+    service_layout = validate_flash_serviceapp(package)
     esptool_path = ensure_esptool_available(job)
     job.set_progress(1)
     flash_files: list[tuple[str, int, int]] = []
@@ -4825,6 +4947,8 @@ def flash_job(
             job.log(f"Optional flash file missing, skip: {filename}")
     if not any(name == "firmware.bin" for name, _, _ in flash_files):
         raise FileNotFoundError(f"firmware.bin missing in package: {package}")
+    if service_layout:
+        flash_files.append(("serviceapp.bin", (package / "serviceapp.bin").stat().st_size, 0x220000))
     handover = prepare_esptool_serial_handover(port, baud, "Firmware flash")
     if handover_state is not None:
         handover_state.clear()
@@ -5066,7 +5190,7 @@ def maintenance_firmware_job(job: Job, base_url: str, source: str, directory: st
     if not MIGRATION_LOCK.acquire(blocking=False):
         raise RuntimeError("Another device operation is running")
     try:
-        package = resolve_package(job, source, directory, False, ref, require_base_files=False)
+        package = resolve_package(job, source, directory, False, ref, require_base_files=False, firmware_only=True)
         payload = (package / "firmware.bin").read_bytes()
         if len(payload) > 0x210000:
             raise ValueError("Firmware exceeds App0 partition size")
@@ -5872,7 +5996,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/inventory/device/rename":
                 data = self._read_json()
-                self._send_json(rename_device_inventory(data["base_url"], data["kind"], data["filename"], data["new_name"]))
+                self._send_json(rename_device_inventory(data["base_url"], data["kind"], data["filename"], data["new_name"], bool(data.get("maintenance", False))))
                 return
             if path == "/api/inventory/local/rename":
                 data = self._read_json()
@@ -6038,8 +6162,12 @@ def main() -> None:
         pass
     finally:
         advertiser.stop()
-        if STATE.serial:
-            STATE.serial.stop()
+        for session in (STATE.telegraf, STATE.test_runner, STATE.serial):
+            if session is not None:
+                try:
+                    session.stop()
+                except Exception as exc:
+                    log_runtime_error(f"Session shutdown failed: {exc}")
         server.server_close()
         HTTP_SERVER = None
 

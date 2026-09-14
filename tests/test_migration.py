@@ -333,10 +333,10 @@ class MigrationTests(unittest.TestCase):
             session.verify_installed(device)
         self.assertEqual(device.boots, 0)
 
-    def test_source_range_has_no_preupdate_and_target_only_accepts_166_or_170(self):
+    def test_source_range_has_no_preupdate_and_rejects_unknown_targets(self):
         self.assertTrue(m.contains_version(b"\0" + b"1.66" + b"\0", "1.66.0"))
         self.assertTrue(m.contains_version(b"\0" + b"1.66.0" + b"\0", "1.66"))
-        for version in ("1.65.5", "1.67.0", "2.0.0"):
+        for version in ("1.65.5", "1.68.0", "2.0.0"):
             bad = package(self.root / version, version)
             with self.subTest(version=version), self.assertRaisesRegex(ValueError, "target"):
                 m.validate_package(bad, version)

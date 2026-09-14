@@ -670,31 +670,53 @@ class TelegrafSession:
             self.started_at = now_iso()
             self.status = "running"
             self.binary = binary
-            self._work_dir = write_telegraf_config(config)
-            # Bei eigenen Templates gehört der CSV-Header (und ob es überhaupt
-            # ein CSV-Ziel gibt) dem Nutzer - dann nicht automatisch schreiben.
-            if not config.get("templates_dir"):
-                ensure_csv_header(config, DATA_ROOT)
-            command = [binary, "--config", str(self._work_dir / "telegraf.conf"), "--config-directory", str(self._work_dir / "telegraf.d")]
-            self._append("Starting Telegraf")
-            # cwd = DATA_ROOT (nicht das temporäre work_dir): die generierten
-            # .conf-Pfade sind absolut, und so landet eine relative CSV-Datei in
-            # einem stabilen Verzeichnis statt im work_dir, das beim Stop gelöscht
-            # wird (Parität zum Go-Projekt, das telegraf ebenfalls nicht im
-            # Tempverzeichnis laufen lässt).
-            self._proc = subprocess.Popen(command, cwd=str(DATA_ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
-            self._thread = threading.Thread(target=self._pump, daemon=True)
-            self._thread.start()
+            try:
+                self._work_dir = write_telegraf_config(config)
+                # Bei eigenen Templates gehört der CSV-Header (und ob es überhaupt
+                # ein CSV-Ziel gibt) dem Nutzer - dann nicht automatisch schreiben.
+                if not config.get("templates_dir"):
+                    ensure_csv_header(config, DATA_ROOT)
+                command = [binary, "--config", str(self._work_dir / "telegraf.conf"), "--config-directory", str(self._work_dir / "telegraf.d")]
+                self._append("Starting Telegraf")
+                # cwd = DATA_ROOT (nicht das temporäre work_dir): die generierten
+                # .conf-Pfade sind absolut, und so landet eine relative CSV-Datei in
+                # einem stabilen Verzeichnis statt im work_dir, das beim Stop gelöscht
+                # wird (Parität zum Go-Projekt, das telegraf ebenfalls nicht im
+                # Tempverzeichnis laufen lässt).
+                self._proc = subprocess.Popen(command, cwd=str(DATA_ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
+                self._thread = threading.Thread(target=self._pump, daemon=True)
+                self._thread.start()
+            except Exception as exc:
+                if self._proc is not None:
+                    self._proc.kill()
+                    self._proc.wait(timeout=5)
+                    self._proc = None
+                if self._work_dir:
+                    shutil.rmtree(self._work_dir, ignore_errors=True)
+                    self._work_dir = None
+                self.status = "failed"
+                self.error = str(exc)
+                self.finished_at = now_iso()
+                self._append("Telegraf start failed: " + self.error)
+                raise
             return self.snapshot()
 
     def stop(self) -> dict[str, Any]:
         with self._lock:
-            if not self._proc:
+            proc = self._proc
+            if proc is None:
                 return self.snapshot()
             self.status = "stopping"
             self._append("Stopping Telegraf")
-            self._proc.terminate()
-            return self.snapshot()
+            proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=3)
+        if self._thread:
+            self._thread.join(timeout=3)
+        return self.snapshot()
 
     def clear(self) -> dict[str, Any]:
         with self._lock:

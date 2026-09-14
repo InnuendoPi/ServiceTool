@@ -37,6 +37,13 @@ The build creates:
 
 ## Release Rules
 
+- When preparing a new version before its packages exist, clear the platform
+  download URLs and SHA256 values in `version.json`. The release workflow fills
+  them from verified assets. Never advertise a new version using old binaries.
+- Unit tests include frontend contract tests when Node.js is available. For
+  local verification run `node tests/frontend_regressions.js` as well as the
+  Python suite; device acceptance remains separate.
+
 - `build_servicetool.cmd` builds only `Windows`.
 - `build_servicetool_windows_release.ps1` builds `Windows`, creates the ZIP,
   and updates the Windows SHA256 value.

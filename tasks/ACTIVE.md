@@ -1,5 +1,9 @@
 # Aktive ServiceTool-Aufgaben
 
+Die Quellkorrekturen für 1.7.7 sind im
+[Abschlussbericht](archive/servicetool-1.7.7-review-fixes.md) dokumentiert.
+Die nachfolgenden Geräte- und Releaseprüfungen bleiben davon getrennt.
+
 ## Geräteabnahme für Migration und Wartung
 
 **Status:** Implementiert; vollständige Geräteabnahme offen.
@@ -24,8 +28,8 @@ unbeteiligte Einstellungen und Dateien erhalten. Geräteprüfungen ergänzen die
 automatisierten Tests und werden vor Enduser-Freigabe abgeschlossen.
 
 **Offene Schnittstellen:** Erkennung eines vorhandenen Braustatus sowie WLAN-
-Auslesen, Scan und Reset in der ServiceApp. Entwicklungsversion 1.66 verwendet
-bereits den Migrations- und Wartungsweg der Zielversion 1.70.
+Auslesen, Scan und Reset in der ServiceApp. Die Versionen 1.66.x (Entwicklung), 1.67.x und 1.70.x verwenden
+das geprüfte ServiceApp-Partitionslayout.
 
 ## Repository-Ausgliederung
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.7.7 - 2026-09-14
+
+- Installiert und prüft beim normalen USB-Flash die ServiceApp des passenden
+  Pakets. Remote-Paketdateien stammen aus demselben Commit und einem frischen Cache.
+- Unterstützt Migration auf 1.67.x zusätzlich zu 1.66.x und 1.70.x.
+- Meldet abgelehnte WLAN-Zugangsdaten als Fehler, erhält SSIDs unverändert und
+  unterscheidet laufende, fehlgeschlagene und veraltete WLAN-Scans.
+- Erkennt die aktuellen WLAN-Verbindungs- und Recovery-AP-Meldungen.
+- Verwendet beim Umbenennen im Wartungsmodus die ServiceApp-Dateischnittstelle.
+- Validiert Backup-JSON vor Übertragung und wartet nach Restore auf erneute
+  Geräteerreichbarkeit. Unbestätigte Übertragungen erscheinen nicht als Erfolg.
+- Verhindert konkurrierende serielle Monitorstarts und meldet getrennte Ports.
+- Bereinigt fehlgeschlagene Telegraf-Starts und beendet Unterprozesse beim Schließen.
+- Zeigt unbekannte Prozesszustände an und sperrt dann Firmware-WebUpdates.
+- Lehnt ServiceTool-Updates ohne gültige SHA256-Prüfsumme ab.
+
 ## 1.7.6 - 2026-09-09
 
 - Neuer Wartungsmodus zur Reparatur über die ServiceApp: Hauptfirmware ersetzen,

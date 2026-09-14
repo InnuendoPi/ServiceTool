@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "1.7.6",
-  "released_at": "2026-09-09",
-  "notes": "ServiceTool 1.7.6: adds verified ServiceApp migration with NVS/LittleFS preservation and recovery, shows numbered configuration versions, improves serial handover and AP fallback, and hardens release publishing.",
+  "version": "1.7.7",
+  "released_at": "2026-09-14",
+  "notes": "ServiceTool 1.7.7: fixes ServiceApp flashing, WiFi validation and scan status, migration to 1.67, restore confirmation, maintenance rename, serial access and Telegraf lifecycle.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.6/Brautomat32ServiceTool-win.zip",
-    "sha256": "2c4a8919a224b760976ac865e5bd7e809d78cc6a5c1c7717de2696275cde2c73"
+    "url": "",
+    "sha256": "768c96a02f16c3a48655abd51097d1c6a35e5fdbb6187a50d42e33ec618091cd"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.6/Brautomat32ServiceTool-linux.zip",
-    "sha256": "570e4dcec65bd1679b91f0aa43f454cb30e1c644df9ab84ad00c3107160a6355"
+    "url": "",
+    "sha256": ""
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.6/Brautomat32ServiceTool-macos.zip",
-    "sha256": "00750106a0374cca1681f21c08f4442249cd510d947d8a6d17283354ecb50da1"
+    "url": "",
+    "sha256": ""
   }
 }

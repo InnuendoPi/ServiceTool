@@ -405,13 +405,13 @@ I18N.de.migrationRecoveryHint = "Dasselbe Gerät per USB anschließen.";
 I18N.en.migrationRecoveryHint = "Connect the same device via USB.";
 I18N.de.migrationHint = "Migration der Brautomat32 Firmware 1.6x auf Version 1.7x";
 I18N.de.migrationRequirementSource = "Quelle: 1.62–1.65.5";
-I18N.de.migrationRequirementTarget = "Ziel: 1.70";
+I18N.de.migrationRequirementTarget = "Ziel: 1.67.x / 1.70.x";
 I18N.de.migrationRequirementTransport = "Verbindung: Online und USB";
 I18N.de.migrateBtn = "Migration starten";
 
 I18N.en.migrationHint = "Migration of Brautomat32 firmware 1.6x to version 1.7x";
 I18N.en.migrationRequirementSource = "Source: 1.62–1.65.5";
-I18N.en.migrationRequirementTarget = "Target: 1.70";
+I18N.en.migrationRequirementTarget = "Target: 1.67.x / 1.70.x";
 I18N.en.migrationRequirementTransport = "Connection: online and USB";
 I18N.en.migrateBtn = "Start migration";
 
@@ -526,7 +526,7 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.7.6",
+  service_tool_version: "1.7.7",
   language: "en",
   debug_output: false,
   device_url: "http://brautomat.local",
@@ -587,7 +587,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.7.6"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.7.7"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -1117,20 +1117,23 @@ function renderFirmwareUpdate(data, explicit = false) {
   if (!modal || !content || !startBtn) return;
   const available = data?.available === true;
   const activeProcess = data?.device?.active_process?.state === "active";
+  const processUnknown = data?.device?.active_process?.state !== "idle" && !activeProcess;
   startBtn.classList.toggle("hidden-panel", !available);
-  startBtn.disabled = !available || activeProcess;
+  startBtn.disabled = !available || activeProcess || processUnknown;
   const rows = [
     [text("firmwareUpdateCurrent"), data?.current_version || "-"],
     [text("firmwareUpdateAvailable"), data?.version || "-"],
     [text("firmwareUpdateType"), data?.type || data?.ref || "-"],
     [text("firmwareUpdateReleased"), data?.release_date || "-"]
   ];
-  const message = activeProcess
+  const message = processUnknown
+    ? (currentLang === "de" ? "Prozesszustand unbekannt. Gerätestatus erneut prüfen." : "Process state unknown. Check the device status again.")
+    : activeProcess
     ? text("firmwareUpdateBlockedActive")
     : (available ? text("firmwareUpdateReady") : text("firmwareUpdateNoUpdate"));
   const notes = String(data?.notes || "").trim();
   content.innerHTML = `
-    <p class="${available && !activeProcess ? "service-update-ready" : "muted"}">${escapeHtml(message)}</p>
+    <p class="${available && !activeProcess && !processUnknown ? "service-update-ready" : "muted"}">${escapeHtml(message)}</p>
     <table class="detail-table">
       <tbody>
         ${rows.map(([key, value]) => `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}
@@ -1138,7 +1141,7 @@ function renderFirmwareUpdate(data, explicit = false) {
     </table>
     ${notes ? `<section class="detail-section"><h3>${escapeHtml(text("firmwareUpdateNotes"))}</h3><p>${escapeHtml(notes)}</p></section>` : ""}
   `;
-  if ((available && !activeProcess) || explicit) {
+  if ((available && !activeProcess && !processUnknown) || explicit) {
     modal.classList.remove("hidden-panel");
   }
 }
@@ -2486,7 +2489,7 @@ async function inventoryAction(kind, action, side = "") {
   setSpinner(`${kind}Spinner`, true);
   setInlineStatus(`${kind}InlineStatus`, statusMap[action]);
   try {
-    const body = { kind, filename, base_url: managementDeviceUrl() };
+    const body = { kind, filename, maintenance: managementServiceActive(), base_url: managementDeviceUrl() };
     if (action === "device-rename" || action === "local-rename") {
       const suggestion = filename;
       const entered = window.prompt(currentLang === "de" ? "Neuer Dateiname" : "New filename", suggestion);
@@ -2549,7 +2552,7 @@ async function inventoryActionExplorer(kind, action, side = "") {
     if ((action === "local-delete" || action === "local-rename") && selected?.type === "parent") {
       throw new Error(currentLang === "de" ? "Dieser Eintrag kann nicht bearbeitet werden." : "This entry cannot be modified.");
     }
-    const body = { kind, filename, base_url: managementDeviceUrl(), local_dir: managementCurrentDir(kind) };
+    const body = { kind, filename, maintenance: managementServiceActive(), base_url: managementDeviceUrl(), local_dir: managementCurrentDir(kind) };
     if (action === "device-to-local" && localInventoryHasFile(kind, selected?.name || filename)) {
       const conflict = await askLocalCopyConflict(selected?.name || filename);
       if (conflict === "abort") {
@@ -2850,11 +2853,17 @@ async function clearTelegrafLog() {
 function applyWifiNetworksResult(data) {
   const select = $("wifiNetworks");
   select.innerHTML = "";
-  const preferredSsid = String(data.preferred_ssid || "").trim();
+  if (data.status === "error") {
+    throw new Error(currentLang === "de" ? "WLAN-Scan fehlgeschlagen. Bitte erneut versuchen." : "WiFi scan failed. Please try again.");
+  }
+  const preferredSsid = String(data.preferred_ssid || "");
   const networks = (Array.isArray(data.networks) ? data.networks : [])
-    .map(net => ({ ...net, ssid: String(net?.ssid || "").trim() }))
+    .map(net => ({ ...net, ssid: String(net?.ssid || "") }))
     .filter(net => net.ssid);
   if (!networks.length) {
+    if (data.status === "stale") {
+      throw new Error(currentLang === "de" ? "WLAN-Scan fehlgeschlagen; keine aktuellen Ergebnisse." : "WiFi scan failed; no current results.");
+    }
     const option = document.createElement("option");
     option.value = "";
     option.textContent = currentLang === "de" ? "Keine WLAN-Netzwerke gefunden" : "No WiFi networks found";
@@ -2884,7 +2893,8 @@ function applyWifiNetworksResult(data) {
       ? `${networks.length} Netzwerk(e) lokal gefunden.`
       : `${networks.length} network(s) found on the local computer.`);
   } else {
-    setInlineStatus("wifiInlineStatus", "");
+    setInlineStatus("wifiInlineStatus", data.status === "stale"
+      ? (currentLang === "de" ? "WLAN-Scan fehlgeschlagen; angezeigt werden alte Ergebnisse." : "WiFi scan failed; showing cached results.") : "");
   }
 }
 
@@ -3121,6 +3131,13 @@ function updateActiveProcessState(data = null) {
   if (!node) return;
   const process = data?.active_process || {};
   const active = process.state === "active";
+  if (process.state === "unknown") {
+    node.classList.remove("hidden-panel");
+    node.dataset.state = "unknown";
+    node.textContent = currentLang === "de" ? "Prozesszustand unbekannt" : "Process state unknown";
+    node.title = "";
+    return;
+  }
   node.classList.toggle("hidden-panel", !active);
   node.dataset.state = active ? "active" : "idle";
   if (!active) {
@@ -3159,7 +3176,7 @@ async function pollActiveProcess() {
     lastDeviceStatus = { ...lastDeviceStatus, active_process: process };
     updateActiveProcessState(lastDeviceStatus);
   } catch (_err) {
-    updateActiveProcessState(null);
+    updateActiveProcessState({active_process: {state: "unknown"}});
   } finally {
     activeProcessPollInFlight = false;
   }
@@ -3663,7 +3680,7 @@ async function scanWifi(forceRefresh = true, allowHostFallback = true, options =
       });
     }
 
-    if (data.status === "running" && !(Array.isArray(data.networks) && data.networks.length)) {
+    if (data.status === "running") {
       writeStartupTrace("scanWifi polling for completion");
       setInlineStatus("wifiInlineStatus", data.transport === "http"
         ? "Connected. Scanning WiFi networks. Please wait ..."
@@ -3696,7 +3713,7 @@ async function scanWifi(forceRefresh = true, allowHostFallback = true, options =
           method: "POST",
           body: { base_url: effectiveDeviceBaseUrl(), serial_port: "", serial_baud: Number($("serialBaudSelect").value || 115200) }
         });
-        const preferredSsid = String(credentials?.ssid || credentials?.SSID || credentials?.current_ssid || "").trim();
+        const preferredSsid = String(credentials?.ssid || credentials?.SSID || credentials?.current_ssid || "");
         if (preferredSsid) {
           data.preferred_ssid = preferredSsid;
         }
@@ -3743,6 +3760,11 @@ async function saveWifi() {
         }
       });
     appendStatus("firmwareStatus", text("wifiTitle"), data);
+    if (data.saved !== true) throw new Error(currentLang === "de" ? "WLAN-Speicherung nicht bestätigt." : "WiFi save not confirmed.");
+    if (data.rebootScheduled !== true) {
+      setInlineStatus("wifiInlineStatus", currentLang === "de" ? "WLAN-Zugangsdaten gespeichert; Neustart nicht bestätigt." : "WiFi credentials saved; reboot not confirmed.");
+      return;
+    }
     if (serviceMode) {
       setInlineStatus("wifiInlineStatus", currentLang === "de"
         ? "WLAN-Zugangsdaten gespeichert. ServiceApp-Neustart angefordert; WLAN-Verbindung noch nicht bestätigt."
@@ -4389,8 +4411,8 @@ function renderMaintenanceButton() {
   const unsupported = maintenanceUnsupported();
   const service = managementServiceActive();
   $("maintenanceUnavailable").textContent = currentLang === "de"
-    ? "Der Wartungsmodus steht ab Firmware 1.70 zur Verfügung. Bitte die Firmware aktualisieren."
-    : "Maintenance mode is available from firmware 1.70. Please update the firmware.";
+    ? "Der Wartungsmodus steht mit dem ServiceApp-Partitionslayout (1.67/1.70) zur Verfügung. Bitte die Firmware aktualisieren."
+    : "Maintenance mode is available with the ServiceApp partition layout (1.67/1.70). Please update the firmware.";
   $("maintenanceUnavailable").classList.toggle("hidden-panel", !unsupported);
   $("maintenanceStatus").classList.toggle("hidden-panel", unsupported);
   $("maintenanceResetBrew").textContent = text("maintenanceResetBrew");

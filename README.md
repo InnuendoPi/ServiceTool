@@ -83,6 +83,23 @@ xattr -dr com.apple.quarantine /path/to/Brautomat32ServiceTool.app
 Typical runtime folders created there are `logs`, `cache`, `backups`, and
 `inventar`.
 
+## Firmware packages and repair
+
+For the ServiceApp partition layout, normal USB flashing requires matching
+`partitions.bin`, `firmware.bin` and `serviceapp.bin`. Both application images
+are validated before serial handover and written even when Erase Flash is off.
+An erase additionally requires the boot files and removes saved device data.
+Use the guided migration for changing an older device's partition layout.
+Migration supports targets 1.66.x, 1.67.x and 1.70.x with the verified ServiceApp layout.
+
+Firmware repair while the ServiceApp is running uploads only `firmware.bin`
+over HTTP and leaves the ServiceApp and filesystem intact. Device file rename
+uses the ServiceApp's generic file API in this mode.
+
+Configuration restores validate the backup JSON before upload and wait for the
+device to respond again. If transfer confirmation is missing, inspect the
+device state before retrying; the tool does not automatically repeat a restore.
+
 ## Runtime Layout
 
 The application serves static files from the bundled `static` directory.
