@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "1.7.7",
+  "version": "1.7.8",
   "released_at": "2026-09-14",
-  "notes": "ServiceTool 1.7.7: fixes ServiceApp flashing, WiFi validation and scan status, migration to 1.67, restore confirmation, maintenance rename, serial access and Telegraf lifecycle.",
+  "notes": "ServiceTool 1.7.8: fixes local Windows packaging with Python 3.12 and verifies required Tcl/Tk startup data before and after building.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.7/Brautomat32ServiceTool-win.zip",
-    "sha256": "eb8a8d49415961daad95a85bb3320dc2dd7e5fd4b9376d040534a63629303657"
+    "url": "",
+    "sha256": ""
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.7/Brautomat32ServiceTool-linux.zip",
-    "sha256": "c57aa8b2f48763f52949dcdeb48c84613f993de360ce8f9f45adca9687701116"
+    "url": "",
+    "sha256": ""
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.7/Brautomat32ServiceTool-macos.zip",
-    "sha256": "d198d6be840852a79d428040b69fafd9c8fee480ffaed7dea091aa612cddf799"
+    "url": "",
+    "sha256": ""
   }
 }

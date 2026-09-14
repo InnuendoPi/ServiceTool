@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.8 - 2026-09-14
+
+- Behebt den lokalen Windows-Build: bevorzugt die Python-3.12-Umgebung
+  und prüft erforderliche Tcl/Tk-Daten vor und nach dem Packen der EXE.
+- Verhindert dadurch Windows-Pakete, die wegen fehlender Tcl/Tk-Daten
+  beim Start mit einem Python-Fehler abbrechen.
+
 ## 1.7.7 - 2026-09-14
 
 - Installiert und prüft beim normalen USB-Flash die ServiceApp des passenden
