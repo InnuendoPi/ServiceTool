@@ -35,12 +35,14 @@ def image(role=None, version="1.66.0"):
     return body + hashlib.sha256(body).digest()
 
 
-def nvs(active=False):
+def nvs(active=False, records=None):
     page = bytearray(b"\xff" * 4096)
     struct.pack_into("<II", page, 0, 0xFFFFFFFE, 1)
     page[8] = 0xFE
     struct.pack_into("<I", page, 28, zlib.crc32(page[4:28], 0xFFFFFFFF))
-    for index, (ns, kind, key, value) in enumerate(((0, 1, "settings", 1), (1, 0x12, "step", 2 if active else -1), (1, 0x14, "second", -1))):
+    if records is None:
+        records = ((0, 1, "settings", 1), (1, 0x12, "step", 2 if active else -1), (1, 0x14, "second", -1))
+    for index, (ns, kind, key, value) in enumerate(records):
         entry = bytearray(b"\xff" * 32)
         entry[:4] = bytes((ns, kind, 1, 255))
         entry[8:24] = key.encode().ljust(16, b"\0")
@@ -219,6 +221,35 @@ class MigrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "active"):
             session.install(device, lambda _: None)
         self.assertEqual(device.writes, 0)
+
+    def test_missing_settings_uses_firmware_defaults_during_migration(self):
+        device = Device()
+        original_nvs = nvs(records=((0, 1, "misc", 1), (0, 1, "nvs.net80211", 2), (0, 1, "phy", 3)))
+        device.flash[0x9000:0xE000] = original_nvs
+        session = self.session()
+        session.capture(device)
+        session.install(device, lambda _: None)
+        self.assertEqual(session.report["phase"], "flash-verified")
+        self.assertEqual(bytes(device.flash[0x9000:0xE000]), original_nvs)
+        session.verify_installed(device)
+        session.restore(device, lambda _: None)
+        self.assertEqual(session.report["phase"], "recovery-verified")
+
+    def test_missing_process_keys_use_defaults_but_present_active_values_block(self):
+        namespace = ((0, 1, "settings", 1),)
+        for records in (namespace, namespace + ((1, 0x12, "step", -1),)):
+            m.check_persisted_idle(nvs(records=records))
+        for key, kind in (("step", 0x12), ("second", 0x14), ("play", 1), ("idson", 1)):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, "active"):
+                m.check_persisted_idle(nvs(records=namespace + ((1, kind, key, 1),)))
+
+    def test_ambiguous_settings_and_corruption_still_rejected(self):
+        with self.assertRaisesRegex(ValueError, "ambiguous"):
+            m.check_persisted_idle(nvs(records=((0, 1, "settings", 1), (0, 1, "settings", 2))))
+        corrupted = bytearray(nvs(records=((0, 1, "misc", 1),)))
+        corrupted[68] ^= 1
+        with self.assertRaisesRegex(ValueError, "checksum"):
+            m.check_persisted_idle(bytes(corrupted))
 
     def test_package_versions_roles_checksums_and_layout(self):
         self.assertEqual(m.validate_package(self.package, "1.66.0")["version"], "1.66.0")
@@ -404,6 +435,65 @@ class MigrationTests(unittest.TestCase):
         self.assertFalse((build / "migration.json").exists())
         self.assertNotIn("/config.txt", app.migration_webfiles(build))
 
+    def test_local_binary_zip_without_metadata(self):
+        import shutil
+        from littlefs import LittleFS
+        fs = LittleFS(block_size=4096, block_count=176)
+        fs.mkdir("/language")
+        for name in app.WEBUPDATE_TOOL_FILES + ["language/english.json", "config.txt"]:
+            with fs.open("/" + name, "wb") as handle:
+                handle.write(b"asset" if name != "config.txt" else b"private settings")
+        fs.unmount()
+        (self.package / "Littlefs.bin").write_bytes(fs.context.buffer)
+        shutil.rmtree(self.package / "webfiles")
+        (self.package / "firmware.bin").write_bytes(image("BrautomatMain", "1.67.2"))
+        before = {path.name: path.read_bytes() for path in self.package.iterdir()}
+        selected, metadata = app.prepare_migration_package(
+            app.Job(id="test", type="migration", title="Test"), "open", str(self.package), "")
+        self.assertEqual(metadata["version"], "1.67.2")
+        webfiles = app.migration_webfiles(selected)
+        self.assertEqual(len(webfiles), len(app.WEBUPDATE_TOOL_FILES) + 1)
+        self.assertEqual(webfiles["/language/english.json"], b"asset")
+        self.assertNotIn("/config.txt", webfiles)
+        session = m.Session.create(self.root / "backups", selected, metadata, webfiles)
+        self.assertEqual((session.work / "package/webfiles/language/english.json").read_bytes(), b"asset")
+        self.assertEqual(before, {path.name: path.read_bytes() for path in self.package.iterdir()})
+
+    def test_binary_version_rejects_ambiguous_wrong_role_and_damaged_images(self):
+        damaged = bytearray(image("BrautomatMain", "1.67.2"))
+        damaged[-1] ^= 1
+        for payload in (image("BrautomatMain", "1.67.2\0\x001.70.0"),
+                        image("BrautomatSvcApp", "1.67.2"), bytes(damaged)):
+            with self.subTest(payload=payload[:4]):
+                (self.package / "firmware.bin").write_bytes(payload)
+                with self.assertRaises((ValueError, RuntimeError)):
+                    app.local_package_version(str(self.package))
+
+    def test_embedded_unsupported_target_still_rejected(self):
+        (self.package / "firmware.bin").write_bytes(image("BrautomatMain", "1.68.0"))
+        with self.assertRaisesRegex(ValueError, "Migration target"):
+            app.prepare_migration_package(app.Job(id="test", type="migration", title="Test"),
+                                          "open", str(self.package), "")
+
+    def test_filesystem_image_invalid_or_missing_webfiles_rejected(self):
+        from littlefs import LittleFS
+        fs = LittleFS(block_size=4096, block_count=176)
+        fs.mkdir("/language")
+        fs.unmount()
+        for payload in (b"broken", bytes(fs.context.buffer)):
+            (self.package / "Littlefs.bin").write_bytes(payload)
+            with self.assertRaises(ValueError):
+                app.migration_image_webfiles(self.package)
+
+    def test_updates_directory_uses_adjacent_data(self):
+        import shutil
+        updates = self.root / "Updates"
+        updates.mkdir()
+        build = updates / "ESP32-IDF5dev"
+        shutil.copytree(self.package, build)
+        shutil.move(str(build / "webfiles"), str(updates / "data"))
+        self.assertEqual(len(app.migration_webfiles(build)), len(app.WEBUPDATE_TOOL_FILES))
+
     def test_staged_webfile_change_is_rejected(self):
         session = self.session()
         path = session.work / "package" / "webfiles" / app.WEBUPDATE_TOOL_FILES[0]
@@ -489,19 +579,19 @@ class MigrationTests(unittest.TestCase):
             urls.append(url)
             self.assertIn("/" + sha + "/", url)
             relative = url.split("/" + sha + "/", 1)[1]
-            if relative.startswith("build/ESP32-IDF5/"):
-                return (self.package / relative.removeprefix("build/ESP32-IDF5/")).read_bytes()
-            self.assertTrue(relative.startswith("data/"))
-            return (self.package / "webfiles" / relative.removeprefix("data/")).read_bytes()
+            if relative.startswith("Updates/ESP32-IDF5/"):
+                return (self.package / relative.removeprefix("Updates/ESP32-IDF5/")).read_bytes()
+            self.assertTrue(relative.startswith("Updates/data/"))
+            return (self.package / "webfiles" / relative.removeprefix("Updates/data/")).read_bytes()
         with (
             patch.object(app, "CACHE_DIR", self.root / "cache"),
             patch.object(app, "json_request", return_value={"sha": sha}),
-            patch.object(app, "remote_repo_version", return_value=("1.66.0", (1, 66, 0))) as version,
+            patch.object(app, "package_location", return_value={"version":"1.66.0", "base_url":f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/Updates/ESP32-IDF5"}) as version,
             patch.object(app, "download_bytes", side_effect=download),
         ):
             selected, metadata = app.prepare_migration_package(
                 app.Job(id="test", type="migration", title="Test"), "release", "", "")
-        version.assert_called_once_with(sha)
+        version.assert_called_once_with("release", "", "Updates", sha)
         self.assertEqual(metadata["version"], "1.66.0")
         self.assertFalse((selected / "migration.json").exists())
         self.assertEqual(len(urls), len(m.IMAGES) + len(app.WEBUPDATE_TOOL_FILES))

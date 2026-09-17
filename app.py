@@ -106,7 +106,7 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.7.8"
+SERVICE_TOOL_VERSION = "1.7.10"
 ESPTOOL_VERSION = "5.3.1"  # Legacy cache lookup only; downloads use GitHub latest.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
@@ -1727,35 +1727,47 @@ def write_package_metadata(path: pathlib.Path, source_key: str) -> None:
     (path / "package.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
 
-def package_catalog() -> dict[str, Any]:
+def package_root_for_firmware(firmware: str) -> str:
+    version = parse_version_tuple(str(firmware or ""))
+    return "build" if version and version < (1, 66, 0) else "Updates"
+
+
+def package_location(source: str, ref: str, root: str, revision: str = "") -> dict:
+    if root not in ("build", "Updates") or source not in REMOTE_PACKAGES:
+        raise ValueError("Invalid firmware package selection")
+    selected_ref = ref.strip() if source == "special" else REMOTE_PACKAGES[source]["branch"]
+    if not selected_ref:
+        raise ValueError("Select a specific firmware version")
+    revision = revision or selected_ref
+    manifest_path = "Updates/version.json" if root == "Updates" else "version.json"
+    manifest = json_request(f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{revision}/{manifest_path}", timeout=10)
+    if not isinstance(manifest, dict):
+        raise ValueError("Invalid package version manifest")
+    development = source == "development" or (source == "special" and "develop" in str(manifest.get("type", "")).lower())
+    directory = "ESP32-IDF5dev" if development else "ESP32-IDF5"
+    path = f"{root}/{directory}"
+    entries = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/{path}?ref={parse.quote(revision, safe='')}", timeout=10)
+    names = {item.get("name") for item in entries if isinstance(item, dict) and item.get("type") == "file"} if isinstance(entries, list) else set()
+    required = set(REQUIRED_PACKAGE_FILES) | ({"serviceapp.bin"} if root == "Updates" else set())
+    if not required <= names:
+        raise ValueError("Firmware package is incomplete: " + ", ".join(sorted(required - names)))
+    return {"base_url": f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{revision}/{path}",
+            "version": str(manifest.get("version", "")), "type": str(manifest.get("type", "")), "root": root}
+
+
+def package_catalog(firmware: str = "", include_special: bool = False) -> dict[str, Any]:
+    root = package_root_for_firmware(firmware)
     packages = []
-    for key, package in REMOTE_PACKAGES.items():
-        if key == "special":
-            packages.append(
-                {
-                    "key": key,
-                    "label": package["label"],
-                    "path": "",
-                    "cache_dir": str(remote_package_dir(key)),
-                    "available": True,
-                    "mode": "remote-special",
-                    "details": None,
-                }
-            )
-            continue
-        path = remote_package_dir(key)
-        packages.append(
-            {
-                "key": key,
-                "label": package["label"],
-                "path": package["base_url"],
-                "cache_dir": str(path),
-                "available": True,
-                "mode": "remote",
-                "details": package_details(path),
-            }
-        )
-    return {"packages": packages, "special_versions": list_special_versions()}
+    for key in ("release", "development"):
+        item = {"key": key, "label": REMOTE_PACKAGES[key]["label"], "path": "", "available": False}
+        try:
+            location = package_location(key, "", root)
+            item.update(path=location["base_url"], available=True, version=location["version"])
+        except (OSError, ValueError) as exc:
+            item["error"] = str(exc)
+        packages.append(item)
+    return {"packages": packages, "package_root": root,
+            "special_versions": list_special_versions(root) if include_special else []}
 
 
 def pick_directory(title: str = "Select Brautomat package directory", initial_dir: pathlib.Path | None = None) -> str | None:
@@ -1816,87 +1828,38 @@ def download_package_file(job: Job, source_key: str, package_dir: pathlib.Path, 
     return target
 
 
-def list_special_versions() -> list[dict[str, str]]:
-    versions: list[dict[str, str]] = []
-    seen_versions: set[str] = set()
-
-    def read_version_info(ref: str) -> tuple[str, str]:
-        data = json_request(github_version_json_url(ref), timeout=20.0)
-        if not isinstance(data, dict):
-            return "", ""
-        return str(data.get("version", "")).strip(), str(data.get("type", "")).strip()
-
-    def build_base_url(ref: str, release_type: str) -> str:
-        build_dir = "ESP32-IDF5dev" if "develop" in str(release_type).lower() else "ESP32-IDF5"
-        clean_ref = str(ref or "").strip()
-        return f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{clean_ref}/build/{build_dir}"
-
-    def is_supported(version: str) -> bool:
-        parsed = parse_version_tuple(version)
-        return bool(parsed and parsed >= (1, 60, 0))
-
-    try:
-        releases = json_request("https://api.github.com/repos/InnuendoPi/Brautomat32/releases", timeout=20.0)
-        if isinstance(releases, list):
-            for item in releases:
-                if not isinstance(item, dict):
-                    continue
-                tag = str(item.get("tag_name", "")).strip()
-                if not tag:
-                    continue
-                version, release_type = read_version_info(tag)
-                if not version or not is_supported(version) or version in seen_versions:
-                    continue
-                seen_versions.add(version)
-                versions.append(
-                    {
-                        "ref": tag,
-                        "label": f"{version} ({release_type or 'Release'})",
-                        "kind": "release",
-                        "version": version,
-                        "base_url": build_base_url(tag, release_type),
-                    }
-                )
-    except Exception:
-        pass
-
-    try:
-        commits = json_request("https://api.github.com/repos/InnuendoPi/Brautomat32/commits?sha=development&per_page=12", timeout=20.0)
-        if isinstance(commits, list):
-            for item in commits:
-                if not isinstance(item, dict):
-                    continue
-                sha = str(item.get("sha", "")).strip()
-                commit = item.get("commit", {}) if isinstance(item.get("commit"), dict) else {}
-                message = str((commit.get("message", "") or "").splitlines()[0]).strip()
-                date = str(((commit.get("committer") or {}) if isinstance(commit.get("committer"), dict) else {}).get("date", "")).strip()
-                if not sha:
-                    continue
-                version, release_type = read_version_info(sha)
-                if not version or not is_supported(version) or version in seen_versions:
-                    continue
-                short = sha[:7]
-                date_label = date[:10] if date else ""
-                label = f"{version} ({release_type or 'Commit'})"
-                if date_label or message:
-                    label = f"{label} - {date_label} {short} {message}".strip()
-                seen_versions.add(version)
-                versions.append(
-                    {
-                        "ref": sha,
-                        "label": label,
-                        "kind": "commit",
-                        "version": version,
-                        "base_url": build_base_url(sha, release_type),
-                    }
-                )
-    except Exception:
-        pass
-
-    return versions
+def list_special_versions(root: str = "Updates") -> list[dict[str, str]]:
+    candidates = []
+    for url, kind in (("https://api.github.com/repos/InnuendoPi/Brautomat32/releases?per_page=20", "release"),
+                      ("https://api.github.com/repos/InnuendoPi/Brautomat32/commits?sha=development&per_page=12", "commit")):
+        try:
+            rows = json_request(url, timeout=10)
+        except (OSError, ValueError):
+            continue
+        for item in rows if isinstance(rows, list) else []:
+            if not isinstance(item, dict):
+                continue
+            ref = str(item.get("tag_name" if kind == "release" else "sha", ""))
+            if not ref or item.get("draft"):
+                continue
+            message = str(item.get("commit", {}).get("message", "")).splitlines()
+            candidates.append((ref, kind, message[0] if message else ref))
+    def inspect(candidate):
+        ref, kind, message = candidate
+        try:
+            location = package_location("special", ref, root)
+            return {"ref": ref, "kind": kind, "version": location["version"],
+                    "base_url": location["base_url"],
+                    "label": f"{message} · {ref[:8]} · {location['type']}"}
+        except (OSError, ValueError):
+            return None
+    # A missing historical manifest must not discard the remaining versions.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        return [row for row in executor.map(inspect, candidates) if row is not None]
 
 
-def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True, firmware_only: bool = False) -> pathlib.Path:
+def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True, firmware_only: bool = False, selected_url: str = "") -> pathlib.Path:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError(f"Unknown package source: {source_key}")
     ref = package_ref.strip() if source_key == "special" else REMOTE_PACKAGES[source_key]["branch"]
@@ -1906,8 +1869,16 @@ def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, pa
     sha = str(commit.get("sha", ""))
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError("Unable to pin firmware package to a commit")
-    build_dir = "ESP32-IDF5dev" if ref == "development" else "ESP32-IDF5"
-    base = f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/build/{build_dir}"
+    root = "Updates" if not selected_url or "/Updates/" in selected_url else "build"
+    if selected_url:
+        location = package_location(source_key, package_ref, root, sha)
+        expected = location["base_url"].replace(f"/{sha}/", f"/{ref}/", 1)
+        if selected_url.rstrip("/") != expected:
+            raise ValueError("Package selection changed. Reload the firmware package list before flashing.")
+        base = location["base_url"]
+    else:
+        # Older callers may omit a display URL; resolve the same catalog rules.
+        base = package_location(source_key, package_ref, root, sha)["base_url"]
     package_dir = CACHE_DIR / ("flash-" + uuid.uuid4().hex)
     package_dir.mkdir(parents=True)
     files = [REQUIRED_FIRMWARE_FILE] if firmware_only else BASE_FLASH_FILES + [REQUIRED_FIRMWARE_FILE]
@@ -1939,7 +1910,7 @@ def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, pa
 
 def resolve_package(job: Job, source_key: str, package_dir: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True, firmware_only: bool = False) -> pathlib.Path:
     if source_key in REMOTE_PACKAGES:
-        return prepare_remote_package(job, source_key, include_littlefs, package_ref, require_base_files=require_base_files, firmware_only=firmware_only)
+        return prepare_remote_package(job, source_key, include_littlefs, package_ref, require_base_files=require_base_files, firmware_only=firmware_only, selected_url=package_dir)
     if firmware_only:
         path = pathlib.Path(package_dir).expanduser()
         if not path.is_absolute():
@@ -1975,7 +1946,7 @@ def list_language_files(base_url: str) -> list[str]:
     return files
 
 
-def list_remote_languages(source_key: str, package_ref: str = "") -> list[dict[str, str]]:
+def list_remote_languages(source_key: str, package_ref: str = "", package_root: str = "build") -> list[dict[str, str]]:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError("Language list supports only remote package sources")
     if source_key == "special":
@@ -1985,18 +1956,29 @@ def list_remote_languages(source_key: str, package_ref: str = "") -> list[dict[s
     else:
         refs = [REMOTE_PACKAGES[source_key]["branch"]]
 
+    if package_root not in ("build", "Updates"):
+        raise ValueError("Invalid package generation")
+    prefix = "Updates/" if package_root == "Updates" else ""
     catalogs: list[list[Any]] = []
+    catalog_failed = False
     for ref in refs:
         for url in (
-            github_language_catalog_url(ref),
-            f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/data/language?ref={ref}",
+            f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/{prefix}language?ref={ref}",
+            f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/{prefix}data/language?ref={ref}",
         ):
             try:
                 data = json_request(url, timeout=20.0)
-            except Exception:
+            except error.HTTPError as exc:
+                if exc.code != 404:
+                    catalog_failed = True
+                continue
+            except (OSError, ValueError):
+                catalog_failed = True
                 continue
             if isinstance(data, list):
                 catalogs.append(data)
+            else:
+                catalog_failed = True
 
     files: dict[str, dict[str, str]] = {}
     for catalog in catalogs:
@@ -2016,32 +1998,38 @@ def list_remote_languages(source_key: str, package_ref: str = "") -> list[dict[s
                 },
             )
 
-    if files:
+    if not catalog_failed:
         return sorted(files.values(), key=lambda x: x["language"].lower())
 
-    fallback_candidates = (
-        ("deutsch.json", "deutsch", "data/language/deutsch.json"),
-        ("english.json", "english", "language/english.json"),
-    )
-    for ref in refs:
-        base = github_raw_language_base(ref)
-        for filename, language, path in fallback_candidates:
+    # Raw downloads remain available when the unauthenticated catalog API is limited.
+    # Cover every shipped language, plus names from any successfully read catalog.
+    fallback_names = {name + ".json" for name in (
+        "cestina", "dansk", "deutsch", "english", "espanol", "francais", "italiano",
+        "nederlands", "norsk", "polski", "portugues", "svenska")}
+    fallback_names.update(item["filename"] for item in files.values())
+    base = github_raw_language_base(refs[0])
+    def inspect(filename):
+        for directory in ("data/language", "language"):
+            path = f"{prefix}{directory}/{filename}"
             try:
-                download_bytes(f"{base}{path}", timeout=10.0)
-            except Exception:
-                continue
-            files.setdefault(
-                filename.lower(),
-                {
-                    "filename": filename,
-                    "language": language,
-                    "path": path,
-                },
-            )
-    return sorted(files.values(), key=lambda x: x["language"].lower())
+                content = download_bytes(f"{base}{path}", timeout=10.0)
+                if not isinstance(json.loads(content), dict):
+                    raise ValueError("Language file must contain a JSON object")
+            except error.HTTPError as exc:
+                if exc.code == 404:
+                    continue
+                raise RuntimeError("Language list could not be checked completely. Try again later.") from exc
+            except (OSError, ValueError) as exc:
+                raise RuntimeError("Language list could not be checked completely. Try again later.") from exc
+            return {"filename": filename, "language": filename[:-5], "path": path}
+        return None
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        verified = list(executor.map(inspect, sorted(fallback_names)))
+    return sorted((item for item in verified if item is not None), key=lambda x: x["language"].lower())
 
 
-def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: str = "") -> dict[str, Any]:
+def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: str = "", package_root: str = "build") -> dict[str, Any]:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError("Web files update supports only remote package sources")
 
@@ -2054,6 +2042,11 @@ def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: s
     else:
         tools_base = remote_tools_base_url(source_key)
         language_base = remote_language_base_url(source_key)
+    if package_root not in ("build", "Updates"):
+        raise ValueError("Invalid package generation")
+    if package_root == "Updates":
+        language_base += "Updates/"
+        tools_base = language_base + "data/"
     uploaded: list[str] = []
     try:
         device_languages = list_language_files(base)
@@ -2085,7 +2078,7 @@ def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: s
 
     for relative_path in extra_languages:
         job.set_current_file(relative_path)
-        url = f"{language_base}{relative_path}"
+        url = f"{language_base}{'data/' if package_root == 'Updates' else ''}{relative_path}"
         job.log(f"Download: {url}")
         content = download_bytes(url, timeout=60.0)
         try:
@@ -2120,26 +2113,32 @@ def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: s
         }
 
 
-def install_language_job(job: Job, base_url: str, source_key: str, filename: str, package_ref: str = "") -> dict[str, Any]:
+def install_language_job(job: Job, base_url: str, source_key: str, filename: str, package_ref: str = "", package_root: str = "build") -> dict[str, Any]:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError("Language install supports only remote package sources")
 
-    clean_name = pathlib.Path(filename).name
-    if not clean_name.lower().endswith(".json"):
+    clean_name = str(filename)
+    if not re.fullmatch(r"[A-Za-z0-9_-]+\.json", clean_name):
         raise ValueError("Invalid language file")
 
     language_name = clean_name[:-5]
     base = normalize_base_url(base_url)
-    if source_key == "special":
-        if not package_ref.strip():
-            raise ValueError("Special Version requires a version ref")
-        source_url = f"{github_raw_language_base(package_ref.strip())}language/{clean_name}"
-    else:
-        source_url = f"{remote_language_base_url(source_key)}language/{clean_name}"
+    catalog = list_remote_languages(source_key, package_ref, package_root)
+    entry = next((item for item in catalog if item["filename"] == clean_name), None)
+    if entry is None:
+        raise ValueError("Selected language is not available in this firmware package. Reload the language list.")
+    source_path = entry["path"]
+    prefix = "Updates/" if package_root == "Updates" else ""
+    if source_path not in (f"{prefix}language/{clean_name}", f"{prefix}data/language/{clean_name}"):
+        raise ValueError("Invalid language catalog path")
+    ref = package_ref.strip() if source_key == "special" else REMOTE_PACKAGES[source_key]["branch"]
+    source_url = f"{github_raw_language_base(ref)}{source_path}"
 
     job.set_current_file(clean_name)
     job.log(f"Download language: {source_url}")
     content = download_bytes(source_url, timeout=60.0)
+    if not isinstance(json.loads(content), dict):
+        raise ValueError("Language file must contain a JSON object")
     job.set_progress(25)
 
     try:
@@ -3363,8 +3362,10 @@ def remote_repo_version(ref: str) -> tuple[str, tuple[int, int, int]]:
     return version, require_version_tuple(version, f"Remote {ref}")
 
 
-def remote_repo_version_manifest(ref: str) -> dict[str, Any]:
-    data = json_request(github_version_json_url(ref), timeout=20.0)
+def remote_repo_version_manifest(ref: str, package_root: str = "build") -> dict[str, Any]:
+    url = (github_raw_language_base(ref) + "Updates/version.json"
+           if package_root == "Updates" else github_version_json_url(ref))
+    data = json_request(url, timeout=20.0)
     if not isinstance(data, dict):
         raise RuntimeError(f"Remote version info for {ref} is invalid")
     version = str(data.get("version", "")).strip()
@@ -3383,7 +3384,7 @@ def firmware_update_status(base_url: str) -> dict[str, Any]:
     current_parsed = require_version_tuple(current_version, "Device")
     is_development = bool(status.get("dev")) or "develop" in current_version.lower()
     ref = "development" if is_development else "main"
-    manifest = remote_repo_version_manifest(ref)
+    manifest = remote_repo_version_manifest(ref, package_root_for_firmware(current_version))
     remote_version = str(manifest.get("version") or "").strip()
     remote_parsed = require_version_tuple(remote_version, f"Remote {ref}")
     return {
@@ -4152,7 +4153,21 @@ def local_package_version(package_dir: str) -> tuple[str, tuple[int, int, int]]:
                 version = match.group(1).strip()
                 if version:
                     return version, require_version_tuple(version, f"Local package {idedata}")
-    raise RuntimeError("Local firmware version not found in existing version or PlatformIO build metadata")
+    # GitHub binary ZIPs contain neither version.json nor developer metadata.
+    # The ESP app descriptor holds a Git build ID; use complete product-version
+    # strings only after checking the image checksum, SHA256 and application role.
+    firmware = path / "firmware.bin"
+    if firmware.is_file() and not firmware.is_symlink():
+        payload = firmware.read_bytes()
+        migration_engine.check_image(payload, "BrautomatMain")
+        versions = {match.group(1).decode("ascii") for match in re.finditer(
+            rb"(?<=\x00)(1\.[0-9]{1,3}\.[0-9]{1,3})(?=\x00)", payload)}
+        if len(versions) == 1:
+            version = versions.pop()
+            return version, require_version_tuple(version, "Local firmware.bin")
+        if versions:
+            raise RuntimeError("Firmware version is ambiguous. Select a package with matching version.json.")
+    raise RuntimeError("Firmware version not found. Select the extracted firmware package containing firmware.bin and matching version metadata.")
 
 
 def migration_target_version(package_source: str, package_ref: str, package_dir: str) -> tuple[str, tuple[int, int, int]]:
@@ -5186,7 +5201,7 @@ def maintenance_http(base_url: str, path: str, payload: bytes | None = None) -> 
         return {"ok": False, "status": exc.code}
 
 
-def maintenance_firmware_job(job: Job, base_url: str, source: str, directory: str, ref: str) -> dict:
+def maintenance_firmware_job(job: Job, base_url: str, source: str, directory: str, ref: str, port: str = "") -> dict:
     if not MIGRATION_LOCK.acquire(blocking=False):
         raise RuntimeError("Another device operation is running")
     try:
@@ -5200,6 +5215,22 @@ def maintenance_firmware_job(job: Job, base_url: str, source: str, directory: st
         result = maintenance_http(base_url, "/api/firmware", payload)
         if not result["ok"]:
             raise RuntimeError(f"ServiceApp firmware repair: HTTP {result['status']}")
+        if port:
+            MIGRATION_CONTEXT.active = True
+            handover = {}
+            try:
+                handover = prepare_esptool_serial_handover(port, 115200, "Verify firmware repair")
+                with exclusive_serial_access(timeout=30):
+                    with open_serial_port(port, 115200, timeout=0.1) as handle:
+                        state = maintenance_engine.detect(handle)
+            finally:
+                MIGRATION_CONTEXT.active = False
+                if handover.get("restart"):
+                    schedule_serial_restart(handover["port"], handover["baud"], delay_seconds=2)
+            if state.get("active") is not True or state.get("service", {}).get("app_dirty") is not False:
+                raise RuntimeError("Firmware transferred, but clearing app_dirty was not confirmed. Check maintenance status before starting main firmware.")
+            result["maintenance"] = state
+            job.log("ServiceApp confirms app_dirty=0; remaining boot blockers are shown in maintenance status")
         job.set_progress(100)
         job.log("App0 verified by ServiceApp; maintenance mode remains active")
         return result
@@ -5321,11 +5352,11 @@ def prepare_migration_package(job: Job, source: str, directory: str, ref: str) -
         sha = str(commit.get("sha", ""))
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise ValueError("Unable to pin migration source to a commit")
-        build_dir = "ESP32-IDF5dev" if source == "development" else "ESP32-IDF5"
-        base = f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/build/{build_dir}"
+        location = package_location(source, ref, "Updates", sha)
+        base = location["base_url"]
         package = CACHE_DIR / ("migration-" + uuid.uuid4().hex)
         package.mkdir(parents=True)
-        version, _ = remote_repo_version(sha)
+        version = location["version"]
         for name in migration_engine.IMAGES:
             target = package / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -5333,7 +5364,7 @@ def prepare_migration_package(job: Job, source: str, directory: str, ref: str) -
         for name in WEBUPDATE_TOOL_FILES:
             target = package / "webfiles" / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(download_bytes(github_raw_tools_base(sha) + name, timeout=120.0))
+            target.write_bytes(download_bytes(github_raw_language_base(sha) + "Updates/data/" + name, timeout=120.0))
     metadata = migration_engine.validate_package(package, version)
     migration_webfiles(package)
     job.log("Migration package validated: " + str(package))
@@ -5350,11 +5381,13 @@ def migration_webfile_allowed(name: str) -> bool:
 def migration_webfiles(package: pathlib.Path) -> dict[str, bytes]:
     candidates = [package / "webfiles", package / "data"]
     project = package.parent.parent
+    if package.parent.name == "Updates":
+        candidates.append(package.parent / "data")
     if package.parent.name == "build" and (project / "platformio.ini").is_file():
         candidates.append(project / "data")
     root = next((path for path in candidates if path.is_dir()), None)
     if root is None:
-        raise ValueError("Matching webfiles missing: select the firmware build directory with its project data directory")
+        return migration_image_webfiles(package)
     entries = set(WEBUPDATE_TOOL_FILES)
     entries.update("language/" + path.name for path in (root / "language").glob("*.json"))
     result = {}
@@ -5369,6 +5402,42 @@ def migration_webfiles(package: pathlib.Path) -> dict[str, bytes]:
             raise ValueError(f"Invalid migration webfile: {name}")
         result["/" + name] = content
     return result
+
+
+def migration_image_webfiles(package: pathlib.Path) -> dict[str, bytes]:
+    """Read only allowed web assets from a ZIP's filesystem, never user data."""
+    from littlefs import LittleFS
+
+    image = package / "Littlefs.bin"
+    if not image.is_file() or image.is_symlink():
+        raise ValueError("Matching webfiles missing: select a package containing webfiles, data or Littlefs.bin")
+    if not 4096 <= image.stat().st_size <= 0xB0000 or image.stat().st_size % 4096:
+        raise ValueError("Invalid Littlefs.bin size for the migration filesystem")
+    payload = image.read_bytes()
+    fs = LittleFS(block_size=4096, block_count=len(payload) // 4096, mount=False)
+    fs.context.buffer = bytearray(payload)
+    mounted = False
+    try:
+        fs.mount()
+        mounted = True
+        entries = set(WEBUPDATE_TOOL_FILES)
+        entries.update("language/" + name for name in fs.listdir("/language")
+                       if re.fullmatch(r"[A-Za-z0-9_-]+\.json", name))
+        result = {}
+        for name in sorted(entries):
+            if not migration_webfile_allowed("webfiles/" + name):
+                raise ValueError("Unsafe migration webfile path")
+            with fs.open("/" + name, "rb") as handle:
+                content = handle.read(len(payload) + 1)
+            if not content or len(content) > len(payload):
+                raise ValueError(f"Invalid migration webfile: {name}")
+            result["/" + name] = content
+        return result
+    except Exception as exc:
+        raise ValueError("Cannot read required webfiles from Littlefs.bin. Select a complete, intact firmware package.") from exc
+    finally:
+        if mounted:
+            fs.unmount()
 
 
 def migration_read_file(base_url: str, path: str) -> bytes:
@@ -5701,7 +5770,17 @@ class AppHandler(BaseHTTPRequestHandler):
             query = parse.parse_qs(parse.urlparse(self.path).query)
             source = (query.get("source") or ["release"])[0]
             package_ref = (query.get("ref") or [""])[0]
-            self._send_json({"languages": list_remote_languages(source, package_ref)})
+            try:
+                if source == "special" and not package_ref.strip():
+                    raise ValueError("Please select a firmware version first.")
+                languages = list_remote_languages(source, package_ref, query.get("package_root", ["build"])[0])
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=400)
+                return
+            except (OSError, RuntimeError) as exc:
+                self._send_json({"error": str(exc)}, status=502)
+                return
+            self._send_json({"languages": languages})
             return
         if path == "/api/inventory/list":
             query = parse.parse_qs(parse.urlparse(self.path).query)
@@ -5807,7 +5886,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 self._send_json(firmware_slot(data["base_url"]))
                 return
             if path == "/api/packages":
-                self._send_json(package_catalog())
+                data = self._read_json()
+                self._send_json(package_catalog(str(data.get("firmware", "")), bool(data.get("include_special"))))
                 return
             if path == "/api/config":
                 data = self._read_json()
@@ -5962,6 +6042,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     data["base_url"],
                     data.get("package_source", "release"),
                     data.get("package_ref", ""),
+                    data.get("package_root", "build"),
                 )
                 self._send_json({"job_id": job.id})
                 return
@@ -5975,6 +6056,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     data.get("package_source", "release"),
                     data["filename"],
                     data.get("package_ref", ""),
+                    data.get("package_root", "build"),
                 )
                 self._send_json({"job_id": job.id})
                 return
@@ -6036,7 +6118,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     raise ValueError("Maintenance repair only supports App0")
                 job = STATE.jobs.create("flash", "Firmware repair")
                 run_job(job, maintenance_firmware_job, data["base_url"],
-                        data.get("package_source", "release"), data.get("package_dir", ""), data.get("package_ref", ""))
+                        data.get("package_source", "release"), data.get("package_dir", ""), data.get("package_ref", ""), data.get("port", ""))
                 self._send_json({"job_id": job.id})
                 return
             if path == "/api/maintenance/status":

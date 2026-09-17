@@ -92,6 +92,15 @@ An erase additionally requires the boot files and removes saved device data.
 Use the guided migration for changing an older device's partition layout.
 Migration supports targets 1.66.x, 1.67.x and 1.70.x with the verified ServiceApp layout.
 
+For an extracted GitHub firmware ZIP, select the folder containing the `.bin`
+files. If version metadata is absent, ServiceTool identifies a unique product
+version inside the validated main firmware image. Web assets can be provided in
+`webfiles/`, `data/`, or `Littlefs.bin`; no PlatformIO project is required.
+Only the allowed web assets and language files are read from LittleFS, using
+[littlefs-python](https://littlefs-python.readthedocs.io/en/latest/examples/index.html).
+The package stays unchanged, and configuration files from its filesystem image
+are not copied to the device. Corrupt or ambiguous packages are rejected before flashing.
+
 Firmware repair while the ServiceApp is running uploads only `firmware.bin`
 over HTTP and leaves the ServiceApp and filesystem intact. Device file rename
 uses the ServiceApp's generic file API in this mode.
@@ -165,7 +174,15 @@ which ServiceTool functions are already available.
 ![Firmware](img/firmware.jpg)
 
 - Select the correct COM port before flashing.
-- Use `Latest Release` for normal updates.
+- Use `Latest Release` for normal updates when a compatible package is available.
+- Package paths follow the detected firmware generation: up to 1.65.5 uses
+  `build/`; 1.66 and newer uses `Updates/`. Before device detection, the newer
+  generation is selected. Missing modern packages never fall back to old binaries.
+- `Special Version` lists available tags/commits for that generation. The displayed
+  directory and the downloaded directory match; all binary files are pinned to one
+  commit. Historical packages missing required files are omitted.
+- Language and webfile updates use the same generation. Local directories remain
+  available through `Open directory`.
 - Use `Latest Development` only for test devices or current development builds.
 - Keep `Flash erase` enabled only when a clean flash is really required.
 - Keep `Web files` enabled when firmware and WebUI should match.
@@ -252,6 +269,14 @@ The operating mode and any restriction on returning to the main firmware are
 updated automatically. Network repairs use the ServiceApp address; an explicitly
 entered device IP is retained. The main firmware starts only after the ServiceApp
 allows the switch.
+
+If an interrupted update prevents startup, ServiceTool displays a repair message
+and a **Repair main firmware** button. Select the desired firmware package above,
+then confirm the repair. The ServiceApp must be reachable over WiFi; WiFi settings
+can be saved over USB first. ServiceTool uploads and verifies the main firmware,
+checks that the incomplete-update flag was cleared, and starts the main firmware
+only if no other boot restriction remains. Configuration and filesystem are kept.
+A regular USB firmware upload alone does not clear this persistent repair flag.
 
 ## End-User Requirements
 

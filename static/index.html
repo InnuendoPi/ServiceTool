@@ -17,7 +17,7 @@
   </div>
   <header class="hero">
     <div>
-      <h1 id="title">Brautomat32 ServiceTool V 1.7.8</h1>
+      <h1 id="title">Brautomat32 ServiceTool V 1.7.10</h1>
     </div>
     <div class="hero-actions">
       <div class="header-device">
@@ -118,15 +118,18 @@
         </div>
         </div>
         <div class="actions end">
-          <button id="flashBtn">Firmware flashen</button>
+          <button id="flashBtn">Über USB installieren</button>
+          <button id="checkFirmwareUpdateBtn" class="ghost" type="button">WLAN-Update suchen</button>
           <span id="flashBackupWarning" class="flash-backup-warning hidden-panel"></span>
         </div>
         <div class="section-divider" aria-hidden="true"></div>
+        <p id="firmwareTransportHint" class="hint">Paketquelle und Flash-Optionen gelten für die USB-Installation. WLAN-Update prüft separat eine veröffentlichte Firmware.</p>
         <div class="actions maintenance-actions">
           <button id="maintenanceToggle" class="success" type="button" title="Wartungsmodus starten" aria-label="Wartungsmodus starten">
             <svg class="maintenance-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0L21.5 5.5a6 6 0 0 1-7.9 7.9l-7 7a2.1 2.1 0 0 1-3-3l7-7a6 6 0 0 1 7.9-7.9z"/></svg>
             <span id="maintenanceToggleLabel">Wartungsmodus starten</span>
           </button>
+          <button id="maintenanceRepair" class="hidden-panel" type="button">Hauptfirmware reparieren</button>
           <button id="maintenanceResetBrew" class="danger" type="button">Braustatus zurücksetzen</button>
           <span id="maintenanceSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
           <span id="maintenanceUnavailable" class="hidden-panel" role="status"></span>
@@ -150,10 +153,9 @@
 
       <section class="card card-stack">
         <h2 id="webfilesTitle">Webdateien Update</h2>
-        <p id="webfilesHint" class="hint">Aktualisiert die in WebUpdate verwendeten LittleFS-Webdateien direkt über /edit aus dem öffentlichen Brautomat32-Repo.</p>
+        <p id="webfilesHint" class="hint">Aktualisiert die Browseroberfläche und Sprachdateien aus der ausgewählten Paketquelle. Der Brautomat muss über WLAN erreichbar sein.</p>
         <div class="actions end">
           <button id="updateWebfilesBtn" type="button" onclick="updateWebfiles()">Webdateien aktualisieren</button>
-          <button id="checkFirmwareUpdateBtn" class="ghost" type="button">Firmware WebUpdate</button>
         </div>
         <div class="section-divider" aria-hidden="true"></div>
         <label>
@@ -163,6 +165,7 @@
             <button id="installLanguageBtn" type="button">Change language</button>
           </div>
         </label>
+        <p id="languageListStatus" class="status-line" role="status" aria-live="polite"></p>
         <div id="webfilesProgressPanel" class="progress-panel hidden">
           <div class="progress-head">
             <span id="webfilesProgressTitle">Progress</span>

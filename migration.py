@@ -183,7 +183,8 @@ def check_persisted_idle(data: bytes, *, require_idle: bool = True) -> None:
     """Read committed NVS scalar entries without changing the partition.
 
     Reject unreadable pages rather than treating unknown state as idle.
-    The settings namespace is the firmware's persisted resume contract.
+    Missing settings use the firmware defaults (SYSTEM.cpp, 1.65.5 readFlash):
+    step/second=-1, play and actuator flags=0.
     """
     records = []
     for page_at in range(0, len(data), 4096):
@@ -214,17 +215,15 @@ def check_persisted_idle(data: bytes, *, require_idle: bool = True) -> None:
         return
     records.sort(key=lambda item: item[:2])
     namespaces = {record[5][0] for record in records if record[2] == 0 and record[3] == 1 and record[4] == "settings"}
-    if len(namespaces) != 1:
-        raise ValueError("Persisted settings namespace missing or ambiguous")
-    values = {}
+    if len(namespaces) > 1:
+        raise ValueError("Persisted settings namespace is ambiguous")
+    values = {"step": -1, "second": -1}
     formats = {1: "<B", 2: "<H", 4: "<I", 8: "<Q", 0x11: "<b", 0x12: "<h", 0x14: "<i", 0x18: "<q"}
     for _, _, ns, kind, key, payload in records:
         if ns in namespaces and key in ("step", "second", "play", "idson", "sudon", "hlton", "fermon"):
             if kind not in formats:
                 raise ValueError("Unknown persisted process value type")
             values[key] = struct.unpack_from(formats[kind], payload)[0]
-    if "step" not in values or "second" not in values:
-        raise ValueError("Persisted process state is not explicitly available")
     if values["step"] >= 0 or values["second"] >= 0 or any(values.get(key, 0) for key in ("play", "idson", "sudon", "hlton", "fermon")):
         raise ValueError("Persisted process or actuator state is active; migration refused")
 

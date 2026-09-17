@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.7.10 - 2026-09-17
+
+- Behebt den Migrationsabbruch bei fehlendem NVS-Bereich settings; verwendet die Firmware-Standardwerte.
+- Erkennt entpackte GitHub-Firmwarepakete ohne Versionsmetadaten.
+- Liest Migrations-Webdateien aus Littlefs.bin; Nutzerdaten bleiben ausgeschlossen.
+- Unterstützt Updates/data als lokale Webdateiquelle.
+- Vervollständigt die Sprachauswahl bei GitHub-API-Ausfällen und ignoriert veraltete Antworten.
+- Verschiebt das WLAN-Firmwareupdate in den Firmwarebereich und kennzeichnet USB- und WLAN-Installation.
+
+## 1.7.9 - 2026-09-15
+
+- Unterscheidet alte Firmwarepakete unter build/ und neue Pakete ab 1.66 unter
+  Updates/. Fehlende Pakete werden gesperrt; veraltete Paket-URLs verschwinden.
+- Zeigt den Ladevorgang für Special Version und lädt aus demselben Buildverzeichnis
+  wie in der Auswahl. Fehlende historische Pakete verbergen andere Versionen nicht.
+- Verwendet passende Sprach- und Webdateipfade für die jeweilige Generation.
+- Wartet bei Special Version auf die Versionsauswahl, bevor Sprachen abgefragt
+  werden. Fehler bei der Sprachabfrage werden als API-Fehlermeldung beantwortet.
+- Bietet eine geführte Reparatur bei gesperrter Hauptfirmware mit Prüfung der
+  Freigabe und anschließendem Start. Einstellungen bleiben erhalten.
+
 ## 1.7.8 - 2026-09-14
 
 - Behebt den lokalen Windows-Build: bevorzugt die Python-3.12-Umgebung

@@ -10,6 +10,30 @@ from test_migration import image
 
 
 class MaintenanceRepairTests(unittest.TestCase):
+    def test_repair_confirms_dirty_flag_and_preserves_other_boot_blocks(self):
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            (directory / "firmware.bin").write_bytes(image("BrautomatMain"))
+            for dirty in (True, None, False):
+                state = {"active": True, "service": {"app_dirty": dirty, "fs_dirty": True,
+                         "can_boot_main": False}, "reason": "filesystem_update_incomplete"}
+                with (self.subTest(dirty=dirty),
+                      patch.object(app, "resolve_package", return_value=directory),
+                      patch.object(app, "maintenance_http", return_value={"ok": True, "status": 200}) as upload,
+                      patch.object(app, "prepare_esptool_serial_handover", return_value={}),
+                      patch.object(app, "open_serial_port", return_value=MagicMock()),
+                      patch.object(app.maintenance_engine, "detect", return_value=state)):
+                    job = app.Job(id="repair", type="flash", title="Repair")
+                    if dirty is False:
+                        result = app.maintenance_firmware_job(job, "http://device", "local", folder, "", "MOCK")
+                        self.assertFalse(result["maintenance"]["service"]["can_boot_main"])
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "app_dirty"):
+                            app.maintenance_firmware_job(job, "http://device", "local", folder, "", "MOCK")
+                    upload.assert_called_once()
+                    self.assertFalse(app.MIGRATION_LOCK.locked())
+                    self.assertFalse(app.MIGRATION_CONTEXT.active)
+
     def test_reset_posts_without_body_and_without_retry(self):
         response = MagicMock()
         response.__enter__.return_value.status = 200

@@ -56,11 +56,11 @@ const I18N = {
     wifiPasswordLabel: "Passwort",
     restoreTitle: "Restore",
     restoreFileLabel: "Backup-Datei",
-    flashTitle: "Firmware Flash",
+    flashTitle: "Firmware installieren",
     firmwareBackupTitle: "Firmware Backup",
     firmwareBackupHint: "Sichert die aktuell laufende App-Partition des Geräts über den seriellen Port.",
     webfilesTitle: "Webdateien Update",
-    webfilesHint: "Aktualisiert die in WebUpdate verwendeten LittleFS-Webdateien direkt über /edit aus dem öffentlichen Brautomat32-Repo.",
+    webfilesHint: "Aktualisiert die Browseroberfläche und Sprachdateien aus der ausgewählten Paketquelle. Der Brautomat muss über WLAN erreichbar sein.",
     webfilesLanguageLabel: "Brautomat Websprache",
     firmwareStatusTitle: "Status",
     managementStatusTitle: "Status",
@@ -141,9 +141,9 @@ const I18N = {
     managementLocalNewFolderBtn: "Ordner erstellen",
     managementLocalNewFileBtn: "Datei erstellen",
     updateWebfilesBtn: "Webdateien aktualisieren",
-    checkFirmwareUpdateBtn: "Firmware WebUpdate",
+    checkFirmwareUpdateBtn: "WLAN-Update suchen",
     installLanguageBtn: "Sprache wechseln",
-    flashBtn: "Firmware flashen",
+    flashBtn: "Über USB installieren",
     migrateBtn: "Migration in Entwicklung",
     serialStartBtn: '<i class="icon-play button-icon"></i>',
     serialStartTooltip: "Log starten",
@@ -251,11 +251,11 @@ const I18N = {
     wifiPasswordLabel: "Password",
     restoreTitle: "Restore",
     restoreFileLabel: "Backup file",
-    flashTitle: "Firmware Flash",
+    flashTitle: "Install firmware",
     firmwareBackupTitle: "Firmware Backup",
     firmwareBackupHint: "Backup active app partition over the serial port.",
     webfilesTitle: "Web Files Update",
-    webfilesHint: "Updates the LittleFS web files used by WebUpdate directly from Brautomat32 github repository.",
+    webfilesHint: "Updates the browser interface and language files from the selected package source. The Brautomat must be reachable over WiFi.",
     webfilesLanguageLabel: "Brautomat Web Language",
     firmwareStatusTitle: "Status",
     managementStatusTitle: "Status",
@@ -336,9 +336,9 @@ const I18N = {
     managementLocalNewFolderBtn: "Create folder",
     managementLocalNewFileBtn: "Create file",
     updateWebfilesBtn: "Update web files",
-    checkFirmwareUpdateBtn: "Firmware WebUpdate",
+    checkFirmwareUpdateBtn: "Check for WiFi update",
     installLanguageBtn: "Change language",
-    flashBtn: "Flash firmware",
+    flashBtn: "Install over USB",
     migrateBtn: "Migration in development",
     serialStartBtn: '<i class="icon-play button-icon"></i>',
     serialStartTooltip: "Start log",
@@ -526,7 +526,7 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.7.8",
+  service_tool_version: "1.7.10",
   language: "en",
   debug_output: false,
   device_url: "http://brautomat.local",
@@ -587,7 +587,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.7.8"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.7.10"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -843,6 +843,9 @@ function applyLanguage() {
   $("updateWebfilesBtn").textContent = text("updateWebfilesBtn");
   if ($("checkFirmwareUpdateBtn")) $("checkFirmwareUpdateBtn").textContent = text("checkFirmwareUpdateBtn");
   $("installLanguageBtn").textContent = text("installLanguageBtn");
+  $("firmwareTransportHint").textContent = currentLang === "de"
+    ? "Paketquelle und Flash-Optionen gelten für die USB-Installation. WLAN-Update sucht separat nach einer veröffentlichten Firmware und zeigt vor dem Start die Zielversion."
+    : "Package source and flash options apply to USB installation. WiFi update separately checks for published firmware and shows the target version before starting.";
   $("flashBtn").textContent = text("flashBtn");
   renderMaintenanceButton();
   for (const id of ["migrationBackupHint", "migrationPackageHint", "migrationRecoveryLabel", "migrationRefresh", "migrationResume", "migrationRestore", "migrationRecoveryHint"]) {
@@ -1228,67 +1231,130 @@ async function loadOverview() {
   renderTelegraf(info.telegraf || { lines: [] });
 }
 
+let packageLoadEpoch = 0;
+let packageSelectionReady = false;
+let loadedPackageGeneration = "";
+function packageGeneration() {
+  const version = parseDeviceFirmwareVersion(lastDeviceStatus?.firmware || "");
+  return version && compareVersionTuple(version, [1, 66, 0]) < 0 ? "build" : "Updates";
+}
 async function loadPackages() {
-  const data = await api("/api/packages", { method: "POST", body: {} });
+  const epoch = ++packageLoadEpoch;
   const source = $("packageSource").value;
-  const packages = Object.fromEntries((data.packages || []).map(item => [item.key, item]));
   const versionSelect = $("packageVersion");
   const versionGroup = $("packageVersionGroup");
-  const specialVersions = data.special_versions || [];
+  loadedPackageGeneration = packageGeneration();
+  packageSelectionReady = source === "open";
+  versionGroup.classList.toggle("hidden-panel", source !== "special");
+  if (source === "open") { syncFirmwareActions(); return; }
+  $("packageDir").value = "";
   versionSelect.innerHTML = "";
-  specialVersions.forEach(item => {
-    const option = document.createElement("option");
-    option.value = item.ref;
-    option.textContent = item.label;
-    option.dataset.baseUrl = item.base_url || "";
-    versionSelect.appendChild(option);
-  });
-
-  if (source === "special") {
-    versionGroup.classList.remove("hidden-panel");
-    const selectedRef = appConfig.package_ref && specialVersions.some(item => item.ref === appConfig.package_ref)
-      ? appConfig.package_ref
-      : (specialVersions[0]?.ref || "");
-    versionSelect.value = selectedRef;
-    appConfig.package_ref = selectedRef;
-    const selectedVersion = specialVersions.find(item => item.ref === selectedRef);
-    $("packageDir").value = selectedVersion ? selectedVersion.base_url : "";
-    appConfig.package_dir = $("packageDir").value;
-    syncFirmwareActions();
-    return;
-  }
-
-  versionGroup.classList.add("hidden-panel");
-  if (source === "release" || source === "development") {
-    const selected = packages[source];
-    $("packageDir").value = selected ? selected.path : "";
-    appConfig.package_dir = $("packageDir").value;
-  }
+  const loading = document.createElement("option");
+  loading.textContent = currentLang === "de" ? "Versionen werden geladen …" : "Loading versions …";
+  loading.value = "";
+  versionSelect.appendChild(loading);
+  versionSelect.disabled = true;
   syncFirmwareActions();
+  setInlineStatus("flashInlineStatus", currentLang === "de" ? "Firmwarepakete werden geprüft …" : "Checking firmware packages …");
+  try {
+    const data = await api("/api/packages", {method:"POST", body:{
+      firmware:lastDeviceStatus?.firmware || "", include_special:source === "special"
+    }});
+    if (epoch !== packageLoadEpoch || source !== $("packageSource").value) return;
+    const versions = data.special_versions || [];
+    versionSelect.innerHTML = "";
+    for (const item of versions) {
+      const option = document.createElement("option");
+      option.value = item.ref; option.textContent = item.label;
+      option.dataset.baseUrl = item.base_url;
+      versionSelect.appendChild(option);
+    }
+    let selected;
+    if (source === "special") {
+      selected = versions.find(item => item.ref === appConfig.package_ref) || versions[0];
+      versionSelect.value = selected?.ref || "";
+      appConfig.package_ref = versionSelect.value;
+      versionSelect.disabled = !selected;
+    } else selected = (data.packages || []).find(item => item.key === source && item.available);
+    $("packageDir").value = selected?.base_url || selected?.path || "";
+    appConfig.package_dir = $("packageDir").value;
+    packageSelectionReady = !!$("packageDir").value;
+    setInlineStatus("flashInlineStatus", packageSelectionReady ? "" : (currentLang === "de"
+      ? "Für diese Firmwaregeneration ist hier kein vollständiges Paket verfügbar. Bitte eine andere Paketquelle wählen."
+      : "No complete package is available here for this firmware generation. Select another source."));
+  } catch (err) {
+    if (epoch !== packageLoadEpoch) return;
+    setInlineStatus("flashInlineStatus", currentLang === "de"
+      ? "Paketliste konnte nicht geladen werden. Internetverbindung prüfen und Paketquelle erneut auswählen."
+      : "Could not load packages. Check the internet connection and select the source again.");
+  } finally {
+    if (epoch === packageLoadEpoch) syncFirmwareActions();
+  }
 }
 
 async function loadRepoLanguages() {
+  const requestId = (loadRepoLanguages.requestId || 0) + 1;
+  loadRepoLanguages.requestId = requestId;
   const source = $("packageSource").value;
+  const ref = $("packageVersion").value || "";
+  const generation = packageGeneration();
+  const isCurrent = () => loadRepoLanguages.requestId === requestId &&
+    $("packageSource").value === source && ($("packageVersion").value || "") === ref && packageGeneration() === generation;
   const select = $("webfilesLanguage");
   const installBtn = $("installLanguageBtn");
   select.innerHTML = "";
+  select.disabled = true;
+  installBtn.disabled = true;
+  setInlineStatus("languageListStatus", "");
 
   if (source === "open") {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "Not available for Open directory";
+    option.textContent = currentLang === "de" ? "Bitte eine Repository-Paketquelle auswählen" : "Select a repository package source";
     select.appendChild(option);
     select.disabled = true;
     installBtn.disabled = true;
     return;
   }
 
-  const data = await api(`/api/languages/repo?source=${encodeURIComponent(source)}&ref=${encodeURIComponent(appConfig.package_ref || "")}`);
+  if (source === "special" && !ref.trim()) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = currentLang === "de" ? "Bitte zuerst eine Firmwareversion auswählen" : "Select a firmware version first";
+    select.appendChild(option);
+    setInlineStatus("languageListStatus", option.textContent);
+    return;
+  }
+
+  const pending = document.createElement("option");
+  pending.value = "";
+  pending.textContent = currentLang === "de" ? "Sprachen werden geladen …" : "Loading languages …";
+  select.appendChild(pending);
+  let data;
+  try {
+    data = await api(`/api/languages/repo?source=${encodeURIComponent(source)}&ref=${encodeURIComponent(ref)}&package_root=${generation}`);
+  } catch (err) {
+    if (!isCurrent()) return;
+    select.innerHTML = "";
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = currentLang === "de" ? "Sprachliste konnte nicht geladen werden" : "Could not load language list";
+    select.appendChild(option);
+    select.disabled = true;
+    installBtn.disabled = true;
+    setInlineStatus("languageListStatus", currentLang === "de"
+      ? "Sprachliste nicht erreichbar. Internetverbindung und ausgewählte Paketversion prüfen, dann erneut laden."
+      : "Language list unavailable. Check the internet connection and selected package version, then reload.");
+    return;
+  }
+  if (!isCurrent()) return;
+  select.innerHTML = "";
+  setInlineStatus("languageListStatus", "");
   const languages = Array.isArray(data.languages) ? data.languages : [];
   if (!languages.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No language files found";
+    option.textContent = currentLang === "de" ? "Keine Sprachdateien in diesem Paket" : "No language files in this package";
     select.appendChild(option);
     select.disabled = true;
     installBtn.disabled = true;
@@ -1357,8 +1423,8 @@ async function loadRepoLanguages() {
   } else if (ordered.length) {
     select.value = ordered[0].filename;
   }
-  select.disabled = false;
-  installBtn.disabled = false;
+  select.disabled = ordered.length === 0;
+  installBtn.disabled = ordered.length === 0;
 }
 
 function formatTestRunnerCounts(counts = {}) {
@@ -3057,6 +3123,7 @@ function syncFirmwareActions() {
   }
   syncFlashOptionDependencies();
   updateFlashBackupWarning();
+  $("flashBtn").disabled = source !== "open" && !packageSelectionReady;
 }
 
 function syncFlashOptionDependencies() {
@@ -3295,8 +3362,18 @@ async function checkDevice(options = {}) {
       }
     });
     lastDeviceStatus = { ...lastDeviceStatus, ...data, mode: data?.mode || null };
+    if (loadedPackageGeneration !== packageGeneration()) {
+      loadPackages().then(loadRepoLanguages).catch(console.error);
+    }
     updateDeviceConnectionState(data?.state || (serialDeviceAvailable() ? "serial" : "offline"));
     updateDeviceVersionMeta(data);
+    if (data?.mode === "service" && data?.raw) {
+      maintenanceSelection = maintenanceSelectionKey();
+      maintenanceActive = true;
+      maintenanceNeedsDetection = false;
+      showMaintenanceState({active: true, service: data.raw, reason: data.raw.reason});
+      renderMaintenanceButton();
+    }
     updateActiveProcessState(data);
     if (data?.state === "online") {
       checkFirmwareUpdate(false).catch(console.error);
@@ -3795,6 +3872,10 @@ async function saveWifi() {
 }
 
 async function startFlash() {
+  if ($("packageSource").value !== "open" && !packageSelectionReady) {
+    setInlineStatus("flashInlineStatus", currentLang === "de" ? "Bitte ein verfügbares Firmwarepaket auswählen." : "Select an available firmware package.");
+    return false;
+  }
   try {
     if (!requireSerialPortForAction($("portSelect").value, "flashInlineStatus", "firmwareStatus", text("flashTitle"), { allowRunningMonitor: true })) {
       return;
@@ -3817,13 +3898,16 @@ async function startFlash() {
     });
     setStatus("firmwareStatus", "");
     appendStatus("firmwareStatus", text("flashTitle"), { job_started: data.job_id, status: "running" });
-    await watchJobToTarget(data.job_id, "firmwareStatus", text("flashTitle"), "flashInlineStatus");
+    const finished = await watchJobToTarget(data.job_id, "firmwareStatus", text("flashTitle"), "flashInlineStatus");
+    if (finished.status !== "done") throw new Error(finished.error || (currentLang === "de" ? "Firmware konnte nicht repariert werden. Bitte Verbindung prüfen und erneut versuchen." : "Firmware repair failed. Check the connection and try again."));
     if (managementServiceActive()) await refreshMaintenance();
+    return true;
   } catch (err) {
     setProgressState("firmwareProgressPanel", "firmwareProgressBar", "firmwareProgressText", 0, false);
     appendStatus("firmwareStatus", text("flashTitle"), String(err));
     setInlineStatus("flashInlineStatus", `Error: ${String(err)}`);
     setSpinner("flashSpinner", false);
+    return false;
   }
 }
 
@@ -3879,6 +3963,7 @@ async function updateWebfiles() {
       body: {
         base_url: $("deviceUrl").value,
         package_source: source,
+        package_root: packageGeneration(),
         package_ref: $("packageVersion").value || ""
       }
     });
@@ -3936,6 +4021,7 @@ async function installLanguage() {
       body: {
         base_url: $("deviceUrl").value,
         package_source: source,
+        package_root: packageGeneration(),
         package_ref: $("packageVersion").value || "",
         filename
       }
@@ -4388,6 +4474,7 @@ async function watchJobToTarget(jobId, targetId, titleOverride = null, inlineSta
   });
 }
 
+let maintenanceAppDirty = false;
 let maintenanceVersion = {selection: "", firmware: ""};
 let maintenanceActive = null;
 let maintenanceExitBlocked = false;
@@ -4410,11 +4497,16 @@ function maintenanceUnsupported() {
 function renderMaintenanceButton() {
   const unsupported = maintenanceUnsupported();
   const service = managementServiceActive();
+  $("flashBtn").textContent = service
+    ? (currentLang === "de" ? "Hauptfirmware reparieren" : "Repair main firmware") : text("flashBtn");
   $("maintenanceUnavailable").textContent = currentLang === "de"
     ? "Der Wartungsmodus steht mit dem ServiceApp-Partitionslayout (1.67/1.70) zur Verfügung. Bitte die Firmware aktualisieren."
     : "Maintenance mode is available with the ServiceApp partition layout (1.67/1.70). Please update the firmware.";
   $("maintenanceUnavailable").classList.toggle("hidden-panel", !unsupported);
   $("maintenanceStatus").classList.toggle("hidden-panel", unsupported);
+  $("maintenanceRepair").textContent = currentLang === "de" ? "Hauptfirmware reparieren" : "Repair main firmware";
+  $("maintenanceRepair").classList.toggle("hidden-panel", !service || !maintenanceAppDirty);
+  $("maintenanceRepair").disabled = maintenanceBusy || maintenanceStatusPending || maintenanceNeedsDetection;
   $("maintenanceResetBrew").textContent = text("maintenanceResetBrew");
   $("maintenanceResetBrew").disabled = !service || maintenanceBusy || maintenanceStatusPending;
   for (const id of ["eraseFlashSelect", "littlefsSelect"]) {
@@ -4467,11 +4559,18 @@ async function refreshMaintenance() {
 
 function showMaintenanceState(state) {
   clearTimeout(maintenanceRefreshTimer);
-  maintenanceExitBlocked = state.active === true && (state.service?.can_boot_main === false || !!state.reason);
+  maintenanceAppDirty = state.active === true && (state.service?.app_dirty === true || state.reason === "app_update_incomplete");
+  maintenanceExitBlocked = state.active === true && (maintenanceAppDirty || state.service?.fs_dirty === true || state.service?.can_boot_main === false || !!state.reason);
   if (state.active === true) {
-    const reason = state.reason ? (I18N[currentLang][`maintenanceReason_${state.reason}`] || state.reason) : "";
+    const reasonCode = state.reason || state.service?.reason;
+    const reason = reasonCode ? (I18N[currentLang][`maintenanceReason_${reasonCode}`] || reasonCode) : "";
     const blocked = currentLang === "de" ? "Beenden derzeit nicht möglich" : "Exit currently unavailable";
     setInlineStatus("maintenanceStatus", text("maintenanceActive") + (maintenanceExitBlocked ? ` · ${blocked}${reason ? `: ${reason}` : ""}` : ""));
+    if (maintenanceAppDirty) {
+      setInlineStatus("maintenanceStatus", currentLang === "de"
+        ? "Der Brautomat kann noch nicht starten: Die Hauptfirmware muss repariert werden. Wähle oben die gewünschte Firmwareversion und klicke auf „Hauptfirmware reparieren“. Deine Einstellungen bleiben erhalten. Für die Übertragung muss der Brautomat über WLAN erreichbar sein."
+        : "The Brautomat cannot start yet: The main firmware needs repair. Select the desired firmware version above and click Repair main firmware. Your settings are preserved. The Brautomat must be reachable over WiFi for the transfer.");
+    }
     if (state.active === true) {
       maintenanceRefreshTimer = setTimeout(refreshMaintenance, 5000);
     }
@@ -4483,6 +4582,25 @@ function showMaintenanceState(state) {
   const key = state.reason ? `maintenanceReason_${state.reason}` :
     (state.active === true ? "maintenanceActive" : state.active === false ? "maintenanceEnded" : "maintenanceReason_state_unknown");
   setInlineStatus("maintenanceStatus", I18N[currentLang][key] || `${text("maintenanceError")}: ${state.reason}`);
+}
+
+async function repairMaintenanceFirmware() {
+  if (!managementServiceActive() || !maintenanceAppDirty || maintenanceBusy || maintenanceStatusPending) return;
+  const target = $("packageDir").value || $("packageVersion").value || $("packageSource").value;
+  const prompt = currentLang === "de"
+    ? `Hauptfirmware aus dem ausgewählten Paket (${target}) erneut übertragen und prüfen? Nach erfolgreicher Prüfung wird der Brautomat wieder gestartet. Deine Einstellungen bleiben erhalten.`
+    : `Upload and verify the main firmware from the selected package (${target})? After successful verification, the Brautomat will restart. Your settings are preserved.`;
+  if (!window.confirm(prompt)) return;
+  maintenanceBusy = true;
+  renderMaintenanceButton();
+  let repaired = false;
+  try { repaired = await startFlash(); }
+  finally {
+    maintenanceBusy = false;
+    await refreshMaintenance();
+    renderMaintenanceButton();
+  }
+  if (repaired && maintenanceActive === true && !maintenanceExitBlocked) await toggleMaintenance();
 }
 
 async function resetMaintenanceBrewState() {
@@ -4707,6 +4825,7 @@ function attachEvents() {
   $("wifiNetworks").addEventListener("change", () => {
     $("wifiSsid").value = $("wifiNetworks").value;
   });
+  $("maintenanceRepair").addEventListener("click", repairMaintenanceFirmware);
   $("maintenanceToggle").addEventListener("click", toggleMaintenance);
   $("maintenanceResetBrew").addEventListener("click", resetMaintenanceBrewState);
   renderMaintenanceButton();
@@ -4716,6 +4835,9 @@ function attachEvents() {
   $("chooseInventoryRoot")?.addEventListener("click", chooseInventoryRoot);
   $("packageSource").addEventListener("change", async () => {
     const source = $("packageSource").value;
+    packageSelectionReady = false;
+    $("packageDir").value = "";
+    syncFirmwareActions();
     await saveConfig({ package_source: source, package_ref: source === "special" ? appConfig.package_ref : "" });
     if (source === "open") {
       syncFirmwareActions();
@@ -4734,6 +4856,8 @@ function attachEvents() {
     const baseUrl = selectedOption?.dataset?.baseUrl || "";
     appConfig.package_ref = selectedRef;
     $("packageDir").value = baseUrl;
+    packageSelectionReady = !!baseUrl;
+    syncFirmwareActions();
     await saveConfig({ package_ref: selectedRef, package_dir: baseUrl });
     await loadRepoLanguages();
   });
@@ -4873,7 +4997,7 @@ async function init() {
     setSpinner("telegrafDownloadSpinner", false);
     Object.keys(MANAGEMENT_KINDS).forEach(kind => setSpinner(`${kind}Spinner`, false));
     updateFlashBackupWarning();
-    queueDeferredLoad("loadPackages", () => loadPackages(), 0);
+    queueDeferredLoad("loadPackages", () => loadPackages().then(loadRepoLanguages), 0);
     queueDeferredLoad("loadRepoLanguages", () => loadRepoLanguages(), 100);
     queueDeferredLoad("loadBackups", () => loadBackups(), 200);
     if (!hideTestRunnerViaQuery()) {

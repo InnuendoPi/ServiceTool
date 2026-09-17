@@ -1,8 +1,8 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "1.7.8",
-  "released_at": "2026-09-14",
-  "notes": "ServiceTool 1.7.8: fixes local Windows packaging with Python 3.12 and verifies required Tcl/Tk startup data before and after building.",
+  "version": "1.7.10",
+  "released_at": "2026-09-17",
+  "notes": "ServiceTool 1.7.10: recognizes extracted GitHub firmware packages without version metadata and reads migration webfiles from Littlefs.bin.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
     "url": "",
