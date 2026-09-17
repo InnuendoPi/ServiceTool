@@ -5,17 +5,17 @@
   "notes": "ServiceTool 1.7.10: recognizes extracted GitHub firmware packages without version metadata and reads migration webfiles from Littlefs.bin.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.10/Brautomat32ServiceTool-win.zip",
+    "sha256": "7deeb52c6d522434e31cb1906712e89908defe25cc288a889856334d472abf9d"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.10/Brautomat32ServiceTool-linux.zip",
+    "sha256": "b58945a8ce45510f83dfb05a3dcef781ca0af8ea6cbe151a8a73b0f9fe17ec9c"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.7.10/Brautomat32ServiceTool-macos.zip",
+    "sha256": "27e17da6b73debe30a8676aa6d026d6c2caea45ef5d7952261fea93c531b2337"
   }
 }
