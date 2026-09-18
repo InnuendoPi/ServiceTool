@@ -5,17 +5,17 @@
   "notes": "ServiceTool 1.8.0: compact interface, saved device profiles and integrated offline help with search.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "",
-    "sha256": "fc290165c4a3cef751b84e7751bd4e349329b128da20fd7958ab8677efb9fb50"
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.8.0/Brautomat32ServiceTool-win.zip",
+    "sha256": "cdd90d45c0a9c07508b404105560a91f3dcb53d98465da221340dbed24881768"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.8.0/Brautomat32ServiceTool-linux.zip",
+    "sha256": "b9106e4204e9ba6efb715dd8f8fd53accc369d80d66190ec530a97c645cf0de4"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.8.0/Brautomat32ServiceTool-macos.zip",
+    "sha256": "3167b800ebe7099ea5a523e366b0e06007e4e0881a7a03de954c268ab7e4b81b"
   }
 }
