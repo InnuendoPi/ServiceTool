@@ -39,6 +39,12 @@ if errorlevel 1 (
   popd >nul
   exit /b 1
 )
+"%SERVICE_TOOL_BUILD_PYTHON%" tools\check_bundled_help.py --binary dist\Brautomat32ServiceTool.exe
+if errorlevel 1 (
+  popd >nul
+  exit /b 1
+)
+
 echo Build finished: "%SCRIPT_DIR%dist\Brautomat32ServiceTool.exe"
 popd >nul
 exit /b 0

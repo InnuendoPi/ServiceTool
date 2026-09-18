@@ -7,6 +7,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="stylesheet" href="/icomoon/style.css">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/workspace.css">
 </head>
 <body>
   <div id="appLoadingOverlay" class="app-loading-overlay">
@@ -17,11 +18,11 @@
   </div>
   <header class="hero">
     <div>
-      <h1 id="title">Brautomat32 ServiceTool V 1.7.10</h1>
+      <h1 id="title">Brautomat32 ServiceTool V 1.8.0</h1>
     </div>
     <div class="hero-actions">
       <div class="header-device">
-        <input id="deviceUrl" type="text" value="http://brautomat.local" placeholder="http://brautomat.local">
+        <input id="deviceUrl" type="text" value="http://brautomat" placeholder="http://brautomat">
         <button id="checkDevice">Check device</button>
         <span id="deviceConnectionState" class="connection-state offline" data-state="offline"></span>
         <button id="openDeviceUrl" class="ghost icon-button" type="button" aria-label="Open device"></button>
@@ -43,6 +44,16 @@
     </div>
   </header>
 
+  <div class="workspace-device">
+    <label><span id="activeDeviceLabel">Aktives Gerät</span><select id="activeDeviceSelect" aria-label="Aktives Gerät"></select></label>
+    <button id="editDeviceProfile" class="ghost" type="button">Profil bearbeiten</button>
+    <button id="addDeviceProfile" class="ghost" type="button">Gerät hinzufügen</button>
+    <span id="activeDeviceAddress"></span>
+    <span id="profileFeedback" role="status" aria-live="polite"></span>
+  </div>
+  <nav id="mainNavigation" class="workspace-navigation" aria-label="Hauptbereiche"></nav>
+  <nav id="sectionNavigation" class="workspace-sections" aria-label="Unterbereiche"></nav>
+
   <main class="layout">
     <div class="tabs-row span-2">
       <nav class="tabs">
@@ -57,13 +68,14 @@
       <div class="firmware-meta tabs-firmware-meta">
         <span id="activeFirmwareLabel">Aktive Firmware</span>
         <span id="activeFirmware" class="firmware-version"></span>
-        <span id="activeProcessState" class="process-state hidden-panel" data-state="idle"></span>
       </div>
     </div>
 
     <section class="tab-panel span-2 firmware-panel active" data-panel="firmware">
       <section class="card card-stack">
         <h2 id="flashTitle">Firmware Flash</h2>
+        <section class="firmware-method" aria-labelledby="firmwarePackageTitle">
+        <h3 id="firmwarePackageTitle">Firmware aus Paket installieren</h3>
         <div id="firmwareSelectionHome">
         <div id="sharedFirmwareSelection">
         <div class="grid-2">
@@ -118,12 +130,17 @@
         </div>
         </div>
         <div class="actions end">
-          <button id="flashBtn">Über USB installieren</button>
-          <button id="checkFirmwareUpdateBtn" class="ghost" type="button">WLAN-Update suchen</button>
+          <button id="flashBtn">Ausgewähltes Paket über USB installieren</button>
           <span id="flashBackupWarning" class="flash-backup-warning hidden-panel"></span>
         </div>
-        <div class="section-divider" aria-hidden="true"></div>
-        <p id="firmwareTransportHint" class="hint">Paketquelle und Flash-Optionen gelten für die USB-Installation. WLAN-Update prüft separat eine veröffentlichte Firmware.</p>
+        </section>
+        <section class="firmware-method firmware-release" aria-labelledby="firmwareReleaseTitle">
+          <h3 id="firmwareReleaseTitle">Veröffentlichte Firmware aktualisieren</h3>
+          <p id="firmwareTransportHint" class="hint">Prüft auf GitHub, ob eine neuere Firmware verfügbar ist. Die Installation erfolgt anschließend über die Netzwerkverbindung zum Brautomat. Die Paketquelle oben gilt nur für die Paketinstallation.</p>
+          <div class="actions">
+            <button id="checkFirmwareUpdateBtn" class="primary" type="button">Nach Firmware-Update suchen</button>
+          </div>
+        </section>
         <div class="actions maintenance-actions">
           <button id="maintenanceToggle" class="success" type="button" title="Wartungsmodus starten" aria-label="Wartungsmodus starten">
             <svg class="maintenance-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0L21.5 5.5a6 6 0 0 1-7.9 7.9l-7 7a2.1 2.1 0 0 1-3-3l7-7a6 6 0 0 1 7.9-7.9z"/></svg>
@@ -609,6 +626,8 @@
           <div><strong id="testRunnerSummaryCountsLabel">Step</strong><span id="testRunnerSummaryCounts">-</span></div>
           <div><strong id="testRunnerSummaryReportLabel">Report</strong><span id="testRunnerSummaryReport">-</span></div>
         </div>
+        <p id="testRunnerReportLocation" class="field-note"></p>
+        <a id="testRunnerReportLink" class="hidden-panel" target="_blank" rel="noopener noreferrer">Report öffnen</a>
         <pre id="testRunnerLog" class="output tall"></pre>
       </section>
       <section class="card span-2 debug-panel">
@@ -735,12 +754,23 @@
   </main>
 
   <div id="guideModal" class="modal-shell hidden-panel" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
-    <div class="modal-card">
+    <div class="modal-card guide-book">
       <div class="modal-head">
         <h2 id="guideTitle">ServiceTool Guide</h2>
         <button id="closeGuide" class="ghost icon-button" type="button" aria-label="Close">×</button>
       </div>
-      <div id="guideContent" class="guide-content"></div>
+      <div class="guide-layout">
+        <aside class="guide-sidebar">
+          <label for="guideSearch" id="guideSearchLabel">Hilfe durchsuchen</label>
+          <input id="guideSearch" type="search" autocomplete="off">
+          <p id="guideSearchStatus" class="muted" role="status"></p>
+          <nav id="guideChapters" aria-label="Kapitel"></nav>
+        </aside>
+        <div class="guide-reading">
+          <article id="guideContent" tabindex="-1"></article>
+          <nav id="guidePagination" aria-label="Kapitel wechseln"></nav>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -788,6 +818,18 @@
     </div>
   </div>
 
+  <dialog id="deviceProfileDialog" class="profile-dialog" aria-labelledby="deviceProfileTitle">
+    <form id="deviceProfileForm">
+      <h2 id="deviceProfileTitle">Geräteprofil</h2>
+      <label><span id="profilePortLabel">COM-Port</span><select id="profilePort" required></select></label>
+      <label><span id="profileUrlLabel">Geräte-URL</span><input id="profileUrl" type="url" required placeholder="http://…"></label>
+      <p id="profileHelp" class="hint">COM-Port und URL sind Pflicht. Die URL muss noch nicht erreichbar sein.</p>
+      <p id="profileError" role="alert"></p>
+      <div class="actions"><button id="profileSave" type="submit">Speichern</button><button id="profileCancel" type="button" class="ghost">Abbrechen</button><button id="profileRemove" type="button" class="danger">Gerät entfernen</button></div>
+    </form>
+  </dialog>
+  <script src="/workspace.js"></script>
+  <script src="/help.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

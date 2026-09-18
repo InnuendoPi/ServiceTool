@@ -280,7 +280,11 @@ class Esptool:
         args = ["write-flash", "--flash-mode", "keep", "--flash-freq", "keep", "--flash-size", "keep"]
         for offset, path in files:
             args.extend((hex(offset), str(path)))
-        self.command(*args)
+        output = self.command(*args)
+        # ESP32 write-flash verifies each image on the device. Require the
+        # confirmations before relying on it instead of a full serial readback.
+        if output.count("Hash of data verified.") != len(files):
+            raise RuntimeError("Flash write verification was not confirmed for every image; device is not restarted")
 
     def boot(self) -> None:
         self.command("flash-id", boot=True)
@@ -381,11 +385,9 @@ class Session:
             raise RuntimeError("Insufficient disk space for verified migration backup")
         self.status("migrationStepBackupFirst")
         first = device.read(0, FLASH_SIZE, self.work / "first-read.bin")
-        self.status("migrationStepBackupSecond")
-        second = device.read(0, FLASH_SIZE, self.work / "second-read.bin")
         self.status("migrationStepBackupCheck")
-        if first != second:
-            raise RuntimeError("Independent full flash reads differ; no writes allowed")
+        if len(first) != FLASH_SIZE:
+            raise RuntimeError("Incomplete flash backup; no writes allowed")
         check_layout(first[0x8000:0x9000], OLD_LAYOUT)
         durable_write(self.directory / "flash-backup.bin", first)
         nvs = first[0x9000:0xE000]
@@ -394,7 +396,7 @@ class Session:
                   boot_selection_sha256=digest(first[0xE000:0x10000]))
         self.backup()
 
-    def install(self, device, progress) -> None:
+    def install(self, device, progress, *, fresh_capture: bool = False) -> None:
         self.status("migrationStepBackupCheck")
         original = self.backup()
         check_persisted_idle(original[0x9000:0xE000])
@@ -412,12 +414,13 @@ class Session:
         package = self.work / "package"
         if validate_package(package, self.report["package"]["version"]) != self.report["package"]:
             raise RuntimeError("Staged migration package changed")
-        self.status("migrationStepPreserved")
-        # Do not overwrite user changes with an older snapshot during resume.
-        for name, (offset, size) in PRESERVED.items():
-            actual = device.read(offset, size, self.work / f"{name}-before.bin")
-            if actual != original[offset:offset + size]:
-                raise RuntimeError(f"{name} differs from backup; use explicit recovery instead")
+        if not fresh_capture:
+            self.status("migrationStepPreserved")
+            # A resumed session may have an older snapshot of user data.
+            for name, (offset, size) in PRESERVED.items():
+                actual = device.read(offset, size, self.work / f"{name}-before.bin")
+                if actual != original[offset:offset + size]:
+                    raise RuntimeError(f"{name} differs from backup; use explicit recovery instead")
         self.save("writing", write_started=True)
         # Fully clear only application regions, including stale old App1/coredump.
         # Padding never reaches NVS or LittleFS, even with 4 KiB sector erasure.
@@ -433,16 +436,14 @@ class Session:
         progress(35)
         self.status("migrationStepInstall")
         device.write(files)
-        self.status("migrationStepReadback")
+        self.status("migrationStepPreservedAfter")
         self.save("verifying")
-        actual = device.read(0, FLASH_SIZE, self.work / "installed-readback.bin")
-        expected = bytearray(original)
-        for offset, path in files:
-            data = path.read_bytes()
-            expected[offset:offset + len(data)] = data
-        if actual != expected:
-            raise RuntimeError("Flash verification failed; no restart, retain backup for recovery")
-        self.save("flash-verified", installed_sha256=digest(actual), preserved_verified=True)
+        for name, (offset, size) in PRESERVED.items():
+            actual = device.read(offset, size, self.work / f"{name}-after.bin")
+            if actual != original[offset:offset + size]:
+                raise RuntimeError(f"Flash verification failed: {name} changed; no restart, retain backup for recovery")
+        self.report.pop("installed_sha256", None)
+        self.save("flash-verified", write_verification="esptool-md5", preserved_verified=True)
         progress(70)
 
     def restore(self, device, progress) -> None:

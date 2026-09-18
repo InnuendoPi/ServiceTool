@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.8.0 - 2026-09-18
+
+- Modernisiert die Oberfläche mit vier Hauptbereichen, einheitlichen Bedienelementen und Drei-Punkte-Menü.
+- Speichert bis zu vier Geräteprofile mit COM-Port und URL; Gerätewechsel über die Kopfzeile.
+- Bündelt Verbindung und Prozesszustand in einem Statusbadge.
+- Ergänzt lokale Hilfe auf Deutsch und Englisch mit Suche und aufgabenbezogenen Anleitungen.
+
+## 1.7.11 - 2026-09-18
+
+- Beschleunigt die Migration: ein vollständiges Flash-Backup statt zweier Lesedurchläufe.
+- Nutzt die esptool-Schreibprüfung und liest anschließend nur NVS und LittleFS zur Kontrolle zurück.
+- Prüft erhaltene Daten vor dem Schreiben nur bei Wiederaufnahme; vollständige Restore-Prüfung bleibt erhalten.
+
 ## 1.7.10 - 2026-09-17
 
 - Behebt den Migrationsabbruch bei fehlendem NVS-Bereich settings; verwendet die Firmware-Standardwerte.

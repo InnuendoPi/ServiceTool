@@ -245,7 +245,7 @@ explicit checkbox in the Telegraf tab only when storing them in the local
 
 ### Migration
 
-Migrate firmware 1.62.0–1.65.5 directly to 1.70.x with a verified full flash
+Migrate firmware 1.62.0–1.65.5 directly to a compatible 1.66.x, 1.67.x or 1.70.x package with a verified full flash
 backup, preserved WiFi settings and user files, and backup recovery.
 See [MIGRATION.md](MIGRATION.md) for instructions and package requirements.
 

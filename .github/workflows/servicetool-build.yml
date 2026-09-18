@@ -81,6 +81,9 @@ jobs:
           rm -rf build dist AppDir artifact
           pyinstaller --noconfirm --clean Brautomat32ServiceTool.spec
 
+      - name: Verify bundled help
+        run: python tools/check_bundled_help.py --binary dist/Brautomat32ServiceTool
+
       - name: Package Linux AppImage
         shell: bash
         run: |
@@ -188,6 +191,9 @@ jobs:
             --collect-all certifi \
             --add-data "static:static" \
             app.py
+
+      - name: Verify bundled help
+        run: python tools/check_bundled_help.py --app dist/Brautomat32ServiceTool.app
 
       - name: Package macOS app
         shell: bash

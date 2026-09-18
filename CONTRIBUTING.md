@@ -1,6 +1,29 @@
 # Contributing to ServiceTool
 
+## Task scope and clarification
+
+- Follow the current user task and existing explicit preferences. These
+  instructions describe procedures; they do not authorize running every step.
+- Do not automatically append version changes, changelog edits, builds,
+  deployment, application startup, extra backups, commits or publication.
+  Previously authorized work does not require repeated confirmation.
+- Read relevant sources before changing behavior. If requirements remain
+  unclear or sources conflict, ask before making the dependent change.
+  Do not guess; lack of a reply is not approval.
+- Agree on additional checks, including regression tests, before running them.
+  State their purpose and scope. Required release checks still apply to a
+  release; an unperformed check must not be reported as passed.
+- Report only observed results. Distinguish source changes, built packages,
+  deployed installations, automated tests and hardware acceptance.
+- Preserve unrelated changes and user data. Deployment does not imply
+  starting the application or creating additional backup copies.
+- Historical reviews and firmware handover notes describe their stated
+  revision, not current tasks or proof of current compatibility.
+
 ## Release Process
+
+Use this procedure when release preparation is requested. A request for one
+step does not authorize the remaining steps.
 
 1. Update the version in:
    - [app.py](./app.py)
@@ -45,9 +68,10 @@ The build creates:
 - When preparing a new version before its packages exist, clear the platform
   download URLs and SHA256 values in `version.json`. The release workflow fills
   them from verified assets. Never advertise a new version using old binaries.
-- Unit tests include frontend contract tests when Node.js is available. For
-  local verification run `node tests/frontend_regressions.js` as well as the
-  Python suite; device acceptance remains separate.
+- Unit tests include frontend contract tests when Node.js is available. When
+  local verification is agreed, use `node tests/frontend_regressions.js` and
+  `python -m unittest discover -s tests` as appropriate to that scope.
+  Device acceptance remains separate.
 
 - `build_servicetool.cmd` builds only `Windows`.
 - `build_servicetool_windows_release.ps1` builds `Windows`, creates the ZIP,

@@ -1,7 +1,110 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
+require('./help_regressions.js');
+require('./runner_results_regressions.js');
 const source = fs.readFileSync('static/app.js', 'utf8');
+const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
+
+// Exercise the new navigation without starting the app or contacting a device.
+{
+  const elements = {};
+  function element() {
+    return {children:[], attributes:{}, listeners:{}, dataset:{}, textContent:'',
+      replaceChildren(){this.children=[];}, appendChild(child){this.children.push(child);},
+      setAttribute(key,value){this.attributes[key]=value;},
+      addEventListener(key,handler){this.listeners[key]=handler;}};
+  }
+  let runnerHidden = true;
+  elements.tabTestRunner = {classList:{contains:()=>runnerHidden}};
+  const ctx = vm.createContext({currentLang:'de', document:{body:{dataset:{}},
+    getElementById:id=>elements[id] ||= element(), createElement:element}});
+  vm.runInContext(workspaceSource, ctx);
+  ctx.activateTab = tab => vm.runInContext(`workspaceTabActivated(${JSON.stringify(tab)})`, ctx);
+  vm.runInContext('workspaceReady=true; renderWorkspaceNavigation()', ctx);
+  assert.deepEqual(elements.mainNavigation.children.map(n=>n.textContent), ['Gerät','Firmware','Daten','Service']);
+  assert.equal(elements.sectionNavigation.children.length,0);
+  elements.mainNavigation.children[1].listeners.click();
+  assert.equal(ctx.document.body.dataset.workspaceView,'install');
+  assert.equal(elements.sectionNavigation.children.length,0);
+  elements.mainNavigation.children[3].listeners.click();
+  assert.equal(ctx.document.body.dataset.workspaceView,'logging');
+  assert.deepEqual(elements.sectionNavigation.children.map(n=>n.textContent),['Serial Monitor','Telegraf','Wartung','Migration']);
+  runnerHidden=false;
+  vm.runInContext('renderWorkspaceNavigation()',ctx);
+  assert.deepEqual(elements.sectionNavigation.children.map(n=>n.textContent),['Serial Monitor','Telegraf','Wartung','Migration','Test Runner']);
+  elements.sectionNavigation.children[2].listeners.click();
+  assert.equal(ctx.document.body.dataset.workspaceView,'maintenance');
+  elements.mainNavigation.children[0].listeners.click();
+  assert.equal(ctx.document.body.dataset.workspaceView,'connection');
+  console.log('Workspace navigation: combined pages, service order and conditional Test Runner verified');
+}
+
+{
+  const classes = new Set();
+  const badge = {dataset:{versionTooltip:'1.67.2'}, classList:{
+    add:name=>classes.add(name), remove:(...names)=>names.forEach(name=>classes.delete(name))}};
+  const button = {};
+  const ctx=vm.createContext({$:id=>id==='deviceConnectionState'?badge:button,currentLang:'de',
+    text:key=>({checkDeviceOnline:'Online',checkDeviceNone:'Kein Gerät',checkDeviceChecking:'Prüfen',
+      activeProcessMash:'Maischen',activeProcessFermenter:'Fermentieren'}[key] || key)});
+  vm.runInContext(source.slice(source.indexOf('let displayedActiveProcess ='),source.indexOf('async function pollActiveProcess(')),ctx);
+  vm.runInContext('updateDeviceConnectionState("online")',ctx);
+  assert.equal(badge.textContent,'Online · Prozessstatus unbekannt');
+  assert.ok(classes.has('process-unknown'));
+  vm.runInContext('updateActiveProcessState({active_process:{state:"idle"}})',ctx);
+  assert.equal(badge.textContent,'Online · Kein Prozess aktiv');
+  assert.ok(!classes.has('process-unknown'));
+  vm.runInContext('updateActiveProcessState({active_process:{state:"active",mode:"mash",step:"Rast",name:"Sud",remaining_sec:120}})',ctx);
+  assert.equal(badge.textContent,'Online · Maischen: Rast');
+  assert.equal(badge.title,'1.67.2 · Sud · ~2 min');
+  assert.ok(classes.has('process-active'));
+  vm.runInContext('updateDeviceConnectionState("serial")',ctx);
+  assert.equal(badge.textContent,'Seriell verbunden');
+  assert.ok(!classes.has('process-active'));
+  vm.runInContext('updateActiveProcessState(null); updateDeviceConnectionState("offline")',ctx);
+  assert.equal(badge.textContent,'Kein Gerät');
+  vm.runInContext('currentLang="en"; updateDeviceConnectionState("online")',ctx);
+  assert.equal(badge.textContent,'Online · Process status unknown');
+  assert.equal(badge.dataset.state,'online');
+  console.log('Combined status: online unknown/idle/active, serial, offline and translation verified');
+}
+
+(async () => {
+  let reloads = 0;
+  const ctx = vm.createContext({
+    appConfig: {device_url:'http://existing.local',serial_port:'COM4'}, currentLang:'de',
+    checkDeviceInFlight:null, appStartupPendingTasks:0, maintenanceBusy:false, maintenanceStatusPending:false,
+    document:{getElementById:()=>({classList:{contains:()=>true}})},
+    window:{location:{reload:()=>{reloads++;}}},
+    api:async (url, options)=>{assert.equal(url,'/api/device-profiles');assert.equal(options.body.id,'worker-id');}
+  });
+  vm.runInContext(workspaceSource,ctx);
+  assert.equal(vm.runInContext('deviceProfileName(0,1)',ctx),'Brautomat');
+  assert.equal(vm.runInContext('deviceProfileName(0,4)',ctx),'Master');
+  assert.equal(vm.runInContext('deviceProfileName(3,4)',ctx),'worker3');
+  assert.equal(vm.runInContext('workspaceProfiles()[0].url',ctx),'http://existing.local');
+  ctx.checkDeviceInFlight=Promise.resolve();
+  await assert.rejects(vm.runInContext('submitDeviceProfile({action:"select",id:"worker-id"})',ctx),/abwarten/);
+  assert.equal(reloads,0);
+  ctx.checkDeviceInFlight=null;
+  ctx.api=async()=>{throw new Error('busy');};
+  await assert.rejects(vm.runInContext('submitDeviceProfile({action:"select",id:"worker-id"})',ctx),/busy/);
+  assert.equal(reloads,0);
+  ctx.api=async()=>({});
+  await vm.runInContext('submitDeviceProfile({action:"select",id:"worker-id"})',ctx);
+  assert.equal(reloads,1);
+  console.log('Device profiles: naming, legacy defaults, busy guard and reload verified');
+})().catch(error=>{console.error(error);process.exitCode=1;});
+
+{
+  const ctx=vm.createContext({appConfig:{device_profiles:[{},{}]},serialPortScore:()=>99});
+  vm.runInContext(source.slice(source.indexOf('function choosePreferredSerialPort('),source.indexOf('async function applySelectedSerialPort(')),ctx);
+  assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"}],"COM4")',ctx),'');
+  assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"},{port:"COM4"}],"COM4")',ctx),'COM4');
+  ctx.appConfig.device_profiles=[];
+  assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"}],"COM4")',ctx),'COM5');
+}
 const nodes = {};
 const node = id => nodes[id] ||= {value:'', dataset:{state:'serial'}, children:[],
   classList:{remove(){}, toggle(){}}, appendChild(value){this.children.push(value);}};

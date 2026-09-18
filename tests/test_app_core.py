@@ -29,6 +29,11 @@ def create_test_runner_fixture(root: pathlib.Path) -> None:
 
 
 class DeviceUrlFallbackTests(unittest.TestCase):
+    def setUp(self) -> None:
+        config_patch = patch.object(app, "load_app_config", return_value=app.default_config())
+        config_patch.start()
+        self.addCleanup(config_patch.stop)
+
     def test_http_error_does_not_switch_to_ap_fallback(self) -> None:
         visited: list[str] = []
 
@@ -165,6 +170,21 @@ class SerialHandoverTests(unittest.TestCase):
 
 
 class TestRunnerEnvironmentTests(unittest.TestCase):
+    def test_missing_development_directories_disable_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = pathlib.Path(temp_dir)
+            service_root = temp_root / "ServiceTool"
+            service_root.mkdir()
+            with (
+                patch.dict(app.os.environ, {app.TEST_RUNNER_SOURCE_ROOT_ENV: str(temp_root / "missing")}),
+                patch.object(app, "APP_ROOT", service_root),
+                patch.object(app, "DATA_ROOT", temp_root / "data"),
+                patch.object(app.subprocess, "check_output", return_value="v22.0.0\n"),
+            ):
+                catalog = app.detect_test_runner_environment()
+        self.assertFalse(catalog["enabled"])
+        self.assertTrue(catalog["reasons"])
+
     def test_environment_variable_is_read_at_detection_time(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = pathlib.Path(temp_dir)

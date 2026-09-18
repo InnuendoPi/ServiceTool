@@ -4,6 +4,11 @@ Die Quellkorrekturen für 1.7.7 sind im
 [Abschlussbericht](archive/servicetool-1.7.7-review-fixes.md) dokumentiert.
 Die nachfolgenden Geräte- und Releaseprüfungen bleiben davon getrennt.
 
+Dokumentationsabgleich: 18.09.2026. Diese Liste ist kein Auftrag zur Ausführung
+der aufgeführten Prüfungen. Frühere Gerätebestätigungen gelten für den damals
+getesteten Stand und belegen keine Abnahme späterer Änderungen, insbesondere
+des verkürzten Migrationsablaufs von 1.7.11.
+
 ## Geräteabnahme für Migration und Wartung
 
 **Status:** Implementiert; vollständige Geräteabnahme offen.
@@ -27,9 +32,12 @@ und Speicherung von WLAN-Zugangsdaten im Wartungsmodus.
 unbeteiligte Einstellungen und Dateien erhalten. Geräteprüfungen ergänzen die
 automatisierten Tests und werden vor Enduser-Freigabe abgeschlossen.
 
-**Offene Schnittstellen:** Erkennung eines vorhandenen Braustatus sowie WLAN-
-Auslesen, Scan und Reset in der ServiceApp. Die Versionen 1.66.x (Entwicklung), 1.67.x und 1.70.x verwenden
-das geprüfte ServiceApp-Partitionslayout.
+**Versionsabhängige Schnittstellen:** Den früher als offen erfassten Stand von
+Braustatus-Erkennung sowie WLAN-Auslesen, Scan und Reset nicht pauschal auf
+neuere Firmware übertragen. Verfügbarkeit für die tatsächlich eingesetzte
+Hauptfirmware und ServiceApp anhand ihres Schnittstellenvertrags klären.
+Die Paketprüfung unterstützt 1.66.x, 1.67.x und 1.70.x mit passender
+ServiceApp-Partitionstabelle; die Versionsnummer allein genügt nicht.
 
 ## Repository-Ausgliederung
 
@@ -42,8 +50,9 @@ Entwicklung bereitstellen.
 
 - Produktquellen, Buildskripte und statische UI-Dateien sind übernommen.
 - Release-Binärdateien und lokale Laufzeitdaten sind ausgeschlossen.
-- GitHub Actions baut manuell für Windows, Linux und macOS und lädt nur
-  Workflow-Artefakte hoch.
+- GitHub Actions baut manuell für Windows, Linux und macOS. Ohne
+  `Publish release` entstehen Workflow-Artefakte; mit dieser Option werden
+  zusätzlich Release und Update-Manifest veröffentlicht.
 - Der Test-Runner bleibt im privaten Firmware-Repository.
 
 **Releasekanal:**

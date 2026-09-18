@@ -1,0 +1,161 @@
+/* Shared visual shell; no changes to device or Telegraf behavior. */
+:root { --bg:#f4f6f9; --surface:#fff; --line:#dfe5ed; --text:#263449; --muted:#647286; --primary:#2464d9; }
+body { font-size:14px; }
+.hero { padding:16px 24px; align-items:center; border-bottom:1px solid var(--line); background:var(--surface); gap:16px; }
+.hero h1 { font-size:1.2rem; font-weight:600; letter-spacing:-.025em; }
+.hero-actions { align-items:center; gap:8px; flex-shrink:0; }
+.workspace-menu { position:relative; }
+#workspaceMenuToggle { min-width:var(--control-height); min-height:var(--control-height); padding:0 7px; border-color:transparent; font-size:24px; line-height:1; }
+#workspaceMenuToggle:hover,#workspaceMenuToggle[aria-expanded=true] { background:var(--bg); border-color:var(--line); }
+.workspace-menu-panel { position:absolute; top:calc(100% + 6px); right:0; z-index:100; width:210px; max-width:calc(100vw - 32px); padding:5px; background:var(--surface); border:1px solid var(--line); border-radius:7px; box-shadow:0 6px 20px rgba(25,40,60,.14); }
+.workspace-menu-panel button { display:block; width:100%; min-height:34px; padding:7px 10px; border:0; background:transparent; color:var(--text); text-align:left; font-size:13px; font-weight:400; }
+.workspace-menu-panel button:hover,.workspace-menu-panel button:focus-visible { background:var(--bg); }
+#openGuide { font-weight:400; }
+.workspace-device { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:12px 24px; background:var(--surface); }
+.workspace-device label { display:flex; align-items:center; gap:10px; margin:0; }
+.workspace-device label span { font-size:12px; color:var(--muted); }
+.workspace-device select { min-width:120px; width:auto; }
+.workspace-device>button:hover:not(:disabled) { border-color:#aab8cb; background:var(--bg); }
+#profileFeedback { font-size:12px; color:var(--danger); }
+.workspace-device-details { color:var(--muted); font-size:12px; font-weight:400; overflow-wrap:anywhere; }
+.workspace-device-details .firmware-version { color:inherit; font:inherit; white-space:normal; }
+#activeDeviceAddress:not(:empty)+#activeFirmware:not(:empty)::before { content:" · "; white-space:pre; }
+.workspace-navigation { display:flex; gap:8px; padding:0 24px; background:var(--surface); border-bottom:1px solid var(--line); }
+.workspace-navigation button { background:transparent; border:0; border-bottom:3px solid transparent; border-radius:0; color:var(--muted); padding:12px 18px; }
+.workspace-navigation button[aria-current=page] { color:var(--primary); border-bottom-color:var(--primary); }
+.workspace-sections { display:flex; flex-wrap:wrap; gap:6px; padding:12px 24px 0; }
+.workspace-sections:empty { display:none; }
+.workspace-sections button { background:transparent; color:var(--muted); border:0; padding:7px 12px; font-size:13px; }
+.workspace-sections button[aria-current=page] { background:#e7efff; color:var(--primary); }
+.layout { max-width:none; margin:0; padding:16px 24px 24px; gap:16px; }
+.tabs-row .tabs { display:none; }
+.tabs-row { display:none; }
+.workspace-device>.connection-state { margin-left:auto; min-width:0; max-width:100%; padding:3px 7px; font-size:12px; font-weight:400; border-radius:4px; white-space:normal; text-align:left; line-height:1.35; }
+.connection-state.online.process-unknown,.connection-state.online.process-active { color:#865600; border-color:#e6c56e; background:#fff8e3; }
+.card { border-radius:10px; padding:20px; box-shadow:none; }
+h2 { font-size:1.12rem; margin-bottom:16px; }
+.tab-panel.firmware-panel.active { grid-template-columns:minmax(0,1fr); }
+.firmware-panel>.card { grid-column:1 / -1; }
+.firmware-panel>.workspace-install,.firmware-panel>.workspace-webfiles,.firmware-panel>.workspace-wifi,.firmware-panel>.workspace-maintenance,.firmware-panel>.workspace-connection { display:none; }
+body[data-workspace-view=connection] .workspace-connection,
+body[data-workspace-view=connection] .workspace-wifi,
+body[data-workspace-view=install] .workspace-install,
+body[data-workspace-view=install] .workspace-webfiles,
+body[data-workspace-view=maintenance] .workspace-maintenance { display:block; }
+@media(min-width:961px) {
+ body[data-workspace-view=connection] .tab-panel.firmware-panel.active,
+ body[data-workspace-view=install] .tab-panel.firmware-panel.active { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ body[data-workspace-view=connection] .firmware-panel>.workspace-connection,
+ body[data-workspace-view=connection] .firmware-panel>.workspace-wifi,
+ body[data-workspace-view=install] .firmware-panel>.workspace-install,
+ body[data-workspace-view=install] .firmware-panel>.workspace-webfiles { grid-column:auto; }
+}
+.workspace-connection .header-device { display:flex; flex-wrap:wrap; margin-bottom:16px; }
+.workspace-connection .header-device input { min-width:160px; max-width:550px; }
+.workspace-connection>label { max-width:420px; }
+.workspace-connection .connection-state { min-height:34px; padding:6px 10px; }
+.workspace-connection input[readonly] { background:var(--bg); }
+.flash-controls { grid-template-columns:minmax(180px,1fr) auto; }
+.firmware-method h3 { margin:0 0 14px; font-size:14px; font-weight:600; }
+.firmware-method .actions { margin-top:12px; flex-wrap:wrap; }
+.firmware-method button { white-space:normal; }
+.firmware-release { margin-top:20px; padding-top:18px; border-top:1px solid var(--line); }
+.firmware-release .hint { margin:0 0 12px; }
+.workspace-maintenance .maintenance-actions { margin-top:0; }
+.header-side { align-items:flex-start; margin:0; gap:16px; }
+.workspace-settings-devices { margin-top:20px; padding-top:16px; border-top:1px solid var(--line); }
+.workspace-settings-devices h3 { margin:0 0 8px; font-size:14px; }
+.workspace-settings-devices .actions { flex-wrap:wrap; }
+#settingsActiveDevice { margin:0 0 12px; font-size:12px; overflow-wrap:anywhere; }
+#testRunnerReportLink { display:inline-block; margin:8px 0 12px; color:var(--primary); text-decoration:underline; }
+#testRunnerReportLink.hidden-panel { display:none; }
+.profile-dialog { color:var(--text); border:1px solid var(--line); border-radius:12px; padding:24px; width:min(520px,calc(100% - 32px)); }
+.profile-dialog::backdrop { background:rgba(22,32,48,.35); }
+.guide-book { width:min(1100px,100%); height:min(780px,90vh); max-height:90vh; display:flex; flex-direction:column; padding:0; border-radius:10px; overflow:hidden; }
+.guide-book>.modal-head { padding:16px 20px; margin:0; border-bottom:1px solid var(--line); }
+.guide-book>.modal-head h2 { margin:0; }
+.guide-layout { display:grid; grid-template-columns:230px minmax(0,1fr); flex:1; min-height:0; }
+.guide-sidebar { padding:18px 14px; background:var(--bg); border-right:1px solid var(--line); overflow:auto; }
+.guide-sidebar label { font-size:12px; margin-bottom:8px; }
+#guideSearchStatus { font-size:12px; margin:8px 0; }
+#guideChapters { display:grid; gap:4px; }
+#guideChapters button { text-align:left; white-space:normal; color:var(--text); border-color:transparent; }
+#guideChapters button[aria-current=page] { background:#e7efff; color:var(--primary); }
+.guide-reading { padding:24px 30px; overflow:auto; min-width:0; }
+#guideContent { max-width:70ch; line-height:1.65; overflow-wrap:anywhere; }
+#guideContent h2 { margin:24px 0 12px; }
+#guideContent>h2:first-child { margin-top:0; font-size:22px; }
+#guideContent h3 { font-size:15px; }
+#guideContent li { margin:8px 0; }
+#guideContent a { color:var(--primary); text-decoration:underline; }
+#guideContent code { background:var(--bg); padding:2px 4px; border-radius:3px; }
+#guideContent details { margin:20px 0; padding:12px; border:1px solid var(--line); border-radius:6px; }
+#guideContent summary { cursor:pointer; color:var(--muted); }
+#guidePagination { display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-top:28px; padding-top:16px; border-top:1px solid var(--line); }
+@media(max-width:700px) {
+ .guide-layout { grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); }
+ .guide-sidebar { padding:12px; max-height:210px; border-right:0; border-bottom:1px solid var(--line); }
+ #guideChapters { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .guide-reading { padding:18px; }
+}
+.profile-dialog label { display:grid; gap:6px; margin-bottom:16px; }
+.profile-dialog .actions { flex-wrap:wrap; }
+#profileError { color:var(--danger); }
+@media(max-width:960px) {
+ .hero { flex-direction:row; align-items:center; padding:14px 16px; }
+ .hero h1 { font-size:1rem; }
+ .layout { padding:16px; }
+ .workspace-device,.workspace-navigation { padding-left:16px; padding-right:16px; }
+ .workspace-sections { padding-left:16px; padding-right:16px; }
+ .workspace-connection .header-device { width:100%; }
+ .workspace-connection .header-device input { width:auto; flex-basis:240px; }
+}
+@media(max-width:560px) {
+ .hero { flex-wrap:wrap; gap:10px; }
+ .workspace-device label { width:100%; }
+ .workspace-device select { flex:1; }
+ .workspace-navigation { gap:0; }
+ .workspace-navigation button { flex:1; padding:10px 6px; }
+ .card { padding:16px; }
+ .flash-controls { grid-template-columns:1fr; }
+}
+/* One control scale across all pages, generated content and dialogs.
+   The selector also supersedes the legacy component-specific dimensions. */
+:root {
+ --control-height:28px;
+ --control-font-size:12px;
+ --control-padding:4px 8px;
+ --control-radius:4px;
+}
+:root body :is(button,select,textarea,input:not([type="checkbox"],[type="radio"],[type="hidden"])) {
+ box-sizing:border-box;
+ min-height:var(--control-height);
+ height:auto;
+ padding:var(--control-padding);
+ font-family:inherit;
+ font-size:var(--control-font-size);
+ font-weight:400;
+ line-height:1.4;
+ border-radius:var(--control-radius);
+}
+:root body :is(select,textarea,input:not([type="checkbox"],[type="radio"],[type="hidden"])) {
+ border:1px solid var(--line);
+ color:var(--text);
+}
+:root body textarea:not([hidden]) { min-height:6rem; }
+:root body button.ghost { border-color:var(--line); }
+:root body button.ghost:hover:not(:disabled) { border-color:#aab8cb; }
+:root body :is(input,select,textarea,button):focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+:root body :is(input[type="checkbox"],input[type="radio"]) {
+ width:14px; height:14px; min-height:0; padding:0; flex-shrink:0;
+ accent-color:var(--primary);
+}
+:root body label>span { font-size:var(--control-font-size); font-weight:400; }
+.local-inventory-head .icon-button,.local-inventory-head .local-path { min-height:var(--control-height); }
+.version-toggle { min-width:var(--control-height); width:auto; }
+/* Navigation retains its tab shape; its typography follows the control scale. */
+:root body :is(.workspace-navigation,.tabs,.subtabs) button { border-radius:0; }
+@media(pointer:coarse) {
+ :root { --control-height:44px; --control-font-size:16px; }
+ #workspaceMenuToggle { min-height:var(--control-height); min-width:var(--control-height); }
+}

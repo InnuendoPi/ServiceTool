@@ -201,17 +201,43 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(device.boots, 0)
         self.assertNotEqual(session.report["phase"], "flash-verified")
 
-    def test_independent_backup_reads_must_match(self):
+    def test_fresh_migration_reads_only_one_backup_and_preserved_regions(self):
+        device = Device()
+        session = self.session()
+        with patch.object(device, "read", wraps=device.read) as reads:
+            session.capture(device)
+            session.install(device, lambda _: None, fresh_capture=True)
+        self.assertEqual([(call.args[0], call.args[1]) for call in reads.call_args_list],
+                         [(0, m.FLASH_SIZE), *m.PRESERVED.values()])
+        self.assertNotIn("installed_sha256", session.report)
+        self.assertEqual(session.report["write_verification"], "esptool-md5")
+
+    def test_incomplete_backup_never_writes(self):
         device = Device()
         read = device.read
-        def changing(offset, size, target):
-            data = read(offset, size, target)
-            device.flash[0] ^= 1
-            return data
-        device.read = changing
-        with self.assertRaisesRegex(RuntimeError, "reads differ"):
+        device.read = lambda offset, size, target: read(offset, size, target)[:-1]
+        with self.assertRaisesRegex(RuntimeError, "Incomplete"):
             self.session().capture(device)
         self.assertEqual(device.writes, 0)
+
+    def test_esptool_requires_confirmation_for_each_written_image(self):
+        tool = m.Esptool(Path("esptool"), "COM4", 921600, lambda _: None)
+        files = [(0x1000, Path("bootloader.bin")), (0x10000, Path("firmware.bin"))]
+        with patch.object(tool, "command", return_value="Hash of data verified.\n" * 2):
+            tool.write(files)
+        for output in ("", "Hash of data verified.\n"):
+            with patch.object(tool, "command", return_value=output), self.assertRaisesRegex(RuntimeError, "verification"):
+                tool.write(files)
+
+    def test_write_verification_failure_never_marks_install_verified(self):
+        device = Device()
+        session = self.session()
+        session.capture(device)
+        with patch.object(device, "write", side_effect=RuntimeError("write verification failed")):
+            with self.assertRaisesRegex(RuntimeError, "verification"):
+                session.install(device, lambda _: None, fresh_capture=True)
+        self.assertEqual(device.boots, 0)
+        self.assertEqual(session.report["phase"], "writing")
 
     def test_active_persisted_process_refused(self):
         device = Device()
@@ -275,7 +301,7 @@ class MigrationTests(unittest.TestCase):
         tool = m.Esptool(Path("esptool"), "COM1", 921600, lambda _: None)
         with patch.object(m.subprocess, "run") as run:
             run.return_value.returncode = 0
-            run.return_value.stdout = "ok"
+            run.return_value.stdout = "Hash of data verified.\n"
             tool.write([(0x10000, Path("firmware.bin"))])
             command = run.call_args.args[0]
             self.assertIn("no-reset", command)
@@ -515,9 +541,8 @@ class MigrationTests(unittest.TestCase):
         session.status = steps.append
         session.capture(device)
         session.install(device, lambda _: None)
-        self.assertEqual(steps[:4], ["migrationStepDevice", "migrationStepBackupFirst",
-                                    "migrationStepBackupSecond", "migrationStepBackupCheck"])
-        self.assertLess(steps.index("migrationStepInstall"), steps.index("migrationStepReadback"))
+        self.assertEqual(steps[:3], ["migrationStepDevice", "migrationStepBackupFirst", "migrationStepBackupCheck"])
+        self.assertLess(steps.index("migrationStepInstall"), steps.index("migrationStepPreservedAfter"))
         session.save("complete")
         self.assertEqual({p.name for p in session.directory.iterdir()},
                          {"flash-backup.bin", "nvs.bin", "report.json"})

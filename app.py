@@ -106,7 +106,7 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.7.10"
+SERVICE_TOOL_VERSION = "1.8.0"
 ESPTOOL_VERSION = "5.3.1"  # Legacy cache lookup only; downloads use GitHub latest.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
@@ -140,6 +140,7 @@ BASE_FLASH_FILES = ["bootloader.bin", "partitions.bin", "boot_app0.bin"]
 OPTIONAL_PACKAGE_FILES = ["Littlefs.bin"]
 ALL_PACKAGE_FILES = REQUIRED_PACKAGE_FILES + OPTIONAL_PACKAGE_FILES
 WEBUPDATE_TOOL_FILES = [
+    "edit.htm.gz",
     "brautomat.min.css.gz",
     "brautomat.min.js.gz",
     "brautomat.ttf.gz",
@@ -519,7 +520,7 @@ def default_config() -> dict[str, Any]:
         "service_tool_version": SERVICE_TOOL_VERSION,
         "language": "en",
         "debug_output": False,
-        "device_url": "http://brautomat.local",
+        "device_url": "http://brautomat",
         "package_source": "release",
         "package_ref": "",
         "package_dir": REMOTE_PACKAGES["release"]["base_url"],
@@ -528,6 +529,8 @@ def default_config() -> dict[str, Any]:
         "baud_rate": 921600,
         "serial_baud_rate": 115200,
         "serial_port": "",
+        "device_profiles": [],
+        "active_device_id": "",
         "telegraf": default_telegraf_config(),
     }
 
@@ -556,6 +559,11 @@ def load_app_config() -> dict[str, Any]:
 def save_app_config(config: dict[str, Any]) -> dict[str, Any]:
     merged = default_config()
     merged.update({k: v for k, v in config.items() if k in merged})
+    # Existing controls still edit the active connection; keep its profile in sync.
+    for profile in merged["device_profiles"]:
+        if profile["id"] == merged["active_device_id"]:
+            profile["url"] = merged["device_url"]
+            profile["port"] = merged["serial_port"]
     merged["inventory_root"] = normalize_inventory_root(merged.get("inventory_root", ""))
     telegraf = default_telegraf_config()
     if isinstance(merged.get("telegraf"), dict):
@@ -571,6 +579,68 @@ def save_app_config(config: dict[str, Any]) -> dict[str, Any]:
     merged["telegraf"] = telegraf
     CONFIG_FILE.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
     return merged
+
+
+def configured_device_profiles(config: dict[str, Any]) -> list[dict[str, str]]:
+    return config.get("device_profiles") or [{
+        "id": "primary", "url": config["device_url"], "port": config["serial_port"],
+    }]
+
+
+def change_device_profile(data: dict[str, Any]) -> dict[str, Any]:
+    """Change saved connections only; never open a port or contact a device."""
+    if MIGRATION_LOCK.locked() or STATE.serial_access_lock.locked() or any(j["status"] in ("queued", "running") for j in STATE.jobs.snapshot()):
+        raise ValueError("Geräteprofil erst nach Abschluss des laufenden Auftrags ändern.")
+    if any(session and session.snapshot().get("running") for session in (STATE.serial, STATE.telegraf, STATE.test_runner)):
+        raise ValueError("Vor dem Profilwechsel Serial Monitor, Telegraf und Test Runner beenden.")
+    config = load_app_config()
+    profiles = [dict(p) for p in configured_device_profiles(config)]
+    active = config.get("active_device_id") or profiles[0]["id"]
+    action = data.get("action")
+    identity = str(data.get("id", active))
+    if action in ("add", "update"):
+        url = str(data.get("url", "")).strip().rstrip("/")
+        port = str(data.get("port", "")).strip()
+        parsed = parse.urlsplit(url)
+        if not port or parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("COM-Port und gültige Geräte-URL (http:// oder https://) eingeben.")
+        try:
+            parsed.port
+        except ValueError as exc:
+            raise ValueError("Ungültiger Port in der Geräte-URL.") from exc
+        for p in profiles:
+            if action == "update" and p["id"] == identity:
+                continue
+            if p["port"].casefold() == port.casefold() or p["url"].rstrip("/").casefold() == url.casefold():
+                raise ValueError("COM-Port oder URL ist bereits einem anderen Gerät zugeordnet.")
+        if action == "add":
+            if len(profiles) >= 4:
+                raise ValueError("Maximal vier Geräte möglich.")
+            if not profiles[0]["port"] or not profiles[0]["url"]:
+                raise ValueError("Bitte zuerst COM-Port und URL des ersten Geräteprofils speichern.")
+            identity = uuid.uuid4().hex
+            profiles.append({"id": identity, "port": port, "url": url})
+        else:
+            match = next((p for p in profiles if p["id"] == identity), None)
+            if match is None:
+                raise ValueError("Unbekanntes Geräteprofil.")
+            match.update(port=port, url=url)
+        active = identity
+    elif action == "select":
+        active = identity
+    elif action == "remove":
+        if len(profiles) == 1 or identity == profiles[0]["id"]:
+            raise ValueError("Das erste Gerät kann nicht entfernt werden.")
+        profiles = [p for p in profiles if p["id"] != identity]
+        active = profiles[0]["id"]
+    else:
+        raise ValueError("Unbekannte Profilaktion.")
+    chosen = next((p for p in profiles if p["id"] == active), None)
+    if chosen is None:
+        raise ValueError("Unbekanntes Geräteprofil.")
+    config.update(device_profiles=profiles, active_device_id=active,
+                  device_url=chosen["url"], serial_port=chosen["port"])
+    return save_app_config(config)
 
 
 def normalize_inventory_root(path_value: Any) -> str:
@@ -766,6 +836,9 @@ def normalize_base_url(base_url: str) -> str:
 def candidate_base_urls(base_url: str) -> list[str]:
     primary = normalize_base_url(base_url)
     candidates = [primary]
+    # In multi-device mode an unrelated access point must not answer for a profile.
+    if len(load_app_config().get("device_profiles", [])) > 1:
+        return candidates
     ap_fallback = "http://192.168.4.1"
     if primary != ap_fallback:
         candidates.append(ap_fallback)
@@ -2640,6 +2713,8 @@ def load_test_runner_report(report_path: str) -> dict[str, Any]:
         return {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Report must be a JSON object")
     except Exception as exc:  # noqa: BLE001
         return {"error": f"invalid report.json: {exc}"}
     return {
@@ -2649,6 +2724,54 @@ def load_test_runner_report(report_path: str) -> dict[str, Any]:
         "error": str(payload.get("error") or "").strip(),
         "result_summary": build_test_runner_results_markdown(payload),
     }
+
+
+def test_runner_reports_root() -> pathlib.Path | None:
+    tools_dir = first_existing_dir(test_runner_dir_candidates("tools"), "test-runner")
+    return (tools_dir / "reports" / "servicetool").resolve() if tools_dir else None
+
+
+def test_runner_report_file(relative: str) -> pathlib.Path:
+    root = test_runner_reports_root()
+    if root is None:
+        raise FileNotFoundError("Test Runner report directory unavailable")
+    target = (root / relative).resolve()
+    if not target.is_relative_to(root) or not target.is_file():
+        raise FileNotFoundError("Report file not found")
+    return target
+
+
+def test_runner_status() -> dict[str, Any]:
+    snapshot = STATE.test_runner.snapshot()
+    root = test_runner_reports_root()
+    if root is None:
+        return snapshot
+    # A new server session has no in-memory result; recover the last saved run.
+    if snapshot["status"] == "idle" and not snapshot.get("report_path"):
+        reports = sorted(root.glob("*/*/report.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+        for report in reports:
+            if not report.resolve().is_relative_to(root):
+                continue
+            saved = load_test_runner_report(str(report))
+            if not saved.get("result_summary"):
+                continue
+            snapshot.update(saved)
+            snapshot.update(status=saved.get("status") or "saved", running=False,
+                            suite_id=report.parent.parent.name, suite_label=report.parent.parent.name,
+                            report_path=str(report), out_dir=str(report.parent),
+                            finished_at=report.parent.name)
+            log = report.parent / "service-tool-run.log"
+            if log.is_file() and log.resolve().is_relative_to(root):
+                snapshot["lines"] = log.read_text(encoding="utf-8", errors="replace").splitlines()[-4000:]
+            break
+    if snapshot.get("report_path"):
+        report = pathlib.Path(snapshot["report_path"]).resolve()
+        if report.is_relative_to(root):
+            html = report.with_suffix(".html")
+            target = html if html.is_file() else report
+            if target.is_file() and target.resolve().is_relative_to(root):
+                snapshot["report_url"] = "/api/test-runner/reports/" + parse.quote(target.relative_to(root).as_posix())
+    return snapshot
 
 
 STATE = ServiceState()
@@ -5579,7 +5702,7 @@ def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: i
             device = migration_engine.Esptool(executable, port, baud, job.log)
             session.capture(device)
             job.set_progress(25)
-            session.install(device, job.set_progress)
+            session.install(device, job.set_progress, fresh_capture=True)
             session.save("booting")
             job.set_current_file("migrationStepRestart")
             device.boot()
@@ -5815,7 +5938,21 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json(detect_test_runner_environment())
             return
         if path == "/api/test-runner/status":
-            self._send_json(STATE.test_runner.snapshot())
+            self._send_json(test_runner_status())
+            return
+        if path.startswith("/api/test-runner/reports/"):
+            try:
+                report = test_runner_report_file(parse.unquote(path.removeprefix("/api/test-runner/reports/")))
+            except FileNotFoundError:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            content = report.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", (mimetypes.guess_type(report.name)[0] or "application/octet-stream") + "; charset=utf-8")
+            self.send_header("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
             return
         if path == "/api/test-runner/public-results":
             try:
@@ -5891,9 +6028,18 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/config":
                 data = self._read_json()
+                current = load_app_config()
+                if current.get("active_device_id") and data.get("active_device_id") != current["active_device_id"]:
+                    raise ValueError("Das aktive Geräteprofil wurde geändert. Bitte die Seite neu laden.")
+                # Profiles are managed by their dedicated route, not stale form snapshots.
+                data["device_profiles"] = current["device_profiles"]
+                data["active_device_id"] = current["active_device_id"]
                 config = save_app_config(data)
                 ensure_runtime_dirs()
                 self._send_json(config)
+                return
+            if path == "/api/device-profiles":
+                self._send_json(change_device_profile(self._read_json()))
                 return
             if path == "/api/telegraf/test-device":
                 data = self._read_json()

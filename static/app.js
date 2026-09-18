@@ -42,7 +42,7 @@ const I18N = {
     firmwareUpdateBlockedActive: "Firmware WebUpdate ist bei aktivem Maischen oder Fermentieren gesperrt.",
     firmwareUpdateStarting: "Backup wird erstellt, danach startet das Firmware WebUpdate ...",
     firmwareUpdateStarted: "Firmware WebUpdate gestartet. Das Gerät startet neu und aktualisiert Firmware und Webdateien.",
-    firmwareUpdateStartBtn: "Update starten",
+    firmwareUpdateStartBtn: "Update auf dem Brautomat installieren",
     firmwareUpdateCloseBtn: "Schließen",
     activeProcessMash: "Maische",
     activeProcessFermenter: "Fermenter",
@@ -141,9 +141,9 @@ const I18N = {
     managementLocalNewFolderBtn: "Ordner erstellen",
     managementLocalNewFileBtn: "Datei erstellen",
     updateWebfilesBtn: "Webdateien aktualisieren",
-    checkFirmwareUpdateBtn: "WLAN-Update suchen",
+    checkFirmwareUpdateBtn: "Nach Firmware-Update suchen",
     installLanguageBtn: "Sprache wechseln",
-    flashBtn: "Über USB installieren",
+    flashBtn: "Ausgewähltes Paket über USB installieren",
     migrateBtn: "Migration in Entwicklung",
     serialStartBtn: '<i class="icon-play button-icon"></i>',
     serialStartTooltip: "Log starten",
@@ -157,18 +157,6 @@ const I18N = {
     serialCopyBtn: "In Zwischenablage kopieren",
     statusClearBtn: "Log leeren",
     statusCopyBtn: "In Zwischenablage kopieren",
-    guideConnectionTitle: "Verbindung",
-    guideConnectionText: "Prüfe oben rechts den Status. Online bedeutet HTTP-Verbindung zum Brautomat, Seriell bedeutet nur COM-Port, Kein Gerät gefunden bedeutet weder HTTP noch seriellen Zugriff.",
-    guideFirmwareTitle: "Firmware",
-    guideFirmwareText: "Für normale Updates nutze Latest Release oder Latest Development. Open directory ist für lokale Testpakete und Spezialfälle gedacht.",
-    guideWifiTitle: "WLAN",
-    guideWifiText: "Der SSID-Scan startet beim Öffnen des Firmware-Tabs automatisch. Speichern schreibt die WLAN-Zugangsdaten und prüft danach den Gerätestatus neu.",
-    guideBackupTitle: "Backup & Restore",
-    guideBackupText: "Konfigurations-Backups werden lokal gespeichert und tabellarisch angezeigt. Restore arbeitet mit der gewählten Backup-Datei oder einer externen JSON-Datei.",
-    guideManagementTitle: "Verwaltung",
-    guideManagementText: "Rezepte, Fermenterpläne und Profile können zwischen Device und lokalem Inventar kopiert, umbenannt und gelöscht werden. Device-Zugriffe laufen nur bei Online-Status.",
-    guideSerialTitle: "Serial Monitor",
-    guideSerialText: "Der Serial Monitor zeigt Live-Log und übernimmt den COM-Port für Flash und Firmware-Backup kontrolliert an esptool. Danach startet er automatisch wieder.",
     testRunnerTitle: "Test Runner",
     testRunnerHint: "Startet den vorhandenen Repo-Test-Runner aus tools/test-runner mit auswählbarer Suite.",
     testRunnerSuiteLabel: "Testsuite",
@@ -191,8 +179,6 @@ const I18N = {
     testRunnerStartTooltip: "Testsuite starten",
     testRunnerStopTooltip: "Testsuite stoppen",
     testRunnerPublicResultsTitle: "Letzte öffentliche Testergebnisse",
-    guideUpdateTitle: "Updates",
-    guideUpdateText: "Das ServiceTool prüft beim Start und per Update-Button auf neue Versionen. Updates werden als ZIP geladen, per SHA256 geprüft und danach manuell ersetzt.",
   },
   en: {
     title: "Brautomat32 ServiceTool",
@@ -237,7 +223,7 @@ const I18N = {
     firmwareUpdateBlockedActive: "Firmware WebUpdate is blocked while mash or fermenter process is active.",
     firmwareUpdateStarting: "Creating backup, then starting firmware WebUpdate ...",
     firmwareUpdateStarted: "Firmware WebUpdate started. The device reboots and updates firmware and web files.",
-    firmwareUpdateStartBtn: "Start update",
+    firmwareUpdateStartBtn: "Install update on Brautomat",
     firmwareUpdateCloseBtn: "Close",
     activeProcessMash: "Mash",
     activeProcessFermenter: "Fermenter",
@@ -336,9 +322,9 @@ const I18N = {
     managementLocalNewFolderBtn: "Create folder",
     managementLocalNewFileBtn: "Create file",
     updateWebfilesBtn: "Update web files",
-    checkFirmwareUpdateBtn: "Check for WiFi update",
+    checkFirmwareUpdateBtn: "Check for firmware updates",
     installLanguageBtn: "Change language",
-    flashBtn: "Install over USB",
+    flashBtn: "Install selected package over USB",
     migrateBtn: "Migration in development",
     serialStartBtn: '<i class="icon-play button-icon"></i>',
     serialStartTooltip: "Start log",
@@ -352,18 +338,6 @@ const I18N = {
     serialCopyBtn: "Copy to clipboard",
     statusClearBtn: "Clear log",
     statusCopyBtn: "Copy to clip",
-    guideConnectionTitle: "Connection",
-    guideConnectionText: "Check the status at the top right. Online means HTTP access to the Brautomat, Serial means only COM access, No device found means neither HTTP nor serial access is available.",
-    guideFirmwareTitle: "Firmware",
-    guideFirmwareText: "Use Latest Release or Latest Development for normal updates. Open directory is intended for local test packages and special cases.",
-    guideWifiTitle: "WiFi",
-    guideWifiText: "SSID scan starts automatically when the Firmware tab opens. Save writes WiFi credentials and then checks device status again.",
-    guideBackupTitle: "Backup & Restore",
-    guideBackupText: "Configuration backups are stored locally and shown in a table. Restore works with the selected backup file or with an external JSON file.",
-    guideManagementTitle: "Management",
-    guideManagementText: "Mash plans, fermenter plans and profiles can be copied, renamed and deleted between device and local inventory. Device actions only run when status is Online.",
-    guideSerialTitle: "Serial Monitor",
-    guideSerialText: "The serial monitor shows live log output and hands the COM port over to esptool for flash and firmware backup. Afterwards it starts automatically again.",
     testRunnerTitle: "Test Runner",
     testRunnerHint: "Starts the existing repo test runner from tools/test-runner with a selectable suite.",
     testRunnerSuiteLabel: "Test suite",
@@ -386,8 +360,6 @@ const I18N = {
     testRunnerStartTooltip: "Start selected suite",
     testRunnerStopTooltip: "Stop active suite",
     testRunnerPublicResultsTitle: "Latest public test results",
-    guideUpdateTitle: "Updates",
-    guideUpdateText: "The ServiceTool checks for new versions at startup and via the update button. Updates are downloaded as ZIP, verified by SHA256, and then replaced manually.",
   }
 };
 
@@ -433,10 +405,10 @@ I18N.de.migrationStepTool = "Flash-Werkzeug vorbereiten …";
 I18N.en.migrationStepTool = "Preparing flash tool …";
 I18N.de.migrationStepDevice = "Gerät und Flash prüfen …";
 I18N.en.migrationStepDevice = "Checking device and flash …";
-I18N.de.migrationStepBackupFirst = "Backup lesen – Durchlauf 1 von 2 …";
-I18N.en.migrationStepBackupFirst = "Reading backup – pass 1 of 2 …";
-I18N.de.migrationStepBackupSecond = "Backup lesen – Durchlauf 2 von 2 …";
-I18N.en.migrationStepBackupSecond = "Reading backup – pass 2 of 2 …";
+I18N.de.migrationStepBackupFirst = "Vollständiges Flash-Backup lesen …";
+I18N.en.migrationStepBackupFirst = "Reading full flash backup …";
+I18N.de.migrationStepPreservedAfter = "Erhalt der WLAN- und Nutzdaten prüfen …";
+I18N.en.migrationStepPreservedAfter = "Verifying preserved Wi-Fi settings and user data …";
 I18N.de.migrationStepBackupCheck = "Backup prüfen …";
 I18N.en.migrationStepBackupCheck = "Checking backup …";
 I18N.de.migrationStepPreserved = "WLAN- und Nutzdaten vor Installation prüfen …";
@@ -526,10 +498,10 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.7.10",
+  service_tool_version: "1.8.0",
   language: "en",
   debug_output: false,
-  device_url: "http://brautomat.local",
+  device_url: "http://brautomat",
   package_source: "release",
   package_ref: "",
   package_dir: "",
@@ -587,7 +559,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.7.10"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.8.0"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -758,10 +730,12 @@ async function api(path, options = {}) {
 async function saveConfig(partial = {}) {
   appConfig = await api("/api/config", { method: "POST", body: { ...appConfig, ...partial } });
   currentLang = appConfig.language || "en";
+  if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
   return appConfig;
 }
 
 function applyLanguage() {
+  if (typeof translateWorkspace === "function") translateWorkspace();
   document.documentElement.lang = currentLang;
   document.title = serviceToolTitle();
   if ($("appLoadingText")) $("appLoadingText").textContent = text("appLoadingText");
@@ -797,8 +771,8 @@ function applyLanguage() {
   $("title").textContent = serviceToolTitle();
   $("checkDevice").innerHTML = '<i class="icon-feed button-icon" aria-hidden="true"></i>';
   $("openDeviceUrl").innerHTML = '<i class="icon-exit button-icon" aria-hidden="true"></i>';
-  $("checkServiceToolUpdate").innerHTML = '<i class="icon-download button-icon" aria-hidden="true"></i>';
-  $("openGuide").textContent = "?";
+  $("checkServiceToolUpdate").textContent = currentLang === "de" ? "Auf Updates prüfen" : "Check for updates";
+  $("openGuide").textContent = currentLang === "de" ? "Hilfe" : "Help";
   $("backupBtn").innerHTML = '<i class="icon-download button-icon" aria-hidden="true"></i>';
   $("backupRenameBtn").innerHTML = '<i class="icon-pencil button-icon" aria-hidden="true"></i>';
   $("backupInfoBtn").innerHTML = '<i class="icon-eye button-icon" aria-hidden="true"></i>';
@@ -844,8 +818,10 @@ function applyLanguage() {
   if ($("checkFirmwareUpdateBtn")) $("checkFirmwareUpdateBtn").textContent = text("checkFirmwareUpdateBtn");
   $("installLanguageBtn").textContent = text("installLanguageBtn");
   $("firmwareTransportHint").textContent = currentLang === "de"
-    ? "Paketquelle und Flash-Optionen gelten für die USB-Installation. WLAN-Update sucht separat nach einer veröffentlichten Firmware und zeigt vor dem Start die Zielversion."
-    : "Package source and flash options apply to USB installation. WiFi update separately checks for published firmware and shows the target version before starting.";
+    ? "Prüft auf GitHub, ob eine neuere Firmware verfügbar ist. Die Installation erfolgt anschließend über die Netzwerkverbindung zum Brautomat. Die Paketquelle oben gilt nur für die Paketinstallation."
+    : "Checks GitHub for newer firmware. Installation then uses the network connection to the Brautomat. The package source above applies only to package installation.";
+  $("firmwarePackageTitle").textContent = currentLang === "de" ? "Firmware aus Paket installieren" : "Install firmware from a package";
+  $("firmwareReleaseTitle").textContent = currentLang === "de" ? "Veröffentlichte Firmware aktualisieren" : "Update published firmware";
   $("flashBtn").textContent = text("flashBtn");
   renderMaintenanceButton();
   for (const id of ["migrationBackupHint", "migrationPackageHint", "migrationRecoveryLabel", "migrationRefresh", "migrationResume", "migrationRestore", "migrationRecoveryHint"]) {
@@ -1014,23 +990,7 @@ function applyButtonTooltips() {
 }
 
 function renderGuide() {
-  const content = $("guideContent");
-  if (!content) return;
-  const sections = [
-    ["guideConnectionTitle", "guideConnectionText"],
-    ["guideFirmwareTitle", "guideFirmwareText"],
-    ["guideWifiTitle", "guideWifiText"],
-    ["guideBackupTitle", "guideBackupText"],
-    ["guideManagementTitle", "guideManagementText"],
-    ["guideSerialTitle", "guideSerialText"],
-    ["guideUpdateTitle", "guideUpdateText"]
-  ];
-  content.innerHTML = sections.map(([titleKey, textKey]) => `
-    <section class="guide-section">
-      <h3>${text(titleKey)}</h3>
-      <p>${text(textKey)}</p>
-    </section>
-  `).join("");
+  if (!$("guideModal").classList.contains("hidden-panel")) loadGuideBook();
 }
 
 function closeServiceToolUpdateModal() {
@@ -1216,7 +1176,7 @@ async function loadOverview() {
   currentLang = appConfig.language || "en";
   $("language").value = currentLang;
   $("debugOutput").checked = !!appConfig.debug_output;
-  $("deviceUrl").value = appConfig.device_url || "http://brautomat.local";
+  $("deviceUrl").value = appConfig.device_url || "http://brautomat";
   $("packageSource").value = appConfig.package_source || "release";
   $("packageVersion").value = appConfig.package_ref || "";
   $("packageDir").value = $("packageSource").value === "open"
@@ -1508,13 +1468,14 @@ function renderTestRunnerLiveCounts(snapshot = {}) {
   const warnBadge = $("testRunnerWarnBadge");
   if (!shell || !passBadge || !failBadge || !warnBadge) return;
   const running = !!snapshot.running;
-  shell.classList.toggle("hidden-panel", !running);
-  if (!running) return;
+  const hasResult = running || !!snapshot.suite_label || !!snapshot.result_summary || Object.keys(snapshot.counts || {}).length > 0;
+  shell.classList.toggle("hidden-panel", !hasResult);
+  if (!hasResult) return;
   const counts = snapshot.counts && typeof snapshot.counts === "object" ? snapshot.counts : {};
   const derived = deriveTestRunnerCountsFromLines(snapshot.lines || []);
-  const pass = Number.isFinite(counts.pass) && counts.pass > 0 ? counts.pass : derived.pass;
-  const fail = Number.isFinite(counts.fail) && counts.fail > 0 ? counts.fail : derived.fail;
-  const warn = Number.isFinite(counts.warn) && counts.warn > 0 ? counts.warn : derived.warn;
+  const pass = Number.isFinite(counts.pass) && (!running || counts.pass > 0) ? counts.pass : derived.pass;
+  const fail = Number.isFinite(counts.fail) && (!running || counts.fail > 0) ? counts.fail : derived.fail;
+  const warn = Number.isFinite(counts.warn) && (!running || counts.warn > 0) ? counts.warn : derived.warn;
   passBadge.textContent = `PASS ${pass}`;
   failBadge.textContent = `FAIL ${fail}`;
   warnBadge.textContent = `WARN ${warn}`;
@@ -1529,6 +1490,16 @@ function renderTestRunnerSummary(snapshot = {}) {
     $("testRunnerSummaryReport").textContent = report.text;
     $("testRunnerSummaryReport").title = report.title;
   }
+  const link = $("testRunnerReportLink");
+  if (link) {
+    const url = String(snapshot.report_url || "");
+    const available = url.startsWith("/api/test-runner/reports/");
+    link.classList.toggle("hidden-panel", !available);
+    if (available) link.href = url; else link.removeAttribute("href");
+    link.textContent = currentLang === "de" ? "Report öffnen ↗" : "Open report ↗";
+  }
+  if ($("testRunnerReportLocation")) $("testRunnerReportLocation").textContent = snapshot.out_dir
+    ? `${currentLang === "de" ? "Report-Verzeichnis" : "Report directory"}: ${snapshot.out_dir}` : "";
   renderTestRunnerLiveCounts(snapshot);
 }
 
@@ -1608,7 +1579,10 @@ async function loadTestRunnerCatalog() {
 
 async function loadTestRunnerStatus() {
   if (!testRunnerCatalog?.enabled) return;
+  const requestId = (loadTestRunnerStatus.requestId || 0) + 1;
+  loadTestRunnerStatus.requestId = requestId;
   const data = await api("/api/test-runner/status");
+  if (requestId !== loadTestRunnerStatus.requestId) return;
   setStatus("testRunnerStatus", JSON.stringify(data, null, 2));
   appendTimestampedStatus("testRunnerStatus", `status poll: status=${data.status || "-"} running=${!!data.running} suite=${data.suite_id || "-"}`);
   renderTestRunnerSummary(data);
@@ -3010,6 +2984,9 @@ function serialPortScore(port, preferredPort = "") {
 function choosePreferredSerialPort(ports = [], preferredPort = "") {
   if (!Array.isArray(ports) || !ports.length) return "";
   const preferred = String(preferredPort || "").trim();
+  if (typeof appConfig !== "undefined" && (appConfig.device_profiles || []).length > 1) {
+    return ports.find(port => String(port?.port || "").trim().toUpperCase() === preferred.toUpperCase())?.port || "";
+  }
   if (preferred) {
     const exact = ports.find(port => String(port?.port || "").trim().toUpperCase() === preferred.toUpperCase());
     if (exact) {
@@ -3034,6 +3011,7 @@ async function applySelectedSerialPort(port, persist = true) {
     }
   });
   appConfig.serial_port = normalized;
+  if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
   if (persist) {
     await saveConfig({ serial_port: normalized });
   }
@@ -3063,6 +3041,15 @@ async function loadPorts() {
     return data;
   }
   const selectedPort = choosePreferredSerialPort(ports, preferredPort);
+  if (!selectedPort && (appConfig.device_profiles || []).length > 1) {
+    for (const id of ["portSelect", "serialPortSelect"]) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = currentLang === "de" ? "Profil-Port nicht angeschlossen" : "Profile port disconnected";
+      $(id).prepend(option);
+      $(id).value = "";
+    }
+  }
   if (selectedPort && available.has(selectedPort)) {
     await applySelectedSerialPort(selectedPort, false);
   }
@@ -3165,6 +3152,8 @@ function setProgressState(panelId, barId, textId, value = 0, visible = false, fi
   }
 }
 
+let displayedActiveProcess = {};
+
 function updateDeviceConnectionState(state) {
   const node = $("deviceConnectionState");
   const button = $("checkDevice");
@@ -3174,12 +3163,36 @@ function updateDeviceConnectionState(state) {
   if (button) {
     button.className = normalized || "";
   }
+  renderDeviceStatusBadge();
+}
+
+function renderDeviceStatusBadge() {
+  const node = $("deviceConnectionState");
+  if (!node) return;
+  const normalized = node.dataset.state;
+  const process = displayedActiveProcess;
+  node.classList.remove("process-unknown", "process-active");
+  node.title = node.dataset.versionTooltip || "";
   if (normalized === "online") {
-    node.textContent = text("checkDeviceOnline");
+    let detail;
+    if (process.state === "idle") {
+      detail = currentLang === "de" ? "Kein Prozess aktiv" : "No active process";
+    } else if (process.state === "active") {
+      node.classList.add("process-active");
+      const label = process.mode === "fermenter" ? text("activeProcessFermenter") : text("activeProcessMash");
+      const stateLabel = process.pause || process.play ? `${label} ${text("activeProcessWaiting")}` : label;
+      const step = String(process.step || "").trim();
+      detail = step ? `${stateLabel}: ${step}` : stateLabel;
+      node.title = [node.title, String(process.name || "").trim(), formatProcessRemainingTooltip(process.remaining_sec)].filter(Boolean).join(" · ");
+    } else {
+      node.classList.add("process-unknown");
+      detail = currentLang === "de" ? "Prozessstatus unbekannt" : "Process status unknown";
+    }
+    node.textContent = `${text("checkDeviceOnline")} · ${detail}`;
     return;
   }
   if (normalized === "serial") {
-    node.textContent = text("checkDeviceSerial");
+    node.textContent = currentLang === "de" ? "Seriell verbunden" : "Connected via serial";
     return;
   }
   if (normalized === "offline") {
@@ -3194,31 +3207,8 @@ function updateDeviceConnectionState(state) {
 }
 
 function updateActiveProcessState(data = null) {
-  const node = $("activeProcessState");
-  if (!node) return;
-  const process = data?.active_process || {};
-  const active = process.state === "active";
-  if (process.state === "unknown") {
-    node.classList.remove("hidden-panel");
-    node.dataset.state = "unknown";
-    node.textContent = currentLang === "de" ? "Prozesszustand unbekannt" : "Process state unknown";
-    node.title = "";
-    return;
-  }
-  node.classList.toggle("hidden-panel", !active);
-  node.dataset.state = active ? "active" : "idle";
-  if (!active) {
-    node.textContent = "";
-    node.title = "";
-    return;
-  }
-  const mode = process.mode === "fermenter" ? "fermenter" : "mash";
-  const label = mode === "fermenter" ? text("activeProcessFermenter") : text("activeProcessMash");
-  const step = String(process.step || "").trim();
-  const stateLabel = process.pause || process.play ? `${label} ${text("activeProcessWaiting")}` : label;
-  node.textContent = step ? `${stateLabel}: ${step}` : stateLabel;
-  const remaining = formatProcessRemainingTooltip(process.remaining_sec);
-  node.title = [String(process.name || "").trim(), remaining].filter(Boolean).join(" · ");
+  displayedActiveProcess = data?.active_process || {};
+  renderDeviceStatusBadge();
 }
 
 function formatProcessRemainingTooltip(value) {
@@ -3265,8 +3255,9 @@ function updateDeviceVersionMeta(data = null) {
     : String(data?.firmware || "").trim();
   const source = String(data?.version_source || data?.transport || "").trim();
   const tooltip = version ? (source ? `${version} (${source})` : version) : "";
-  if (node) node.title = tooltip;
+  if (node) node.dataset.versionTooltip = tooltip;
   if (field) field.textContent = version || text("activeFirmwareUnknown");
+  renderDeviceStatusBadge();
 }
 
 function parseDeviceFirmwareVersion(version) {
@@ -4698,6 +4689,7 @@ function placeFirmwareSelection(name) {
 }
 
 function activateTab(name) {
+  if (typeof workspaceTabActivated === "function") workspaceTabActivated(name);
   placeFirmwareSelection(name);
   if (name === "testrunner" && hideTestRunnerViaQuery()) {
     return;
@@ -4759,14 +4751,14 @@ function attachEvents() {
     applyDebugPanels();
   });
   $("deviceUrl").addEventListener("change", async () => {
-    await saveConfig({ device_url: $("deviceUrl").value.trim() || "http://brautomat.local" });
+    await saveConfig({ device_url: $("deviceUrl").value.trim() || "http://brautomat" });
     updateDeviceConnectionState("");
   });
   $("checkDevice").addEventListener("click", checkDevice);
   $("openDeviceUrl").addEventListener("click", openDeviceUrl);
   $("checkServiceToolUpdate").addEventListener("click", () => checkServiceToolUpdate(true));
-  $("openGuide").addEventListener("click", () => $("guideModal").classList.remove("hidden-panel"));
-  $("closeGuide").addEventListener("click", () => $("guideModal").classList.add("hidden-panel"));
+  $("openGuide").addEventListener("click", () => openGuideBook());
+  $("closeGuide").addEventListener("click", closeGuideBook);
   $("closeServiceToolUpdate")?.addEventListener("click", closeServiceToolUpdateModal);
   $("cancelServiceToolUpdate")?.addEventListener("click", closeServiceToolUpdateModal);
   $("downloadServiceToolUpdate")?.addEventListener("click", downloadServiceToolUpdate);
@@ -4778,7 +4770,7 @@ function attachEvents() {
     $("inventoryDetailModal")?.classList.add("hidden-panel");
   });
   $("guideModal").addEventListener("click", event => {
-    if (event.target === $("guideModal")) $("guideModal").classList.add("hidden-panel");
+    if (event.target === $("guideModal")) closeGuideBook();
   });
   $("serviceToolUpdateModal")?.addEventListener("click", event => {
     if (event.target === $("serviceToolUpdateModal")) closeServiceToolUpdateModal();
@@ -4801,6 +4793,7 @@ function attachEvents() {
     ["inventoryDetailModal", "inventoryConflictModal", "guideModal", "serviceToolUpdateModal", "firmwareUpdateModal"].forEach(id => {
       const modal = $(id);
       if (modal && !modal.classList.contains("hidden-panel")) {
+        if (id === "guideModal") { closeGuideBook(); return; }
         if (id === "inventoryDetailModal") inventoryDetailState = null;
         modal.classList.add("hidden-panel");
       }
@@ -4965,6 +4958,7 @@ async function init() {
     initializeManagementSortHeaders();
     initializeBackupSortHeader();
     await loadOverview();
+    if (typeof initializeWorkspace === "function") initializeWorkspace();
     writeStartupTrace("loadOverview done");
     applyLanguage();
     writeStartupTrace("applyLanguage done");
