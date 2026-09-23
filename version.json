@@ -2,7 +2,7 @@
   "tool": "Brautomat32 ServiceTool",
   "version": "1.8.1",
   "released_at": "",
-  "notes": "ServiceTool 1.8.1: named connection profiles with shared ports and URLs; firmware generation and language installation fixes.",
+  "notes": "ServiceTool 1.8.1: named connection profiles with shared ports and URLs; firmware generation and language installation fixes; full-width reports.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
     "url": "",

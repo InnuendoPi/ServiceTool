@@ -495,11 +495,21 @@ class MigrationTests(unittest.TestCase):
                 with self.assertRaises((ValueError, RuntimeError)):
                     app.local_package_version(str(self.package))
 
-    def test_embedded_unsupported_target_still_rejected(self):
-        (self.package / "firmware.bin").write_bytes(image("BrautomatMain", "1.68.0"))
-        with self.assertRaisesRegex(ValueError, "Migration target"):
-            app.prepare_migration_package(app.Job(id="test", type="migration", title="Test"),
-                                          "open", str(self.package), "")
+    def test_embedded_legacy_target_still_rejected(self):
+        for version in ("1.66.0", "1.66.99"):
+            with self.subTest(version=version):
+                (self.package / "firmware.bin").write_bytes(image("BrautomatMain", version))
+                with self.assertRaisesRegex(ValueError, "Migration target"):
+                    app.prepare_migration_package(app.Job(id="test", type="migration", title="Test"),
+                                                  "open", str(self.package), "")
+
+    def test_embedded_serviceapp_target_with_matching_layout_accepted(self):
+        for version in ("1.67.0", "1.68.0", "1.70.0"):
+            with self.subTest(version=version):
+                (self.package / "firmware.bin").write_bytes(image("BrautomatMain", version))
+                _, metadata = app.prepare_migration_package(
+                    app.Job(id="test", type="migration", title="Test"), "open", str(self.package), "")
+                self.assertEqual(metadata["version"], version)
 
     def test_filesystem_image_invalid_or_missing_webfiles_rejected(self):
         from littlefs import LittleFS

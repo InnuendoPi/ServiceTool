@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.8.1 - Unveröffentlicht
+
+- Erlaubt eigene Profilnamen und mehrfach verwendete COM-Ports und Geräte-URLs.
+- Korrigiert die Generationsgrenze: bis 1.66.x Legacy, ab 1.67 ServiceApp;
+  normale WebUpdates zwischen diesen Generationen werden gesperrt.
+- Prüft Sprachpakete gegen die Gerätegeneration und bindet sie an einen Commit.
+  Sprachdateien werden vor Aktivierung nach dem Upload zurückgelesen.
+- Nutzt für Reportabschnitte die volle Breite und bricht lange Dateipfade um.
+- Korrigiert die veraltete Migrationstesterwartung für Version 1.68.
+
 ## 1.8.0 - 2026-09-18
 
 - Modernisiert die Oberfläche mit vier Hauptbereichen, einheitlichen Bedienelementen und Drei-Punkte-Menü.
