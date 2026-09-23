@@ -5,6 +5,16 @@ import app
 
 
 class LanguageInstallTests(unittest.TestCase):
+    def setUp(self):
+        self.revision = "a" * 40
+        for name, value in (
+                ("device_status", {"firmware": "1.66.0", "base_url": "http://device"}),
+                ("json_request", {"sha": self.revision}),
+                ("remote_repo_version_manifest", {"version": "1.66.0"})):
+            patcher = patch.object(app, name, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_language_api_missing_special_ref_returns_json_error(self):
         for ref in ("", "&ref=%20%20"):
             handler = app.AppHandler.__new__(app.AppHandler)
@@ -34,15 +44,17 @@ class LanguageInstallTests(unittest.TestCase):
                       patch.object(app, "list_remote_languages", return_value=[{"filename": name, "path": path}]),
                       patch.object(app, "download_bytes", return_value=b'{"label":"test"}') as download,
                       patch.object(app, "post_file_to_fs", return_value="ok") as upload,
-                      patch.object(app, "try_base_urls", return_value=("http://device", "ok"))):
+                      patch.object(app, "download_fs_file", return_value=b'{"label":"test"}'),
+                      patch.object(app, "post_json", return_value="ok")):
                     app.install_language_job(app.Job(id="lang", type="language", title="Language"),
                                              "http://device", "special", name, ref)
                     self.assertEqual(download.call_args.args[0],
-                        f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{ref}/{path}")
+                        f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{self.revision}/{path}")
                     self.assertEqual(upload.call_args.args[1], "/language/" + name)
 
     def test_unknown_unsafe_and_invalid_language_never_uploaded(self):
-        cases = [([], b'{}'),
+        cases = [([{"filename":"deutsch.json", "path":"data/language/deutsch.json"}], b'{}'),
+                 ([], b'{}'),
                  ([{"filename":"deutsch.json", "path":"other/deutsch.json"}], b'{}'),
                  ([{"filename":"deutsch.json", "path":"data/language/deutsch.json"}], b'[]'),
                  ([{"filename":"deutsch.json", "path":"data/language/deutsch.json"}], b'<html>error</html>')]
@@ -55,6 +67,68 @@ class LanguageInstallTests(unittest.TestCase):
                     app.install_language_job(app.Job(id="lang", type="language", title="Language"),
                                              "http://device", "release", "deutsch.json")
                 upload.assert_not_called()
+
+    def test_language_generation_and_unknown_device_block_upload(self):
+        for device, target, root in (("", "1.66.0", "build"),
+                                     ("1.66.0", "1.70.0", "build"),
+                                     ("1.67.2", "1.66.0", "Updates"),
+                                     ("1.66.0", "1.70.0", "Updates")):
+            with (self.subTest(device=device, target=target, root=root),
+                  patch.object(app, "device_status", return_value={"firmware": device}),
+                  patch.object(app, "remote_repo_version_manifest", return_value={"version": target}),
+                  patch.object(app, "post_file_to_fs") as upload,
+                  patch.object(app, "post_json") as activate):
+                with self.assertRaises(ValueError):
+                    app.install_language_job(app.Job("lang", "language", "Language"),
+                                             "http://device", "release", "english.json", package_root=root)
+                upload.assert_not_called()
+                activate.assert_not_called()
+
+    def test_modern_language_is_pinned_and_verified_before_activation(self):
+        events = []
+        content = b'{"label":"English"}'
+        def upload(*args, **kwargs):
+            events.append("upload")
+            return "ok"
+        def verify(*args, **kwargs):
+            events.append("verify")
+            return content
+        def activate(*args, **kwargs):
+            events.append("activate")
+            return "ok"
+        with (patch.object(app, "device_status", return_value={"firmware": "1.67.2"}),
+              patch.object(app, "remote_repo_version_manifest", return_value={"version": "1.70.0"}) as manifest,
+              patch.object(app, "list_remote_languages", return_value=[{
+                  "filename": "english.json", "path": "Updates/data/language/english.json"}]) as catalog,
+              patch.object(app, "download_bytes", return_value=content) as download,
+              patch.object(app, "post_file_to_fs", side_effect=upload),
+              patch.object(app, "download_fs_file", side_effect=verify),
+              patch.object(app, "post_json", side_effect=activate)):
+            result = app.install_language_job(app.Job("lang", "language", "Language"),
+                                              "http://device", "development", "english.json", package_root="Updates")
+        self.assertEqual(events, ["upload", "verify", "activate"])
+        manifest.assert_called_once_with(self.revision, "Updates")
+        catalog.assert_called_once_with("special", self.revision, "Updates")
+        self.assertIn(f"/{self.revision}/Updates/data/language/english.json", download.call_args.args[0])
+        self.assertEqual(result["commit"], self.revision)
+
+    def test_failed_download_upload_or_readback_never_activates_language(self):
+        content = b'{"label":"English"}'
+        for failing in ("download", "upload", "readback", "mismatch"):
+            with (self.subTest(failing=failing),
+                  patch.object(app, "list_remote_languages", return_value=[{
+                      "filename": "english.json", "path": "language/english.json"}]),
+                  patch.object(app, "download_bytes", return_value=content,
+                               side_effect=OSError("offline") if failing == "download" else None),
+                  patch.object(app, "post_file_to_fs", return_value="ok",
+                               side_effect=OSError("upload") if failing == "upload" else None),
+                  patch.object(app, "download_fs_file", return_value=b'{}' if failing == "mismatch" else content,
+                               side_effect=OSError("readback") if failing == "readback" else None),
+                  patch.object(app, "post_json") as activate):
+                with self.assertRaises((OSError, RuntimeError)):
+                    app.install_language_job(app.Job("lang", "language", "Language"),
+                                             "http://device", "release", "english.json")
+                activate.assert_not_called()
 
     def test_fallback_finds_both_languages_under_data(self):
         def download(url, **kwargs):

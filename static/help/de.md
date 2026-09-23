@@ -170,8 +170,8 @@ Die Sprache des ServiceTools selbst stellst du unter **Einstellungen** um.
 
 :::details Paketpfade und ältere Firmware
 
-Die Paketgeneration bestimmt die Verzeichnisse: vor Firmware 1.66 wird build
-verwendet, ab 1.66 Updates. ServiceApp-Pakete benötigen zusätzlich die passende
+Die Paketgeneration bestimmt die Verzeichnisse: bis einschließlich 1.66.x
+wird build verwendet, ab 1.67 Updates. ServiceApp-Pakete benötigen zusätzlich die passende
 ServiceApp. Eine lokale Paketquelle muss die zusammengehörigen Dateien
 enthalten.
 
@@ -286,10 +286,10 @@ ServiceApp-Layout. Sie ist mehr als ein normales Firmwareupdate.
 
 ### Voraussetzungen
 
-Unterstützt werden Ausgangsversionen **1.62.0 bis 1.65.5** und Zielversionen
-**1.66.x, 1.67.x oder 1.70.x** auf unterstützten ESP32-Geräten mit 4 MiB Flash
-und altem symmetrischen Layout. Das ServiceTool prüft das Gerät vor dem
-Schreiben.
+Unterstützt werden Ausgangsversionen **1.62.0 bis einschließlich 1.66.x**
+und Zielversionen **ab 1.67.0 mit kompatiblem ServiceApp-Layout** auf
+unterstützten ESP32-Geräten mit 4 MiB Flash und altem symmetrischen Layout.
+Das ServiceTool prüft das Gerät vor dem Schreiben.
 
 ### Migration durchführen
 

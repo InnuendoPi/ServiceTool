@@ -18,6 +18,7 @@ import uuid
 import zlib
 
 
+SERVICEAPP_MIN_VERSION = (1, 67, 0)
 FLASH_SIZE = 0x400000
 OLD_LAYOUT = (
     ("nvs", 1, 2, 0x9000, 0x5000),
@@ -132,8 +133,8 @@ def check_image(data: bytes, role: str | None = None) -> str:
 
 
 def validate_package(package: Path, version: str) -> dict:
-    if version_tuple(version)[:2] not in ((1, 66), (1, 67), (1, 70)):
-        raise ValueError("Migration target must be 1.66.x, 1.67.x or 1.70.x")
+    if version_tuple(version) < SERVICEAPP_MIN_VERSION:
+        raise ValueError("Migration target must be 1.67.0 or newer with a compatible ServiceApp layout")
     payloads = {}
     for name, (_, limit) in IMAGES.items():
         path = package / name

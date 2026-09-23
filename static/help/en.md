@@ -149,7 +149,7 @@ The language of ServiceTool itself is changed under **Settings**.
 
 :::details Package generations
 
-Firmware before 1.66 uses the build directory; 1.66 and later use Updates.
+Firmware through 1.66.x uses the build directory; 1.67 and later use Updates.
 ServiceApp packages also need the matching ServiceApp image. Local packages must
 contain the corresponding files.
 
@@ -249,9 +249,10 @@ It is more than a normal firmware update.
 
 ### Requirements
 
-Supported source versions are **1.62.0 through 1.65.5**, targeting **1.66.x,
-1.67.x or 1.70.x**, on supported ESP32 devices with 4 MiB flash and the old
-symmetric layout. ServiceTool checks the device before writing.
+Supported source versions are **1.62.0 through 1.66.x**, targeting
+**1.67.0 or newer with a compatible ServiceApp layout**, on supported ESP32
+devices with 4 MiB flash and the old symmetric layout. ServiceTool checks the
+device before writing.
 
 ### Run migration
 

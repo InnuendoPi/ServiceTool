@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "1.8.0",
-  "released_at": "2026-09-18",
-  "notes": "ServiceTool 1.8.0: compact interface, saved device profiles and integrated offline help with search.",
+  "version": "1.8.1",
+  "released_at": "",
+  "notes": "ServiceTool 1.8.1: named connection profiles with shared ports and URLs; firmware generation and language installation fixes.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.8.0/Brautomat32ServiceTool-win.zip",
-    "sha256": "cdd90d45c0a9c07508b404105560a91f3dcb53d98465da221340dbed24881768"
+    "url": "",
+    "sha256": ""
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.8.0/Brautomat32ServiceTool-linux.zip",
-    "sha256": "b9106e4204e9ba6efb715dd8f8fd53accc369d80d66190ec530a97c645cf0de4"
+    "url": "",
+    "sha256": ""
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v1.8.0/Brautomat32ServiceTool-macos.zip",
-    "sha256": "3167b800ebe7099ea5a523e366b0e06007e4e0881a7a03de954c268ab7e4b81b"
+    "url": "",
+    "sha256": ""
   }
 }

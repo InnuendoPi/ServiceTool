@@ -71,11 +71,11 @@ class WifiTests(unittest.TestCase):
 class FlashTests(unittest.TestCase):
     def test_supported_migration_targets_and_unknown_target(self):
         with tempfile.TemporaryDirectory() as folder:
-            for version in ("1.66.0", "1.67.0", "1.70.0"):
+            for version in ("1.67.0", "1.68.0", "1.70.0", "2.0.0"):
                 root = package(Path(folder) / version, version)
                 self.assertEqual(migration.validate_package(root, version)["version"], version)
             with self.assertRaisesRegex(ValueError, "Migration target"):
-                migration.validate_package(root, "1.68.0")
+                migration.validate_package(root, "1.66.99")
 
     def test_serviceapp_flash_and_preflight(self):
         with tempfile.TemporaryDirectory() as folder:

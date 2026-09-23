@@ -106,7 +106,7 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.8.0"
+SERVICE_TOOL_VERSION = "1.8.1"
 ESPTOOL_VERSION = "5.3.1"  # Legacy cache lookup only; downloads use GitHub latest.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
@@ -608,23 +608,23 @@ def change_device_profile(data: dict[str, Any]) -> dict[str, Any]:
             parsed.port
         except ValueError as exc:
             raise ValueError("Ungültiger Port in der Geräte-URL.") from exc
-        for p in profiles:
-            if action == "update" and p["id"] == identity:
-                continue
-            if p["port"].casefold() == port.casefold() or p["url"].rstrip("/").casefold() == url.casefold():
-                raise ValueError("COM-Port oder URL ist bereits einem anderen Gerät zugeordnet.")
+        name = str(data.get("name", "")).strip()
+        if len(name) > 80 or any(ord(char) < 32 for char in name):
+            raise ValueError("Profilname darf höchstens 80 Zeichen und keine Steuerzeichen enthalten.")
         if action == "add":
             if len(profiles) >= 4:
                 raise ValueError("Maximal vier Geräte möglich.")
             if not profiles[0]["port"] or not profiles[0]["url"]:
                 raise ValueError("Bitte zuerst COM-Port und URL des ersten Geräteprofils speichern.")
             identity = uuid.uuid4().hex
-            profiles.append({"id": identity, "port": port, "url": url})
+            profiles.append({"id": identity, "name": name, "port": port, "url": url})
         else:
             match = next((p for p in profiles if p["id"] == identity), None)
             if match is None:
                 raise ValueError("Unbekanntes Geräteprofil.")
             match.update(port=port, url=url)
+            if "name" in data:
+                match["name"] = name
         active = identity
     elif action == "select":
         active = identity
@@ -1802,7 +1802,19 @@ def write_package_metadata(path: pathlib.Path, source_key: str) -> None:
 
 def package_root_for_firmware(firmware: str) -> str:
     version = parse_version_tuple(str(firmware or ""))
-    return "build" if version and version < (1, 66, 0) else "Updates"
+    return "build" if version and version < migration_engine.SERVICEAPP_MIN_VERSION else "Updates"
+
+
+def require_package_generation(version: str, root: str) -> None:
+    if root not in ("build", "Updates"):
+        raise ValueError("Invalid package generation")
+    parsed = parse_version_tuple(str(version or ""))
+    if parsed is None:
+        raise ValueError("Firmware version unavailable; package generation cannot be verified")
+    actual = "build" if parsed < migration_engine.SERVICEAPP_MIN_VERSION else "Updates"
+    if actual != root:
+        raise ValueError("Firmware version does not match the selected package generation. "
+                         "Up to 1.66.x requires build; 1.67 and newer requires Updates.")
 
 
 def package_location(source: str, ref: str, root: str, revision: str = "") -> dict:
@@ -1816,6 +1828,7 @@ def package_location(source: str, ref: str, root: str, revision: str = "") -> di
     manifest = json_request(f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{revision}/{manifest_path}", timeout=10)
     if not isinstance(manifest, dict):
         raise ValueError("Invalid package version manifest")
+    require_package_generation(manifest.get("version", ""), root)
     development = source == "development" or (source == "special" and "develop" in str(manifest.get("type", "")).lower())
     directory = "ESP32-IDF5dev" if development else "ESP32-IDF5"
     path = f"{root}/{directory}"
@@ -2196,7 +2209,19 @@ def install_language_job(job: Job, base_url: str, source_key: str, filename: str
 
     language_name = clean_name[:-5]
     base = normalize_base_url(base_url)
-    catalog = list_remote_languages(source_key, package_ref, package_root)
+    device = device_status(base)
+    require_package_generation(device.get("firmware", ""), package_root)
+    base = normalize_base_url(device.get("base_url") or base)
+    ref = package_ref.strip() if source_key == "special" else REMOTE_PACKAGES[source_key]["branch"]
+    if not ref:
+        raise ValueError("Special Version requires a version ref")
+    commit = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits/{parse.quote(ref, safe='')}")
+    revision = str(commit.get("sha", "")) if isinstance(commit, dict) else ""
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Unable to pin language package to a commit")
+    manifest = remote_repo_version_manifest(revision, package_root)
+    require_package_generation(manifest.get("version", ""), package_root)
+    catalog = list_remote_languages("special", revision, package_root)
     entry = next((item for item in catalog if item["filename"] == clean_name), None)
     if entry is None:
         raise ValueError("Selected language is not available in this firmware package. Reload the language list.")
@@ -2204,14 +2229,14 @@ def install_language_job(job: Job, base_url: str, source_key: str, filename: str
     prefix = "Updates/" if package_root == "Updates" else ""
     if source_path not in (f"{prefix}language/{clean_name}", f"{prefix}data/language/{clean_name}"):
         raise ValueError("Invalid language catalog path")
-    ref = package_ref.strip() if source_key == "special" else REMOTE_PACKAGES[source_key]["branch"]
-    source_url = f"{github_raw_language_base(ref)}{source_path}"
+    source_url = f"{github_raw_language_base(revision)}{source_path}"
 
     job.set_current_file(clean_name)
     job.log(f"Download language: {source_url}")
     content = download_bytes(source_url, timeout=60.0)
-    if not isinstance(json.loads(content), dict):
-        raise ValueError("Language file must contain a JSON object")
+    language_data = json.loads(content)
+    if not isinstance(language_data, dict) or not language_data:
+        raise ValueError("Language file must contain a non-empty JSON object")
     job.set_progress(25)
 
     try:
@@ -2219,10 +2244,18 @@ def install_language_job(job: Job, base_url: str, source_key: str, filename: str
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"Device not available while uploading {clean_name}. Check device URL/WiFi connection and try again.") from exc
     job.log(f"Uploaded language: {clean_name} -> {response.strip() or 'ok'}")
+    job.set_progress(60)
+    try:
+        verified = download_fs_file(base, f"/language/{clean_name}")
+        if verified != content:
+            raise ValueError("Uploaded language file differs from the selected download")
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("Language upload could not be verified; language was not activated.") from exc
     job.set_progress(75)
 
     try:
-        active_base, lang_response = try_base_urls(base, lambda candidate: post_json(f"{candidate}/setMiscLang", {"lang": language_name}))
+        active_base = base
+        lang_response = post_json(f"{base}/setMiscLang", {"lang": language_name})
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError("Language file uploaded, but activating the language failed. Check device availability and try again.") from exc
 
@@ -2233,6 +2266,7 @@ def install_language_job(job: Job, base_url: str, source_key: str, filename: str
         "source": source_key,
         "language": language_name,
         "filename": clean_name,
+        "commit": revision,
         "base_url": active_base,
         "response": lang_response.strip() or "ok",
     }
@@ -3510,6 +3544,14 @@ def firmware_update_status(base_url: str) -> dict[str, Any]:
     manifest = remote_repo_version_manifest(ref, package_root_for_firmware(current_version))
     remote_version = str(manifest.get("version") or "").strip()
     remote_parsed = require_version_tuple(remote_version, f"Remote {ref}")
+    current_modern = current_parsed >= migration_engine.SERVICEAPP_MIN_VERSION
+    remote_modern = remote_parsed >= migration_engine.SERVICEAPP_MIN_VERSION
+    if not current_modern and remote_modern:
+        decision = "migration_required"
+    elif current_modern and not remote_modern:
+        decision = "invalid_package"
+    else:
+        decision = "same_generation" if remote_parsed > current_parsed else "no_newer"
     return {
         "current_version": current_version,
         "version": remote_version,
@@ -3517,12 +3559,13 @@ def firmware_update_status(base_url: str) -> dict[str, Any]:
         "type": manifest.get("type") or ("Development" if is_development else "Release"),
         "notes": manifest.get("notes") or "",
         "ref": ref,
-        "available": remote_parsed > current_parsed,
+        "decision": decision,
+        "available": decision == "same_generation",
         "device": {
             "base_url": status.get("base_url") or normalize_base_url(base_url),
             "state": status.get("state") or "online",
             "dev": bool(status.get("dev")),
-            "active_process": status.get("active_process") or {"state": "idle"},
+            "active_process": status.get("active_process") or {"state": "unknown"},
         },
     }
 
@@ -3530,6 +3573,12 @@ def firmware_update_status(base_url: str) -> dict[str, Any]:
 def firmware_webupdate_job(job: Job, base_url: str, include_api: bool) -> dict[str, Any]:
     job.log("Firmware WebUpdate: prüfe Gerät")
     status = firmware_update_status(base_url)
+    if status.get("decision") == "migration_required":
+        raise RuntimeError("Firmware WebUpdate blocked: switching from 1.66.x or older to "
+                           "1.67 or newer requires layout migration. Use Migration.")
+    if status.get("decision") == "invalid_package":
+        raise RuntimeError("Firmware WebUpdate blocked: the published target belongs to the old "
+                           "generation and is incompatible with the ServiceApp layout.")
     process = status.get("device", {}).get("active_process") or {}
     if process.get("state") != "idle":
         raise RuntimeError("Firmware WebUpdate blocked: process is active or its state is unknown")
@@ -4310,8 +4359,8 @@ def migration_target_version(package_source: str, package_ref: str, package_dir:
 
 def validate_migration_package_source(package_source: str, package_ref: str, package_dir: str) -> tuple[str, tuple[int, int, int]]:
     version, parsed = migration_target_version(package_source, package_ref, package_dir)
-    if parsed[:2] not in ((1, 66), (1, 70)):
-        raise RuntimeError("Migration target must be 1.66.x or 1.70.x")
+    if parsed < migration_engine.SERVICEAPP_MIN_VERSION:
+        raise RuntimeError("Migration target must be 1.67.0 or newer with a compatible ServiceApp layout")
     return version, parsed
 
 
@@ -5020,7 +5069,7 @@ def rename_device_inventory(base_url: str, kind: str, old_name: str, new_name: s
 # Flash / firmware-backup / migration jobs
 # The actual Job targets run in background threads: flash_job() shells out to
 # esptool, backup_firmware_job() reads back the flashed firmware, and
-# migration_job() drives the full pre-1.70 migration sequence (WiFi capture,
+# migration_job() drives the pre-1.67 layout migration sequence (WiFi capture,
 # flash, wait-for-ready, WiFi restore).
 # ---------------------------------------------------------------------------
 def ensure_esptool_port_available(port: str) -> None:
@@ -5680,8 +5729,8 @@ def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: i
         ensure_esptool_port_available(port)
         base = normalize_base_url(base_url)
         source, parsed = current_firmware_version(base)
-        if not MIGRATION_MIN_VERSION <= parsed <= (1, 65, 5):
-            raise RuntimeError("Migration source must be 1.62.0 through 1.65.5; no intermediate update is required")
+        if not MIGRATION_MIN_VERSION <= parsed < migration_engine.SERVICEAPP_MIN_VERSION:
+            raise RuntimeError("Migration source must be 1.62.0 through 1.66.x; no intermediate update is required")
         migration_require_idle(base)
         job.set_current_file("migrationStepPackage")
         package, metadata = prepare_migration_package(job, package_source, package_dir, package_ref)
@@ -5947,6 +5996,19 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
             content = report.read_bytes()
+            if report.suffix.lower() in (".html", ".htm"):
+                # Apply the viewer layout to saved reports without rewriting them.
+                layout = b"""<style id="servicetool-report-layout">
+html body { margin: 0; padding-left: 0; padding-right: 0; }
+body .wrap { width: 100%; max-width: none; margin-left: 0; margin-right: 0; }
+body .panel { box-sizing: border-box; width: 100%; min-width: 0; overflow-wrap: anywhere; }
+body .panel table { width: 100%; }
+body .panel th, body .panel td { overflow-wrap: anywhere; }
+body .panel pre { max-width: 100%; overflow-x: auto; }
+</style>"""
+                closing_head = re.search(br"</head\s*>", content, re.IGNORECASE)
+                offset = closing_head.start() if closing_head else len(content)
+                content = content[:offset] + layout + content[offset:]
             self.send_response(200)
             self.send_header("Content-Type", (mimetypes.guess_type(report.name)[0] or "application/octet-stream") + "; charset=utf-8")
             self.send_header("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'")

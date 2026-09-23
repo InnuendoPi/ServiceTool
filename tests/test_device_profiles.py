@@ -30,13 +30,29 @@ class DeviceProfilesTests(unittest.TestCase):
         self.assertEqual(selected["telegraf"], original["telegraf"])
         self.assertEqual(len(app.load_app_config()["device_profiles"]), 2)
 
-    def test_empty_duplicate_and_invalid_connections_do_not_change_config(self):
+    def test_empty_and_invalid_connections_do_not_change_config(self):
         before = self.path.read_bytes()
-        for port, url in (("", "http://worker"), ("COM5", ""), ("COM5", "file:///bad"),
-                          ("com4", "http://worker"), ("COM5", "http://EXISTING.local/")):
+        for port, url in (("", "http://worker"), ("COM5", ""), ("COM5", "file:///bad")):
             with self.subTest(port=port, url=url), self.assertRaises(ValueError):
                 app.change_device_profile({"action": "add", "port": port, "url": url})
             self.assertEqual(self.path.read_bytes(), before)
+
+    def test_shared_connections_and_custom_names_survive_switch_and_edit(self):
+        app.change_device_profile({"action": "update", "id": "primary",
+            "name": "Master", "port": "COM4", "url": "http://existing.local"})
+        for name, port, url in (("Same port", "COM4", "http://worker"),
+                                ("Same URL", "COM5", "http://existing.local"),
+                                ("Singledevice", "COM4", "http://existing.local")):
+            saved = app.change_device_profile({"action": "add", "name": name, "port": port, "url": url})
+            identity = saved["active_device_id"]
+            self.assertNotEqual(identity, "primary")
+            self.assertEqual(saved["device_profiles"][-1]["name"], name)
+        selected = app.change_device_profile({"action": "select", "id": "primary"})
+        self.assertEqual(selected["device_profiles"][0]["name"], "Master")
+        saved = app.change_device_profile({"action": "update", "id": identity,
+            "name": " Standalone ", "port": "COM4", "url": "http://existing.local"})
+        self.assertEqual(saved["device_profiles"][-1]["name"], "Standalone")
+        self.assertEqual(app.load_app_config()["device_profiles"], saved["device_profiles"])
 
     def test_four_device_limit_and_remove_returns_single_device(self):
         for index in range(1, 4):

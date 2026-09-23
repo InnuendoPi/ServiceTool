@@ -6,6 +6,25 @@ require('./runner_results_regressions.js');
 const source = fs.readFileSync('static/app.js', 'utf8');
 const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
 
+// Firmware 1.66.x remains on the legacy layout, including later patch releases.
+{
+  const ctx = vm.createContext({lastDeviceStatus:{}, maintenanceVersion:{selection:'device'},
+    managementServiceActive:()=>false, maintenanceSelectionKey:()=> 'device'});
+  vm.runInContext(source.slice(source.indexOf('function parseDeviceFirmwareVersion('), source.indexOf('function requireWifiServiceFirmware(')), ctx);
+  vm.runInContext(source.slice(source.indexOf('function packageGeneration('), source.indexOf('async function loadPackages(')), ctx);
+  vm.runInContext(source.slice(source.indexOf('function maintenanceUnsupported('), source.indexOf('function renderMaintenanceButton(')), ctx);
+  for (const [version, generation, unsupported] of [
+    ['1.65.5','build',true], ['1.66','build',true], ['1.66.99','build',true],
+    ['1.67.0','Updates',false], ['1.68.0','Updates',false], ['2.0.0','Updates',false]
+  ]) {
+    ctx.lastDeviceStatus.firmware = version;
+    ctx.maintenanceVersion.firmware = version;
+    assert.equal(vm.runInContext('packageGeneration()',ctx),generation,version);
+    assert.equal(vm.runInContext('maintenanceUnsupported()',ctx),unsupported,version);
+  }
+  console.log('Firmware boundary: legacy through 1.66.x; ServiceApp from 1.67');
+}
+
 // Exercise the new navigation without starting the app or contacting a device.
 {
   const elements = {};
@@ -83,6 +102,8 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
   assert.equal(vm.runInContext('deviceProfileName(0,1)',ctx),'Brautomat');
   assert.equal(vm.runInContext('deviceProfileName(0,4)',ctx),'Master');
   assert.equal(vm.runInContext('deviceProfileName(3,4)',ctx),'worker3');
+  assert.equal(vm.runInContext('deviceProfileName(2,3,{name:" Singledevice "})',ctx),'Singledevice');
+  assert.equal(vm.runInContext('deviceProfileName(1,3,{name:""})',ctx),'worker1');
   assert.equal(vm.runInContext('workspaceProfiles()[0].url',ctx),'http://existing.local');
   ctx.checkDeviceInFlight=Promise.resolve();
   await assert.rejects(vm.runInContext('submitDeviceProfile({action:"select",id:"worker-id"})',ctx),/abwarten/);

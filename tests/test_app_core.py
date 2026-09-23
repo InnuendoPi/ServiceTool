@@ -160,10 +160,10 @@ class SerialHandoverTests(unittest.TestCase):
 
     def test_migration_rejects_out_of_range_before_handover(self) -> None:
         with (
-            patch.object(app, "current_firmware_version", return_value=("1.65.6", (1, 65, 6))),
+            patch.object(app, "current_firmware_version", return_value=("1.67.0", (1, 67, 0))),
             patch.object(app, "prepare_esptool_serial_handover") as handover,
         ):
-            with self.assertRaisesRegex(RuntimeError, "1.62.0 through 1.65.5"):
+            with self.assertRaisesRegex(RuntimeError, "1.62.0 through 1.66.x"):
                 app.migration_job(self.job, "http://device", False, "COM1", 921600,
                                   "release", "", "", False, True)
         handover.assert_not_called()

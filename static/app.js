@@ -376,14 +376,14 @@ I18N.en.migrationRestore = "Restore Backup";
 I18N.de.migrationRecoveryHint = "Dasselbe Gerät per USB anschließen.";
 I18N.en.migrationRecoveryHint = "Connect the same device via USB.";
 I18N.de.migrationHint = "Migration der Brautomat32 Firmware 1.6x auf Version 1.7x";
-I18N.de.migrationRequirementSource = "Quelle: 1.62–1.65.5";
-I18N.de.migrationRequirementTarget = "Ziel: 1.67.x / 1.70.x";
+I18N.de.migrationRequirementSource = "Quelle: 1.62.0 bis 1.66.x";
+I18N.de.migrationRequirementTarget = "Ziel: ab 1.67, kompatibles ServiceApp-Layout";
 I18N.de.migrationRequirementTransport = "Verbindung: Online und USB";
 I18N.de.migrateBtn = "Migration starten";
 
 I18N.en.migrationHint = "Migration of Brautomat32 firmware 1.6x to version 1.7x";
-I18N.en.migrationRequirementSource = "Source: 1.62–1.65.5";
-I18N.en.migrationRequirementTarget = "Target: 1.67.x / 1.70.x";
+I18N.en.migrationRequirementSource = "Source: 1.62.0 through 1.66.x";
+I18N.en.migrationRequirementTarget = "Target: 1.67 or newer, compatible ServiceApp layout";
 I18N.en.migrationRequirementTransport = "Connection: online and USB";
 I18N.en.migrateBtn = "Start migration";
 
@@ -498,7 +498,7 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.8.0",
+  service_tool_version: "1.8.1",
   language: "en",
   debug_output: false,
   device_url: "http://brautomat",
@@ -559,7 +559,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.8.0"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.8.1"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -1089,11 +1089,20 @@ function renderFirmwareUpdate(data, explicit = false) {
     [text("firmwareUpdateType"), data?.type || data?.ref || "-"],
     [text("firmwareUpdateReleased"), data?.release_date || "-"]
   ];
-  const message = processUnknown
+  const generationMessage = data?.decision === "migration_required"
+    ? (currentLang === "de"
+      ? "Dieses Ziel benötigt eine Layoutmigration. Unter Service → Migration fortfahren; kein normales Firmware-Update."
+      : "This target requires layout migration. Use Service → Migration instead of a regular firmware update.")
+    : data?.decision === "invalid_package"
+    ? (currentLang === "de"
+      ? "Das veröffentlichte Ziel gehört zur alten Firmwaregeneration und passt nicht zum ServiceApp-Layout. Update gesperrt."
+      : "The published target belongs to the old firmware generation and does not match the ServiceApp layout. Update blocked.")
+    : "";
+  const message = generationMessage || (processUnknown
     ? (currentLang === "de" ? "Prozesszustand unbekannt. Gerätestatus erneut prüfen." : "Process state unknown. Check the device status again.")
     : activeProcess
     ? text("firmwareUpdateBlockedActive")
-    : (available ? text("firmwareUpdateReady") : text("firmwareUpdateNoUpdate"));
+    : (available ? text("firmwareUpdateReady") : text("firmwareUpdateNoUpdate")));
   const notes = String(data?.notes || "").trim();
   content.innerHTML = `
     <p class="${available && !activeProcess && !processUnknown ? "service-update-ready" : "muted"}">${escapeHtml(message)}</p>
@@ -1196,7 +1205,7 @@ let packageSelectionReady = false;
 let loadedPackageGeneration = "";
 function packageGeneration() {
   const version = parseDeviceFirmwareVersion(lastDeviceStatus?.firmware || "");
-  return version && compareVersionTuple(version, [1, 66, 0]) < 0 ? "build" : "Updates";
+  return version && compareVersionTuple(version, [1, 67, 0]) < 0 ? "build" : "Updates";
 }
 async function loadPackages() {
   const epoch = ++packageLoadEpoch;
@@ -3242,7 +3251,7 @@ async function pollActiveProcess() {
 function updateDeviceVersionMeta(data = null) {
   maintenanceVersion = {selection: maintenanceSelectionKey(), firmware: data?.firmware || ""};
   const detectedVersion = parseDeviceFirmwareVersion(data?.firmware || "");
-  if (detectedVersion && compareVersionTuple(detectedVersion, [1, 65, 5]) <= 0) {
+  if (detectedVersion && compareVersionTuple(detectedVersion, [1, 67, 0]) < 0) {
     maintenanceActive = false;
     maintenanceNeedsDetection = false;
     clearTimeout(maintenanceRefreshTimer);
@@ -4482,7 +4491,7 @@ function maintenanceSelectionKey() {
 function maintenanceUnsupported() {
   if (managementServiceActive() || maintenanceVersion.selection !== maintenanceSelectionKey()) return false;
   const version = parseDeviceFirmwareVersion(maintenanceVersion.firmware);
-  return !!version && compareVersionTuple(version, [1, 65, 5]) <= 0;
+  return !!version && compareVersionTuple(version, [1, 67, 0]) < 0;
 }
 
 function renderMaintenanceButton() {
@@ -4491,8 +4500,8 @@ function renderMaintenanceButton() {
   $("flashBtn").textContent = service
     ? (currentLang === "de" ? "Hauptfirmware reparieren" : "Repair main firmware") : text("flashBtn");
   $("maintenanceUnavailable").textContent = currentLang === "de"
-    ? "Der Wartungsmodus steht mit dem ServiceApp-Partitionslayout (1.67/1.70) zur Verfügung. Bitte die Firmware aktualisieren."
-    : "Maintenance mode is available with the ServiceApp partition layout (1.67/1.70). Please update the firmware.";
+    ? "Der Wartungsmodus steht mit dem ServiceApp-Partitionslayout ab 1.67 zur Verfügung. Ältere Versionen benötigen eine Migration."
+    : "Maintenance mode is available with the ServiceApp partition layout from 1.67. Older versions require migration.";
   $("maintenanceUnavailable").classList.toggle("hidden-panel", !unsupported);
   $("maintenanceStatus").classList.toggle("hidden-panel", unsupported);
   $("maintenanceRepair").textContent = currentLang === "de" ? "Hauptfirmware reparieren" : "Repair main firmware";

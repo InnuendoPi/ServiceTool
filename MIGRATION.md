@@ -1,6 +1,7 @@
 # Migration mit ServiceApp
 
-Die Migration unterstützt Brautomat32 von **1.62.0 bis 1.65.5 auf 1.66.x, 1.67.x oder 1.70.x**.
+Die Migration unterstützt Brautomat32 von **1.62.0 bis einschließlich 1.66.x**
+auf **1.67.0 oder neuer mit kompatiblem ServiceApp-Layout**.
 Ein vorheriges Zwischenupdate ist nicht erforderlich. Unterstützt werden
 ESP32-Geräte mit 4 MiB Flash und dem bisherigen symmetrischen Partitionslayout.
 Das ServiceTool prüft Firmware und Partitionstabelle vor dem Schreiben.

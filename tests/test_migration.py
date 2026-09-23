@@ -17,7 +17,7 @@ def table(layout):
     return (data + b"\xeb\xeb" + b"\xff" * 14 + hashlib.md5(data).digest()).ljust(4096, b"\xff")
 
 
-def image(role=None, version="1.66.0"):
+def image(role=None, version="1.67.0"):
     header = bytearray(24)
     header[0:4] = bytes((0xE9, 1, 2, 0x20))
     header[23] = 1
@@ -53,7 +53,7 @@ def nvs(active=False, records=None):
     return bytes(page).ljust(0x5000, b"\xff")
 
 
-def package(root, version="1.66.0"):
+def package(root, version="1.67.0"):
     root.mkdir()
     contents = {"firmware.bin": image("BrautomatMain", version),
                 "serviceapp.bin": image("BrautomatSvcApp"),
@@ -113,7 +113,7 @@ class MigrationTests(unittest.TestCase):
         self.package = package(self.root / "input")
 
     def session(self):
-        return m.Session.create(self.root / "backups", self.package, m.validate_package(self.package, "1.66.0"), app.migration_webfiles(self.package))
+        return m.Session.create(self.root / "backups", self.package, m.validate_package(self.package, "1.67.0"), app.migration_webfiles(self.package))
 
     def test_both_old_slots_preserve_every_byte_outside_target_regions(self):
         for slot in (0, 1):
@@ -278,14 +278,14 @@ class MigrationTests(unittest.TestCase):
             m.check_persisted_idle(bytes(corrupted))
 
     def test_package_versions_roles_checksums_and_layout(self):
-        self.assertEqual(m.validate_package(self.package, "1.66.0")["version"], "1.66.0")
+        self.assertEqual(m.validate_package(self.package, "1.67.0")["version"], "1.67.0")
         other = package(self.root / "enduser", "1.70.2")
         self.assertEqual(m.validate_package(other, "1.70.2")["version"], "1.70.2")
         for name in m.IMAGES:
             data = (self.package / name).read_bytes()
             (self.package / name).write_bytes(data[:-1])
             with self.subTest(name=name), self.assertRaises(ValueError):
-                m.validate_package(self.package, "1.66.0")
+                m.validate_package(self.package, "1.67.0")
             (self.package / name).write_bytes(data)
         with self.assertRaisesRegex(ValueError, "role"):
             m.check_image(image("BrautomatMain"), "BrautomatSvcApp")
@@ -317,7 +317,7 @@ class MigrationTests(unittest.TestCase):
             patch.object(app, "BACKUP_DIR", self.root / "runtime"),
             patch.object(app, "current_firmware_version", return_value=("1.65.5", (1, 65, 5))),
             patch.object(app, "migration_require_idle"),
-            patch.object(app, "prepare_migration_package", return_value=(self.package, m.validate_package(self.package, "1.66.0"))),
+            patch.object(app, "prepare_migration_package", return_value=(self.package, m.validate_package(self.package, "1.67.0"))),
             patch.object(app, "migration_user_files", return_value={"/config.txt": m.digest(b"config")}),
             patch.object(app, "ensure_esptool_available", return_value=Path("esptool")),
             patch.object(app, "prepare_esptool_serial_handover", return_value={}),
@@ -338,7 +338,7 @@ class MigrationTests(unittest.TestCase):
             patch.object(app, "BACKUP_DIR", self.root / "runtime"),
             patch.object(app, "current_firmware_version", return_value=("1.65.5", (1, 65, 5))),
             patch.object(app, "migration_require_idle"),
-            patch.object(app, "prepare_migration_package", return_value=(self.package, m.validate_package(self.package, "1.66.0"))),
+            patch.object(app, "prepare_migration_package", return_value=(self.package, m.validate_package(self.package, "1.67.0"))),
             patch.object(app, "migration_user_files", return_value={"/config.txt": "hash"}),
             patch.object(app, "ensure_esptool_available", return_value=Path("esptool")),
             patch.object(app, "prepare_esptool_serial_handover", return_value={"restart": True, "port": "COM1", "baud": 115200}),
@@ -355,9 +355,9 @@ class MigrationTests(unittest.TestCase):
 
     def test_finish_never_reports_success_if_user_files_changed(self):
         session = self.session()
-        session.save(target_version="1.66.0", user_files={"/config.txt": m.digest(b"original")})
+        session.save(target_version="1.67.0", user_files={"/config.txt": m.digest(b"original")})
         with (
-            patch.object(app, "json_request", return_value={"firm": "Brautomat32 1.66.0"}),
+            patch.object(app, "json_request", return_value={"firm": "Brautomat32 1.67.0"}),
             patch.object(app, "migration_require_idle"),
             patch.object(app, "download_fs_file", return_value=b"changed"),
             patch.object(app, "post_file_to_fs") as upload,
@@ -391,13 +391,13 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(device.boots, 0)
 
     def test_source_range_has_no_preupdate_and_rejects_unknown_targets(self):
-        self.assertTrue(m.contains_version(b"\0" + b"1.66" + b"\0", "1.66.0"))
-        self.assertTrue(m.contains_version(b"\0" + b"1.66.0" + b"\0", "1.66"))
-        for version in ("1.65.5", "1.68.0", "2.0.0"):
+        self.assertTrue(m.contains_version(b"\0" + b"1.67" + b"\0", "1.67.0"))
+        self.assertTrue(m.contains_version(b"\0" + b"1.67.0" + b"\0", "1.67"))
+        for version in ("1.65.5", "1.66.0", "1.66.99"):
             bad = package(self.root / version, version)
             with self.subTest(version=version), self.assertRaisesRegex(ValueError, "target"):
                 m.validate_package(bad, version)
-        for version, parsed in (("1.62", (1, 62, 0)), ("1.63.4", (1, 63, 4)), ("1.65.5", (1, 65, 5))):
+        for version, parsed in (("1.62", (1, 62, 0)), ("1.63.4", (1, 63, 4)), ("1.65.5", (1, 65, 5)), ("1.65.6", (1, 65, 6)), ("1.66.0", (1, 66, 0)), ("1.66.99", (1, 66, 99))):
             with (
                 self.subTest(source=version),
                 patch.object(app, "current_firmware_version", return_value=(version, parsed)),
@@ -453,11 +453,11 @@ class MigrationTests(unittest.TestCase):
         (project / "platformio.ini").write_text("[env:ESP32_IDF5]\n")
         metadata = project / ".pio" / "build" / "ESP32_IDF5" / "idedata.json"
         metadata.parent.mkdir(parents=True)
-        metadata.write_text(json.dumps({"defines": ['BRAUTOMAT_FIRMWARE_VERSION="1.66.0"']}))
+        metadata.write_text(json.dumps({"defines": ['BRAUTOMAT_FIRMWARE_VERSION="1.67.0"']}))
         selected, checked = app.prepare_migration_package(
             app.Job(id="test", type="migration", title="Test"), "open", str(build), "")
         self.assertEqual(selected, build.resolve())
-        self.assertEqual(checked["version"], "1.66.0")
+        self.assertEqual(checked["version"], "1.67.0")
         self.assertFalse((build / "migration.json").exists())
         self.assertNotIn("/config.txt", app.migration_webfiles(build))
 
@@ -530,7 +530,7 @@ class MigrationTests(unittest.TestCase):
     def test_named_backup_contains_only_restore_files_and_supports_completed_restore(self):
         import shutil
         sessions = [m.Session.create(self.root / "named", self.package,
-                    m.validate_package(self.package, "1.66.0"), app.migration_webfiles(self.package),
+                    m.validate_package(self.package, "1.67.0"), app.migration_webfiles(self.package),
                     "1.65.5", self.root / "cache") for _ in range(2)]
         session = sessions[0]
         self.assertRegex(session.directory.name, r"^backup_1_65_5_\d{8}$")
@@ -611,13 +611,13 @@ class MigrationTests(unittest.TestCase):
         with (
             patch.object(app, "CACHE_DIR", self.root / "cache"),
             patch.object(app, "json_request", return_value={"sha": sha}),
-            patch.object(app, "package_location", return_value={"version":"1.66.0", "base_url":f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/Updates/ESP32-IDF5"}) as version,
+            patch.object(app, "package_location", return_value={"version":"1.67.0", "base_url":f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/Updates/ESP32-IDF5"}) as version,
             patch.object(app, "download_bytes", side_effect=download),
         ):
             selected, metadata = app.prepare_migration_package(
                 app.Job(id="test", type="migration", title="Test"), "release", "", "")
         version.assert_called_once_with("release", "", "Updates", sha)
-        self.assertEqual(metadata["version"], "1.66.0")
+        self.assertEqual(metadata["version"], "1.67.0")
         self.assertFalse((selected / "migration.json").exists())
         self.assertEqual(len(urls), len(m.IMAGES) + len(app.WEBUPDATE_TOOL_FILES))
 

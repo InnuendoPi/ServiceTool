@@ -13,18 +13,18 @@ function workspaceText(de, en) { return currentLang === "de" ? de : en; }
 function workspaceProfiles() {
   return appConfig.device_profiles?.length ? appConfig.device_profiles : [{id:"primary", url:appConfig.device_url, port:appConfig.serial_port}];
 }
-function deviceProfileName(index, count) { return count === 1 ? "Brautomat" : index === 0 ? "Master" : `worker${index}`; }
+function deviceProfileName(index, count, profile = {}) { return profile.name?.trim() || (count === 1 ? "Brautomat" : index === 0 ? "Master" : `worker${index}`); }
 function refreshWorkspaceProfiles() {
   if (!workspaceReady) return;
   const profiles = workspaceProfiles();
   const active = appConfig.active_device_id || profiles[0].id;
   const select = document.getElementById("activeDeviceSelect");
   select.replaceChildren();
-  profiles.forEach((p, index) => select.add(new Option(deviceProfileName(index, profiles.length), p.id)));
+  profiles.forEach((p, index) => select.add(new Option(deviceProfileName(index, profiles.length, p), p.id)));
   select.value = active;
   const chosen = profiles.find(p => p.id === active) || profiles[0];
   document.getElementById("activeDeviceAddress").textContent = [profiles.length === 1 ? appConfig.serial_port : chosen.port, chosen.url].filter(Boolean).join(" · ");
-  document.getElementById("settingsActiveDevice").textContent = [deviceProfileName(profiles.indexOf(chosen), profiles.length), document.getElementById("activeDeviceAddress").textContent].filter(Boolean).join(" · ");
+  document.getElementById("settingsActiveDevice").textContent = [deviceProfileName(profiles.indexOf(chosen), profiles.length, chosen), document.getElementById("activeDeviceAddress").textContent].filter(Boolean).join(" · ");
   document.getElementById("addDeviceProfile").disabled = profiles.length >= 4;
   // A stored multi-device mapping is edited together, never replaced by an auto-picked port.
   for (const id of ["portSelect", "serialPortSelect"]) document.getElementById(id).disabled = profiles.length > 1;
@@ -38,6 +38,7 @@ function translateWorkspace() {
     workspaceSettingsTitle:["Einstellungen", "Settings"], workspaceMaintenanceTitle:["Wartung", "Maintenance"],
     workspaceDevicesTitle:["Geräte", "Devices"],
     workspaceSettingsButton:["Einstellungen", "Settings"], profilePortLabel:["COM-Port", "Serial port"],
+    profileNameLabel:["Profilname (optional)", "Profile name (optional)"],
     profileUrlLabel:["Geräte-URL", "Device URL"], profileSave:["Speichern", "Save"], profileCancel:["Abbrechen", "Cancel"],
     profileRemove:["Gerät entfernen", "Remove device"], profileHelp:["COM-Port und URL sind Pflicht. Die URL muss noch nicht erreichbar sein.", "Serial port and URL are required. The URL does not have to be reachable yet."]
   };
@@ -128,6 +129,8 @@ async function openDeviceProfile(mode) {
   const dialog = document.getElementById("deviceProfileDialog");
   const portSelect = document.getElementById("profilePort"); portSelect.replaceChildren();
   portSelect.add(new Option(workspaceText("Port auswählen", "Select port"), ""));
+  document.getElementById("profileName").value = mode === "add" ? "" : (current.name || "");
+  document.getElementById("profileName").placeholder = mode === "add" ? workspaceText("z. B. Singledevice", "e.g. Single device") : deviceProfileName(profiles.indexOf(current), profiles.length);
   document.getElementById("profileUrl").value = mode === "add" ? "" : current.url;
   document.getElementById("deviceProfileTitle").textContent = mode === "add" ? workspaceText("Gerät hinzufügen", "Add device") : workspaceText("Geräteprofil bearbeiten", "Edit device profile");
   document.getElementById("profileRemove").hidden = mode === "add" || current.id === profiles[0].id;
@@ -136,7 +139,7 @@ async function openDeviceProfile(mode) {
     const data = await api("/api/ports");
     if (!dialog.open) return;
     const ports = new Set((data.ports || []).map(p => p.port));
-    if (mode !== "add" && current.port) ports.add(current.port);
+    profiles.forEach(profile => { if (profile.port) ports.add(profile.port); });
     ports.forEach(port => portSelect.add(new Option(port, port)));
     portSelect.value = mode === "add" ? "" : current.port;
   } catch (error) { document.getElementById("profileError").textContent = error.message; }
@@ -192,7 +195,7 @@ function initializeWorkspace() {
   document.getElementById("profileCancel").addEventListener("click", () => document.getElementById("deviceProfileDialog").close());
   document.getElementById("deviceProfileForm").addEventListener("submit", async event => {
     event.preventDefault();
-    try { await submitDeviceProfile({action:profileEditorMode, id:appConfig.active_device_id || "primary", port:document.getElementById("profilePort").value, url:document.getElementById("profileUrl").value}); }
+    try { await submitDeviceProfile({action:profileEditorMode, id:appConfig.active_device_id || "primary", name:document.getElementById("profileName").value, port:document.getElementById("profilePort").value, url:document.getElementById("profileUrl").value}); }
     catch (error) { document.getElementById("profileError").textContent = error.message; }
   });
   document.getElementById("profileRemove").addEventListener("click", async () => {

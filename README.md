@@ -90,7 +90,7 @@ For the ServiceApp partition layout, normal USB flashing requires matching
 are validated before serial handover and written even when Erase Flash is off.
 An erase additionally requires the boot files and removes saved device data.
 Use the guided migration for changing an older device's partition layout.
-Migration supports targets 1.66.x, 1.67.x and 1.70.x with the verified ServiceApp layout.
+Migration supports targets from 1.67.0 with the verified ServiceApp layout.
 
 For an extracted GitHub firmware ZIP, select the folder containing the `.bin`
 files. If version metadata is absent, ServiceTool identifies a unique product
@@ -175,8 +175,8 @@ which ServiceTool functions are already available.
 
 - Select the correct COM port before flashing.
 - Use `Latest Release` for normal updates when a compatible package is available.
-- Package paths follow the detected firmware generation: up to 1.65.5 uses
-  `build/`; 1.66 and newer uses `Updates/`. Before device detection, the newer
+- Package paths follow the detected firmware generation: through 1.66.x uses
+  `build/`; 1.67 and newer uses `Updates/`. Before device detection, the newer
   generation is selected. Missing modern packages never fall back to old binaries.
 - `Special Version` lists available tags/commits for that generation. The displayed
   directory and the downloaded directory match; all binary files are pinned to one
@@ -245,7 +245,8 @@ explicit checkbox in the Telegraf tab only when storing them in the local
 
 ### Migration
 
-Migrate firmware 1.62.0–1.65.5 directly to a compatible 1.66.x, 1.67.x or 1.70.x package with a verified full flash
+Migrate firmware 1.62.0 through 1.66.x to a compatible package from 1.67.0
+with a verified full flash
 backup, preserved WiFi settings and user files, and backup recovery.
 See [MIGRATION.md](MIGRATION.md) for instructions and package requirements.
 
@@ -253,7 +254,7 @@ See [MIGRATION.md](MIGRATION.md) for instructions and package requirements.
 
 Use the maintenance controls in the Firmware tab to start the ServiceApp over
 USB and return to the main firmware. Maintenance requires a compatible ServiceApp;
-firmware up to 1.65.5 needs migration first.
+firmware through 1.66.x needs migration first.
 
 While maintenance mode is active:
 

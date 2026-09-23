@@ -36,7 +36,7 @@ automatisierten Tests und werden vor Enduser-Freigabe abgeschlossen.
 Braustatus-Erkennung sowie WLAN-Auslesen, Scan und Reset nicht pauschal auf
 neuere Firmware übertragen. Verfügbarkeit für die tatsächlich eingesetzte
 Hauptfirmware und ServiceApp anhand ihres Schnittstellenvertrags klären.
-Die Paketprüfung unterstützt 1.66.x, 1.67.x und 1.70.x mit passender
+Die Paketprüfung unterstützt Ziele ab 1.67.0 mit passender
 ServiceApp-Partitionstabelle; die Versionsnummer allein genügt nicht.
 
 ## Repository-Ausgliederung
