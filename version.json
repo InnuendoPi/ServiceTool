@@ -1,8 +1,8 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "released_at": "",
-  "notes": "ServiceTool 1.8.2.",
+  "notes": "ServiceTool 1.8.3.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
     "url": "",

@@ -502,7 +502,7 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.8.2",
+  service_tool_version: "1.8.3",
   language: "en",
   debug_output: false,
   device_url: "http://brautomat",
@@ -563,7 +563,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.8.2"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.8.3"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {

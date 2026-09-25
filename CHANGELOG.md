@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.3 - Unveröffentlicht
+
+- Sichert bei neuen Migrationen die Einstellungen über die API statt per
+  Flash-Auslesen; NVS und LittleFS bleiben erhalten.
+- Stellt API-Backups ohne Firmware-Rückwechsel wieder her und unterstützt
+  weiterhin vorhandene vollständige Flash-Sicherungen.
+- Passt Migrationsanzeige und Hilfe an den neuen Ablauf an.
+
 ## 1.8.1 - Unveröffentlicht
 
 - Erlaubt eigene Profilnamen und mehrfach verwendete COM-Ports und Geräte-URLs.
