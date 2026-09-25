@@ -106,8 +106,8 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.8.1"
-ESPTOOL_VERSION = "5.3.1"  # Legacy cache lookup only; downloads use GitHub latest.
+SERVICE_TOOL_VERSION = "1.8.2"
+ESPTOOL_VERSION = "5.3.1"  # Pin downloads and local selection to this version.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
 ESPTOOL_SELECTED_VERSION = None
@@ -119,14 +119,20 @@ ESPTOOL_REPO_BASE = f"https://github.com/espressif/esptool/releases/download/v{E
 
 REMOTE_PACKAGES: dict[str, dict[str, str]] = {
     "release": {
-        "label": "Latest Release",
+        "label": "1.66 Release",
         "branch": "main",
         "base_url": "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/main/build/ESP32-IDF5",
     },
     "development": {
-        "label": "Latest Development",
+        "label": "1.66 Development",
         "branch": "development",
         "base_url": "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/development/build/ESP32-IDF5dev",
+    },
+    # Source identifier for the new generation, not a Git branch name.
+    "development_170": {
+        "label": "1.70 Development",
+        "branch": "development",
+        "base_url": "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/development/Updates/ESP32-IDF5dev",
     },
     "special": {
         "label": "Special Version",
@@ -526,7 +532,7 @@ def default_config() -> dict[str, Any]:
         "package_dir": REMOTE_PACKAGES["release"]["base_url"],
         "open_package_dir": str(APP_ROOT),
         "inventory_root": str(DEFAULT_INVENTORY_DIR),
-        "baud_rate": 921600,
+        "baud_rate": 460800,
         "serial_baud_rate": 115200,
         "serial_port": "",
         "device_profiles": [],
@@ -900,11 +906,60 @@ def try_base_urls(base_url: str, action):
     raise last_error
 
 
+GITHUB_JSON_LOCK = threading.Lock()
+GITHUB_JSON_CACHE: dict[str, tuple[float, bytes]] = {}
+GITHUB_RETRY_AT = 0.0
+
+
+def github_limit_error(url: str) -> error.HTTPError:
+    seconds = max(1, int(GITHUB_RETRY_AT - time.time()) + 1)
+    reset = time.strftime("%H:%M:%S", time.localtime(GITHUB_RETRY_AT))
+    return error.HTTPError(url, 429,
+                           f"GitHub API limit: retry at {reset} (in {seconds} s)", {}, None)
+
+
 def json_request(url: str, timeout: float = 12.0) -> Any:
-    req = request.Request(url, method="GET")
-    with request.urlopen(req, timeout=timeout, context=ssl_context()) as response:
-        data = response.read()
-    return json.loads(data.decode("utf-8", errors="replace"))
+    global GITHUB_RETRY_AT
+
+    def fetch() -> bytes:
+        req = request.Request(url, method="GET")
+        with request.urlopen(req, timeout=timeout, context=ssl_context()) as response:
+            return response.read()
+
+    if parse.urlparse(url).hostname != "api.github.com":
+        return json.loads(fetch().decode("utf-8", errors="replace"))
+    # Coalesce concurrent API loads; never cache device requests or failures.
+    with GITHUB_JSON_LOCK:
+        now = time.time()
+        cached = GITHUB_JSON_CACHE.get(url)
+        if cached and cached[0] > now:
+            return json.loads(cached[1])
+        if GITHUB_RETRY_AT > now:
+            raise github_limit_error(url)
+        try:
+            data = fetch()
+        except error.HTTPError as exc:
+            headers = exc.headers or {}
+            limited = exc.code == 429 or (exc.code == 403 and (
+                headers.get("X-RateLimit-Remaining") == "0" or headers.get("Retry-After")))
+            if not limited:
+                raise
+            try:
+                retry = float(headers.get("Retry-After", "0"))
+                reset = float(headers.get("X-RateLimit-Reset", "0"))
+            except (TypeError, ValueError):
+                retry, reset = 60.0, 0.0
+            GITHUB_RETRY_AT = max(time.time() + max(retry, 60 if reset <= time.time() else 1), reset)
+            exc.close()
+            raise github_limit_error(url) from exc
+        result = json.loads(data.decode("utf-8", errors="replace"))
+        for key, value in list(GITHUB_JSON_CACHE.items()):
+            if value[0] <= now:
+                del GITHUB_JSON_CACHE[key]
+        if len(GITHUB_JSON_CACHE) >= 128:
+            GITHUB_JSON_CACHE.pop(next(iter(GITHUB_JSON_CACHE)))
+        GITHUB_JSON_CACHE[url] = (time.time() + 60, json.dumps(result).encode("utf-8"))
+        return result
 
 
 def post_empty(url: str, timeout: float = 20.0) -> str:
@@ -1717,14 +1772,22 @@ def ensure_esptool_available(job: Job | None = None) -> pathlib.Path:
         return path
 
     with ESPTOOL_DOWNLOAD_LOCK:
+        for local in (cached_esptool_path(ESPTOOL_VERSION), bundled_esptool_path()):
+            if local and local.is_file():
+                try:
+                    if esptool_binary_version(local) == ESPTOOL_VERSION:
+                        log(f"Using local esptool {ESPTOOL_VERSION}: {local}")
+                        return select(local, ESPTOOL_VERSION)
+                except (OSError, RuntimeError, subprocess.TimeoutExpired):
+                    pass
         try:
-            release = json_request("https://api.github.com/repos/espressif/esptool/releases/latest", timeout=15)
+            release = json_request(f"https://api.github.com/repos/espressif/esptool/releases/tags/v{ESPTOOL_VERSION}", timeout=15)
         except (OSError, ValueError) as exc:
-            log(f"esptool latest release unavailable: {exc}; checking local copies")
+            log(f"esptool {ESPTOOL_VERSION} release unavailable: {exc}; checking local copies")
             candidates = []
             for folder in TOOLS_CACHE_DIR.glob("esptool-v*"):
                 version = folder.name.removeprefix("esptool-v")
-                if re.fullmatch(r"\d+\.\d+\.\d+", version):
+                if version == ESPTOOL_VERSION:
                     path = cached_esptool_path(version)
                     if path.is_file():
                         candidates.append((tuple(map(int, version.split("."))), path))
@@ -1732,26 +1795,29 @@ def ensure_esptool_available(job: Job | None = None) -> pathlib.Path:
             if bundled:
                 try:
                     version = esptool_binary_version(bundled)
-                    candidates.append((tuple(map(int, version.split("."))), bundled))
+                    if version == ESPTOOL_VERSION:
+                        candidates.append((tuple(map(int, version.split("."))), bundled))
                 except (OSError, RuntimeError, subprocess.TimeoutExpired):
                     pass
             for _, path in sorted(candidates, key=lambda item: item[0], reverse=True):
                 try:
                     version = esptool_binary_version(path)
+                    if version != ESPTOOL_VERSION:
+                        continue
                     log(f"Using local esptool {version}: {path}")
                     return select(path, version)
                 except (OSError, RuntimeError, subprocess.TimeoutExpired):
                     continue
-            raise RuntimeError("GitHub is unavailable and no usable local esptool exists") from exc
+            raise RuntimeError(f"GitHub is unavailable and no verified local esptool {ESPTOOL_VERSION} exists") from exc
         tag = str(release.get("tag_name", ""))
-        if release.get("draft") or release.get("prerelease") or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
-            raise RuntimeError("Invalid stable esptool release")
+        if release.get("draft") or release.get("prerelease") or tag != f"v{ESPTOOL_VERSION}":
+            raise RuntimeError("Unexpected esptool release; required version is 5.3.1")
         version = tag[1:]
         asset_name, _, _ = esptool_platform_asset(version)
         assets = [item for item in release.get("assets", []) if item.get("name") == asset_name]
         if len(assets) != 1:
-            raise RuntimeError(f"Latest esptool {version} has no matching asset: {asset_name}")
-        log(f"Latest stable esptool: {version}")
+            raise RuntimeError(f"esptool {version} has no matching asset: {asset_name}")
+        log(f"Pinned esptool: {version}")
         cached = cached_esptool_path(version)
         bundled = bundled_esptool_path()
         for path in (cached, bundled):
@@ -1817,10 +1883,18 @@ def require_package_generation(version: str, root: str) -> None:
                          "Up to 1.66.x requires build; 1.67 and newer requires Updates.")
 
 
+def package_branch(source: str, root: str) -> str:
+    if source == "development_170" and root != "Updates":
+        raise ValueError("1.70 Development requires the ServiceApp layout")
+    if source in ("release", "development") and root != "build":
+        raise ValueError("Selected 1.66 source requires the legacy layout")
+    return REMOTE_PACKAGES[source]["branch"]
+
+
 def package_location(source: str, ref: str, root: str, revision: str = "") -> dict:
     if root not in ("build", "Updates") or source not in REMOTE_PACKAGES:
         raise ValueError("Invalid firmware package selection")
-    selected_ref = ref.strip() if source == "special" else REMOTE_PACKAGES[source]["branch"]
+    selected_ref = ref.strip() if source == "special" else package_branch(source, root)
     if not selected_ref:
         raise ValueError("Select a specific firmware version")
     revision = revision or selected_ref
@@ -1829,7 +1903,7 @@ def package_location(source: str, ref: str, root: str, revision: str = "") -> di
     if not isinstance(manifest, dict):
         raise ValueError("Invalid package version manifest")
     require_package_generation(manifest.get("version", ""), root)
-    development = source == "development" or (source == "special" and "develop" in str(manifest.get("type", "")).lower())
+    development = source in ("development", "development_170") or (source == "special" and "develop" in str(manifest.get("type", "")).lower())
     directory = "ESP32-IDF5dev" if development else "ESP32-IDF5"
     path = f"{root}/{directory}"
     entries = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/{path}?ref={parse.quote(revision, safe='')}", timeout=10)
@@ -1841,12 +1915,16 @@ def package_location(source: str, ref: str, root: str, revision: str = "") -> di
             "version": str(manifest.get("version", "")), "type": str(manifest.get("type", "")), "root": root}
 
 
-def package_catalog(firmware: str = "", include_special: bool = False) -> dict[str, Any]:
-    root = package_root_for_firmware(firmware)
+def package_catalog(firmware: str = "", include_special: bool = False, purpose: str = "firmware") -> dict[str, Any]:
+    if purpose not in ("firmware", "migration"):
+        raise ValueError("Invalid package selection purpose")
+    root = "Updates" if purpose == "migration" else package_root_for_firmware(firmware)
     packages = []
-    for key in ("release", "development"):
+    for key in ("release", "development", "development_170"):
         item = {"key": key, "label": REMOTE_PACKAGES[key]["label"], "path": "", "available": False}
         try:
+            package_branch(key, root)
+            item["path"] = REMOTE_PACKAGES[key]["base_url"]
             location = package_location(key, "", root)
             item.update(path=location["base_url"], available=True, version=location["version"])
         except (OSError, ValueError) as exc:
@@ -1917,7 +1995,7 @@ def download_package_file(job: Job, source_key: str, package_dir: pathlib.Path, 
 def list_special_versions(root: str = "Updates") -> list[dict[str, str]]:
     candidates = []
     for url, kind in (("https://api.github.com/repos/InnuendoPi/Brautomat32/releases?per_page=20", "release"),
-                      ("https://api.github.com/repos/InnuendoPi/Brautomat32/commits?sha=development&per_page=12", "commit")):
+                      (f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits?sha={package_branch('development_170' if root == 'Updates' else 'development', root)}&per_page=12", "commit")):
         try:
             rows = json_request(url, timeout=10)
         except (OSError, ValueError):
@@ -1948,14 +2026,14 @@ def list_special_versions(root: str = "Updates") -> list[dict[str, str]]:
 def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True, firmware_only: bool = False, selected_url: str = "") -> pathlib.Path:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError(f"Unknown package source: {source_key}")
-    ref = package_ref.strip() if source_key == "special" else REMOTE_PACKAGES[source_key]["branch"]
+    root = "Updates" if not selected_url or "/Updates/" in selected_url else "build"
+    ref = package_ref.strip() if source_key == "special" else package_branch(source_key, root)
     if not ref:
         raise ValueError("Special Version requires a version ref")
     commit = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits/{parse.quote(ref, safe='')}")
     sha = str(commit.get("sha", ""))
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError("Unable to pin firmware package to a commit")
-    root = "Updates" if not selected_url or "/Updates/" in selected_url else "build"
     if selected_url:
         location = package_location(source_key, package_ref, root, sha)
         expected = location["base_url"].replace(f"/{sha}/", f"/{ref}/", 1)
@@ -2040,7 +2118,7 @@ def list_remote_languages(source_key: str, package_ref: str = "", package_root: 
             raise ValueError("Special Version requires a version ref")
         refs = [package_ref.strip()]
     else:
-        refs = [REMOTE_PACKAGES[source_key]["branch"]]
+        refs = [package_branch(source_key, package_root)]
 
     if package_root not in ("build", "Updates"):
         raise ValueError("Invalid package generation")
@@ -2131,7 +2209,8 @@ def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: s
     if package_root not in ("build", "Updates"):
         raise ValueError("Invalid package generation")
     if package_root == "Updates":
-        language_base += "Updates/"
+        ref = package_ref.strip() if source_key == "special" else package_branch(source_key, package_root)
+        language_base = github_raw_language_base(ref) + "Updates/"
         tools_base = language_base + "data/"
     uploaded: list[str] = []
     try:
@@ -2212,7 +2291,7 @@ def install_language_job(job: Job, base_url: str, source_key: str, filename: str
     device = device_status(base)
     require_package_generation(device.get("firmware", ""), package_root)
     base = normalize_base_url(device.get("base_url") or base)
-    ref = package_ref.strip() if source_key == "special" else REMOTE_PACKAGES[source_key]["branch"]
+    ref = package_ref.strip() if source_key == "special" else package_branch(source_key, package_root)
     if not ref:
         raise ValueError("Special Version requires a version ref")
     commit = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits/{parse.quote(ref, safe='')}")
@@ -2931,16 +3010,20 @@ def update_flash_progress(
     job.set_progress(overall)
 
 
+def download_config_backup(base_url: str, include_api: bool) -> bytes:
+    base = normalize_base_url(base_url)
+    post_empty(f"{base}/backup?api={1 if include_api else 0}")
+    payload = download_bytes(f"{base}/download?file=/backup.json")
+    validate_backup_content(payload)
+    return payload
+
+
 def create_backup_job(job: Job, base_url: str, include_api: bool) -> dict[str, Any]:
     base = normalize_base_url(base_url)
     job.set_progress(5)
     job.set_current_file("backup.json")
     job.log(f"Backup starten: {base}")
-    response = post_empty(f"{base}/backup?api={1 if include_api else 0}")
-    job.set_progress(40)
-    job.log(f"Backup-Antwort: {response.strip() or 'ok'}")
-    payload = download_bytes(f"{base}/download?file=/backup.json")
-    validate_backup_content(payload)
+    payload = download_config_backup(base, include_api)
     job.set_progress(85)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     target = BACKUP_DIR / f"brautomat-backup-{stamp}.json"
@@ -2995,6 +3078,7 @@ def device_status(base_url: str) -> dict[str, Any]:
         "firmware": firmware,
         "lang": vis.get("lang"),
         "dev": bool(vis.get("dev")),
+        "updatechannel": vis.get("updatechannel"),
         "dashboard_only": bool(vis.get("dtp")),
         "active_process": device_process_status(base),
         "testflow_enabled": testflow_enabled,
@@ -3540,7 +3624,12 @@ def firmware_update_status(base_url: str) -> dict[str, Any]:
         raise RuntimeError("Device firmware version unavailable")
     current_parsed = require_version_tuple(current_version, "Device")
     is_development = bool(status.get("dev")) or "develop" in current_version.lower()
-    ref = "development" if is_development else "main"
+    root = package_root_for_firmware(current_version)
+    channel = status.get("updatechannel")
+    source = {0: "release", 1: "development", 2: "development_170"}.get(channel)
+    if source is None:
+        source = "development_170" if root == "Updates" and is_development else ("development" if is_development else "release")
+    ref = package_branch(source, root)
     manifest = remote_repo_version_manifest(ref, package_root_for_firmware(current_version))
     remote_version = str(manifest.get("version") or "").strip()
     remote_parsed = require_version_tuple(remote_version, f"Remote {ref}")
@@ -4349,11 +4438,13 @@ def migration_target_version(package_source: str, package_ref: str, package_dir:
         ref = package_ref.strip()
         if not ref:
             raise RuntimeError("Special Version requires a selected ref for migration")
-        return remote_repo_version(ref)
-    if package_source == "release":
-        return remote_repo_version("main")
-    if package_source == "development":
-        return remote_repo_version("development")
+        manifest = remote_repo_version_manifest(ref, "Updates")
+        version = str(manifest["version"])
+        return version, require_version_tuple(version, "Migration target")
+    if package_source in ("release", "development", "development_170"):
+        manifest = remote_repo_version_manifest(package_branch(package_source, "Updates"), "Updates")
+        version = str(manifest["version"])
+        return version, require_version_tuple(version, "Migration target")
     raise RuntimeError(f"Unsupported migration package source: {package_source}")
 
 
@@ -5492,6 +5583,19 @@ def migration_sessions() -> list[dict[str, Any]]:
     return entries
 
 
+def discard_migration_session(session_id: str) -> dict[str, Any]:
+    if not MIGRATION_LOCK.acquire(blocking=False):
+        raise RuntimeError("Cannot discard a session while migration or recovery is running")
+    try:
+        session = migration_engine.Session.load(migration_root(), session_id)
+        if session.report["phase"] in ("complete", "restored", "cancelled"):
+            raise ValueError("Migration session is already closed")
+        session.save("cancelled", previous_phase=session.report["phase"])
+        return {"cancelled": True, "backup_preserved": True}
+    finally:
+        MIGRATION_LOCK.release()
+
+
 def migration_require_idle(base_url: str) -> None:
     # Do not use device_process_status(): its legacy fallback treats errors as idle.
     base = normalize_base_url(base_url)
@@ -5519,7 +5623,7 @@ def prepare_migration_package(job: Job, source: str, directory: str, ref: str) -
     else:
         if source not in REMOTE_PACKAGES:
             raise ValueError("Unsupported migration package source")
-        branch = ref if source == "special" else REMOTE_PACKAGES[source]["branch"]
+        branch = ref if source == "special" else package_branch(source, "Updates")
         commit = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits/{parse.quote(branch, safe='')}")
         sha = str(commit.get("sha", ""))
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
@@ -5681,7 +5785,8 @@ def finish_migration(job: Job, session: migration_engine.Session, base_url: str)
                 raise RuntimeError("Target is not reachable with the expected version and idle state; keep recovery backup")
             time.sleep(3)
     expected_files = session.report["user_files"]
-    job.set_current_file("migrationStepUserCheck")
+    if expected_files:
+        job.set_current_file("migrationStepUserCheck")
     for name, expected in expected_files.items():
         if migration_engine.digest(migration_read_file(base_url, name)) != expected:
             raise RuntimeError(f"User file changed after target boot: {name}; recovery available")
@@ -5700,17 +5805,20 @@ def finish_migration(job: Job, session: migration_engine.Session, base_url: str)
         if download_fs_file(base_url, name) != content:
             raise RuntimeError(f"Webfile verification failed: {name}")
         job.set_progress(75 + round(20 * (index + 1) / len(files)))
-    job.set_current_file("migrationStepUserCheck")
+    if expected_files:
+        job.set_current_file("migrationStepUserCheck")
     for name, expected in expected_files.items():
         if migration_engine.digest(migration_read_file(base_url, name)) != expected:
             raise RuntimeError(f"User file changed during webfile update: {name}")
     migration_require_idle(base_url)
-    session.save("complete", user_files_verified=True, webfiles_verified=True, error="",
+    legacy_backup = not isinstance(session, migration_engine.ApiSession)
+    session.save("complete", user_files_verified=legacy_backup, webfiles_verified=True, error="",
                  service_image_verified=True, service_runtime_tested=False)
     job.set_progress(100)
     return {"migration_id": session.report["id"], "backup_dir": str(session.directory),
-            "target_version": session.report["target_version"], "preserved_verified": True,
-            "user_files_verified": True, "service_image_verified": True,
+            "target_version": session.report["target_version"], "preserved_verified": legacy_backup,
+            "backup_type": session.report.get("backup_type", "flash"),
+            "user_files_verified": legacy_backup, "service_image_verified": True,
             "service_runtime_tested": False}
 
 
@@ -5735,21 +5843,21 @@ def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: i
         job.set_current_file("migrationStepPackage")
         package, metadata = prepare_migration_package(job, package_source, package_dir, package_ref)
         webfiles = migration_webfiles(package)
-        job.set_current_file("migrationStepInventory")
-        user_files = migration_user_files(base, webfiles)
+        job.set_current_file("migrationStepApiBackup")
+        backup_payload = download_config_backup(base, include_api)
         job.set_current_file("migrationStepTool")
         executable = ensure_esptool_available(job)
-        session = migration_engine.Session.create(migration_root(), package, metadata, webfiles, source, CACHE_DIR / "migration-work")
+        session = migration_engine.ApiSession.create(migration_root(), package, metadata, webfiles, source, CACHE_DIR / "migration-work")
         session.status = job.set_current_file
         session.save(source_version=source, target_version=metadata["version"], port=port,
-                     base_url=base, user_files=user_files)
+                     base_url=base, user_files={}, backup_type="api")
+        session.capture_api(backup_payload)
         job.log(f"Migration backup and report: {session.directory}")
         migration_require_idle(base)
         handover = prepare_esptool_serial_handover(port, 115200, "Migration")
         with exclusive_serial_access(timeout=30):
             safe_restart = False
             device = migration_engine.Esptool(executable, port, baud, job.log)
-            session.capture(device)
             job.set_progress(25)
             session.install(device, job.set_progress, fresh_capture=True)
             session.save("booting")
@@ -5769,7 +5877,7 @@ def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: i
         MIGRATION_LOCK.release()
 
 
-def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, action: str, backup_dir: str = "") -> dict[str, Any]:
+def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, action: str, backup_dir: str = "", base_url: str = "") -> dict[str, Any]:
     if action not in ("resume", "restore"):
         raise ValueError("Unknown migration recovery action")
     if not MIGRATION_LOCK.acquire(blocking=False):
@@ -5781,9 +5889,19 @@ def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, acti
     try:
         session = (migration_engine.Session.load_directory(pathlib.Path(backup_dir)) if backup_dir and action == "restore"
                    else migration_engine.Session.load(migration_root(), session_id))
+        if action == "resume" and session.report["phase"] == "cancelled":
+            raise ValueError("Migration session was discarded; start a new migration")
         session.status = job.set_current_file
         job.set_current_file("migrationStepBackupCheck")
-        session.backup()
+        payload = session.backup()
+        api_backup = isinstance(session, migration_engine.ApiSession)
+        if api_backup and action == "restore":
+            base = normalize_base_url(base_url or session.report["base_url"])
+            migration_require_idle(base)
+            result = restore_job(job, base, "backup.json", payload)
+            session.save("restored", error="", restore_type="api")
+            return {"restored": True, "backup_type": "api",
+                    "backup_dir": str(session.directory), "result": result}
         if action == "restore":
             session.report["work_dir"] = str((CACHE_DIR / "migration-work" / uuid.uuid4().hex).resolve())
         if session.report["phase"] == "complete" and action == "resume":
@@ -5794,7 +5912,7 @@ def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, acti
         handover = prepare_esptool_serial_handover(port, 115200, "Migration recovery")
         device = migration_engine.Esptool(executable, port, baud, job.log)
         with exclusive_serial_access(timeout=30):
-            if device.identity() != session.report["mac"]:
+            if not api_backup and device.identity() != session.report["mac"]:
                 raise RuntimeError("Backup belongs to another device")
             if action == "restore":
                 session.restore(device, job.set_progress)
@@ -5805,7 +5923,9 @@ def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, acti
                 job.set_progress(100)
                 return {"restored": True, "backup_dir": str(session.directory)}
             phase = session.report["phase"]
-            if phase in ("backup-verified", "writing", "verifying", "flash-verified"):
+            if api_backup and phase in ("backup-verified", "writing", "verifying", "flash-verified", "booting", "updating-webfiles"):
+                session.install(device, job.set_progress)
+            elif phase in ("backup-verified", "writing", "verifying", "flash-verified"):
                 session.install(device, job.set_progress)
             elif phase in ("booting", "updating-webfiles"):
                 session.verify_installed(device)
@@ -6086,7 +6206,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                 return
             if path == "/api/packages":
                 data = self._read_json()
-                self._send_json(package_catalog(str(data.get("firmware", "")), bool(data.get("include_special"))))
+                self._send_json(package_catalog(str(data.get("firmware", "")), bool(data.get("include_special")), str(data.get("purpose", "firmware"))))
                 return
             if path == "/api/config":
                 data = self._read_json()
@@ -6219,7 +6339,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                     job,
                     flash_job,
                     data["port"],
-                    int(data.get("baud", 921600)),
+                    int(data.get("baud", 460800)),
                     data.get("package_source", "release"),
                     data["package_dir"],
                     data.get("package_ref", ""),
@@ -6237,7 +6357,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                     backup_firmware_job,
                     data["base_url"],
                     data["port"],
-                    int(data.get("baud", 921600)),
+                    int(data.get("baud", 460800)),
                 )
                 self._send_json({"job_id": job.id})
                 return
@@ -6337,7 +6457,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                 data = self._read_json()
                 job = STATE.jobs.create("maintenance", "Maintenance")
                 run_job(job, maintenance_job, data["base_url"], data["port"],
-                        int(data.get("baud", 921600)), data["action"])
+                        int(data.get("baud", 460800)), data["action"])
                 self._send_json({"job_id": job.id})
                 return
             if path == "/api/migration/backup/pick":
@@ -6345,13 +6465,18 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                 if selected:
                     session = migration_engine.Session.load_directory(pathlib.Path(selected))
                     session.backup()
-                self._send_json({"directory": selected})
+                self._send_json({"directory": selected,
+                                 "backup_type": session.report.get("backup_type", "flash") if selected else None})
+                return
+            if path == "/api/migration/discard":
+                data = self._read_json()
+                self._send_json(discard_migration_session(data.get("session_id", "")))
                 return
             if path == "/api/migration/recovery":
                 data = self._read_json()
                 job = STATE.jobs.create("migration", "Migration recovery")
                 run_job(job, migration_recovery_job, data.get("session_id", ""), data["port"],
-                        int(data.get("baud", 921600)), data["action"], **({"backup_dir": data["backup_dir"]} if data.get("backup_dir") else {}))
+                        int(data.get("baud", 460800)), data["action"], **({key: data[key] for key in ("backup_dir", "base_url") if data.get(key)}))
                 self._send_json({"job_id": job.id})
                 return
             if path == "/api/migration":
@@ -6363,7 +6488,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                     data["base_url"],
                     bool(data.get("include_api")),
                     data["port"],
-                    int(data.get("baud", 921600)),
+                    int(data.get("baud", 460800)),
                     data.get("package_source", "release"),
                     data["package_dir"],
                     data.get("package_ref", ""),

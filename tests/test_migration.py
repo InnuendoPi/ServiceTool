@@ -115,6 +115,90 @@ class MigrationTests(unittest.TestCase):
     def session(self):
         return m.Session.create(self.root / "backups", self.package, m.validate_package(self.package, "1.67.0"), app.migration_webfiles(self.package))
 
+    def api_session(self):
+        session = m.ApiSession.create(self.root / "backups", self.package,
+                                      m.validate_package(self.package, "1.67.0"),
+                                      app.migration_webfiles(self.package))
+        payload = json.dumps({"config": [{"wifi": {"ssid": "test", "password": "secret"},
+                                        "log_cfg": {"enabled": True}}],
+                              "recipes": [{"name": "mash"}], "fermenter": [{"name": "plan"}],
+                              "profiles": [{"name": "profile"}], "future_field": [42]}).encode()
+        session.save(base_url="http://device", source_version="1.66.1", target_version="1.67.0", user_files={})
+        session.capture_api(payload)
+        return session, payload
+
+    def test_api_install_and_reload_never_read_flash(self):
+        session, payload = self.api_session()
+        loaded = m.Session.load_directory(session.directory)
+        self.assertIsInstance(loaded, m.ApiSession)
+        self.assertEqual(loaded.backup(), payload)
+        device = Device()
+        before = bytes(device.flash)
+        with patch.object(device, "read", side_effect=AssertionError("must not read flash")):
+            loaded.install(device, lambda _: None)
+        self.assertEqual(device.flash[0x9000:0xE000], before[0x9000:0xE000])
+        self.assertEqual(device.flash[0x350000:], before[0x350000:])
+        self.assertFalse((session.directory / "flash-backup.bin").exists())
+        self.assertEqual(loaded.report["write_verification"], "esptool-md5")
+
+    def test_api_modified_backup_blocks_install(self):
+        session, payload = self.api_session()
+        (session.directory / "backup.json").write_bytes(payload + b" ")
+        device = Device()
+        with self.assertRaisesRegex(RuntimeError, "modified"):
+            session.install(device, lambda _: None)
+        self.assertEqual(device.writes, 0)
+
+    def test_api_restore_preserves_all_fields_and_never_uses_serial(self):
+        session, payload = self.api_session()
+        with (patch.object(app, "migration_require_idle"),
+              patch.object(app, "restore_job", return_value={"readyPassed": True}) as restore,
+              patch.object(app, "ensure_esptool_available") as tool,
+              patch.object(app, "prepare_esptool_serial_handover") as serial):
+            job = app.Job(id="test", type="migration", title="Test")
+            result = app.migration_recovery_job(job, "", "", 921600, "restore",
+                                                str(session.directory), "http://selected")
+            restore.assert_called_once_with(job, "http://selected", "backup.json", payload)
+            self.assertTrue(result["restored"])
+            tool.assert_not_called()
+            serial.assert_not_called()
+
+    def test_api_restore_failure_is_not_reported_as_restored(self):
+        session, _ = self.api_session()
+        with (patch.object(app, "migration_require_idle"),
+              patch.object(app, "restore_job", side_effect=RuntimeError("restore not confirmed")),
+              patch.object(app, "ensure_esptool_available") as tool):
+            with self.assertRaisesRegex(RuntimeError, "not confirmed"):
+                app.migration_recovery_job(app.Job(id="test", type="migration", title="Test"),
+                                           "", "", 921600, "restore", str(session.directory))
+            tool.assert_not_called()
+        saved = m.Session.load_directory(session.directory)
+        self.assertNotEqual(saved.report["phase"], "restored")
+        self.assertIn("not confirmed", saved.report["error"])
+
+    def test_api_resume_after_boot_never_reads_flash(self):
+        session, _ = self.api_session()
+        device = Device()
+        session.save("booting", mac=device.mac)
+        with (patch.object(app, "migration_root", return_value=session.directory.parent),
+              patch.object(app, "ensure_esptool_available", return_value=Path("tool")),
+              patch.object(app, "prepare_esptool_serial_handover", return_value={}),
+              patch.object(m, "Esptool", return_value=device),
+              patch.object(device, "read", side_effect=AssertionError("must not read flash")),
+              patch.object(app, "finish_migration", return_value={"ok": True})):
+            result = app.migration_recovery_job(app.Job(id="test", type="migration", title="Test"),
+                                                session.report["id"], "COM3", 921600, "resume")
+            self.assertEqual(result, {"ok": True})
+        self.assertEqual(device.writes, 1)
+        self.assertEqual(device.boots, 1)
+
+    def test_api_backup_download_keeps_entire_payload(self):
+        _, payload = self.api_session()
+        with (patch.object(app, "post_empty") as post,
+              patch.object(app, "download_bytes", return_value=payload)):
+            self.assertEqual(app.download_config_backup("http://device", True), payload)
+            post.assert_called_once_with("http://device/backup?api=1")
+
     def test_both_old_slots_preserve_every_byte_outside_target_regions(self):
         for slot in (0, 1):
             with self.subTest(slot=slot):
@@ -304,11 +388,26 @@ class MigrationTests(unittest.TestCase):
             run.return_value.stdout = "Hash of data verified.\n"
             tool.write([(0x10000, Path("firmware.bin"))])
             command = run.call_args.args[0]
-            self.assertIn("no-reset", command)
+            self.assertIn("no-reset-stub", command)
             self.assertNotIn("erase-flash", command)
             self.assertNotIn("hard-reset", command)
             tool.boot()
             self.assertIn("hard-reset", run.call_args.args[0])
+
+    def test_read_failure_keeps_stub_and_records_original_output(self):
+        logs = []
+        tool = m.Esptool(Path("esptool"), "COM1", 921600, logs.append)
+        with patch.object(m.subprocess, "run") as run:
+            run.return_value.returncode = 2
+            run.return_value.stdout = "Serial data stream stopped: original read failure"
+            with self.assertRaisesRegex(RuntimeError, "read-flash failed"):
+                tool.read(0, m.FLASH_SIZE, self.root / "failed-read.bin")
+            command = run.call_args.args[0]
+            self.assertEqual(command[command.index("--after") + 1], "no-reset-stub")
+            self.assertEqual(command[command.index("--before") + 1], "default-reset")
+            self.assertIn(run.return_value.stdout, logs)
+            run.assert_called_once()
+            self.assertFalse((self.root / "failed-read.bin").exists())
 
     def test_job_forces_backup_even_if_old_api_flags_are_false(self):
         device = Device(1)
@@ -317,11 +416,13 @@ class MigrationTests(unittest.TestCase):
             patch.object(app, "BACKUP_DIR", self.root / "runtime"),
             patch.object(app, "current_firmware_version", return_value=("1.65.5", (1, 65, 5))),
             patch.object(app, "migration_require_idle"),
+            patch.object(app, "download_config_backup", return_value=b'{"config": [{}]}'),
             patch.object(app, "prepare_migration_package", return_value=(self.package, m.validate_package(self.package, "1.67.0"))),
             patch.object(app, "migration_user_files", return_value={"/config.txt": m.digest(b"config")}),
             patch.object(app, "ensure_esptool_available", return_value=Path("esptool")),
             patch.object(app, "prepare_esptool_serial_handover", return_value={}),
             patch.object(app.migration_engine, "Esptool", return_value=device),
+            patch.object(device, "read", side_effect=AssertionError("no flash read in API migration")),
             patch.object(app, "finish_migration", return_value={"ok": True}),
             patch.object(app, "start_http_preupdate_to_minimum_migration_version") as preupdate,
         ):
@@ -338,11 +439,13 @@ class MigrationTests(unittest.TestCase):
             patch.object(app, "BACKUP_DIR", self.root / "runtime"),
             patch.object(app, "current_firmware_version", return_value=("1.65.5", (1, 65, 5))),
             patch.object(app, "migration_require_idle"),
+            patch.object(app, "download_config_backup", return_value=b'{"config": [{}]}'),
             patch.object(app, "prepare_migration_package", return_value=(self.package, m.validate_package(self.package, "1.67.0"))),
             patch.object(app, "migration_user_files", return_value={"/config.txt": "hash"}),
             patch.object(app, "ensure_esptool_available", return_value=Path("esptool")),
             patch.object(app, "prepare_esptool_serial_handover", return_value={"restart": True, "port": "COM1", "baud": 115200}),
             patch.object(app.migration_engine, "Esptool", return_value=device),
+            patch.object(device, "read", side_effect=AssertionError("no flash read in API migration")),
             patch.object(app, "schedule_serial_restart") as restart,
         ):
             with self.assertRaisesRegex(RuntimeError, "power failure"):
@@ -359,6 +462,7 @@ class MigrationTests(unittest.TestCase):
         with (
             patch.object(app, "json_request", return_value={"firm": "Brautomat32 1.67.0"}),
             patch.object(app, "migration_require_idle"),
+            patch.object(app, "download_config_backup", return_value=b'{"config": [{}]}'),
             patch.object(app, "download_fs_file", return_value=b"changed"),
             patch.object(app, "post_file_to_fs") as upload,
         ):
@@ -402,6 +506,7 @@ class MigrationTests(unittest.TestCase):
                 self.subTest(source=version),
                 patch.object(app, "current_firmware_version", return_value=(version, parsed)),
                 patch.object(app, "migration_require_idle"),
+            patch.object(app, "download_config_backup", return_value=b'{"config": [{}]}'),
                 patch.object(app, "prepare_migration_package", side_effect=RuntimeError("package gate")) as prepare,
                 patch.object(app, "start_http_preupdate_to_minimum_migration_version") as preupdate,
             ):
@@ -614,19 +719,19 @@ class MigrationTests(unittest.TestCase):
             urls.append(url)
             self.assertIn("/" + sha + "/", url)
             relative = url.split("/" + sha + "/", 1)[1]
-            if relative.startswith("Updates/ESP32-IDF5/"):
-                return (self.package / relative.removeprefix("Updates/ESP32-IDF5/")).read_bytes()
+            if relative.startswith("Updates/ESP32-IDF5dev/"):
+                return (self.package / relative.removeprefix("Updates/ESP32-IDF5dev/")).read_bytes()
             self.assertTrue(relative.startswith("Updates/data/"))
             return (self.package / "webfiles" / relative.removeprefix("Updates/data/")).read_bytes()
         with (
             patch.object(app, "CACHE_DIR", self.root / "cache"),
             patch.object(app, "json_request", return_value={"sha": sha}),
-            patch.object(app, "package_location", return_value={"version":"1.67.0", "base_url":f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/Updates/ESP32-IDF5"}) as version,
+            patch.object(app, "package_location", return_value={"version":"1.67.0", "base_url":f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/Updates/ESP32-IDF5dev"}) as version,
             patch.object(app, "download_bytes", side_effect=download),
         ):
             selected, metadata = app.prepare_migration_package(
-                app.Job(id="test", type="migration", title="Test"), "release", "", "")
-        version.assert_called_once_with("release", "", "Updates", sha)
+                app.Job(id="test", type="migration", title="Test"), "development_170", "", "")
+        version.assert_called_once_with("development_170", "", "Updates", sha)
         self.assertEqual(metadata["version"], "1.67.0")
         self.assertFalse((selected / "migration.json").exists())
         self.assertEqual(len(urls), len(m.IMAGES) + len(app.WEBUPDATE_TOOL_FILES))

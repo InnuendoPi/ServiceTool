@@ -4,7 +4,8 @@ Die Migration unterstützt Brautomat32 von **1.62.0 bis einschließlich 1.66.x**
 auf **1.67.0 oder neuer mit kompatiblem ServiceApp-Layout**.
 Ein vorheriges Zwischenupdate ist nicht erforderlich. Unterstützt werden
 ESP32-Geräte mit 4 MiB Flash und dem bisherigen symmetrischen Partitionslayout.
-Das ServiceTool prüft Firmware und Partitionstabelle vor dem Schreiben.
+Das ServiceTool prüft Firmware und Partitionstabelle des Zielpakets vor
+dem Schreiben. Die Quellversion wird über die Geräte-API ermittelt.
 
 ## Migration durchführen
 
@@ -15,16 +16,13 @@ Das ServiceTool prüft Firmware und Partitionstabelle vor dem Schreiben.
 3. **Migration starten** wählen. USB und Stromversorgung bis zum Abschluss
    verbunden lassen. Der aktuelle Arbeitsschritt wird angezeigt.
 
-Zuerst wird der vollständige Flash gesichert und geprüft. Anschließend werden
-Hauptfirmware, ServiceApp und die zugehörigen Bootdateien installiert. WLAN-
-Einstellungen und Nutzdateien bleiben erhalten; die Webdateien werden aktualisiert.
-Geschriebene Daten und erhaltene Nutzdateien werden überprüft.
-
-Ab ServiceTool 1.7.11 wird der vollständige Flash einmal für das Backup gelesen. Die geschriebenen
-Images prüft esptool direkt auf dem Gerät; anschließend liest das ServiceTool
-nur NVS und LittleFS zum Vergleich mit dem Backup zurück. Bei einer Wiederaufnahme
-werden diese Bereiche zusätzlich vor dem Schreiben geprüft. Die vollständige
-Rückleseprüfung nach einer Backup-Wiederherstellung bleibt erhalten.
+Zuerst wird das API-Backup als `backup.json` gespeichert. Der gesamte von der
+Firmware gelieferte Inhalt bleibt erhalten: Einstellungen, WLAN-Zugangsdaten,
+Maischepläne, Fermenterpläne, Profile und Logging-Konfiguration.
+Danach werden Hauptfirmware, ServiceApp und Bootdateien installiert.
+NVS und LittleFS werden nicht überschrieben; Webdateien werden aktualisiert.
+Es gibt keinen `read-flash`-Durchlauf. esptool bestätigt die geschriebenen Images.
+Die Firmware selbst ist nicht Bestandteil dieses Backups.
 
 ## Firmwarepaket
 
@@ -49,20 +47,22 @@ Sicherungen liegen unter `backups/migrations/`. Die Ordnernamen enthalten
 Firmwareversion und Datum, beispielsweise `backup_1_65_5_20260908`. Weitere
 Sicherungen desselben Tages erhalten einen nummerierten Zusatz.
 
-Ein Backupordner enthält:
+Ein neuer Backupordner enthält:
 
-- `flash-backup.bin`: vollständige Flash-Sicherung.
-- `nvs.bin`: separate Sicherung der Einstellungen einschließlich WLAN-Zugangsdaten.
-- `report.json`: Angaben zu Gerät, Sicherung und Prüfungen.
+- `backup.json`: unverändertes API-Backup der Firmware.
+- `report.json`: Angaben zur Sicherung und zum Migrationsverlauf.
 
-Für eine Wiederherstellung den COM-Port auswählen, **Restore Backup** anklicken
-und den Backupordner öffnen. Das funktioniert auch nach erfolgreicher Migration
-und benötigt keine WLAN-Verbindung. Die Sicherung wird geprüft und darf nur auf
-das zugehörige Gerät zurückgespielt werden. Wiederhergestellt wird dessen Zustand
-zum Sicherungszeitpunkt.
+Für **Restore Backup** das Gerät über seine URL verbinden und den Backupordner
+wählen. Die Einstellungen werden über die Restore-API zurückgespielt.
+Die installierte Firmware bleibt erhalten; ein Firmware-Rückwechsel erfolgt
+nicht. Die API muss dafür erreichbar sein.
 
-Nach einem unterbrochenen Schreibvorgang kann die Migration über
-**Migration fortsetzen** weitergeführt werden, sofern die benötigten
-Installationsdateien noch im Cache liegen. Alternativ das Backup wiederherstellen.
-Andere serielle Aktionen bleiben während einer unvollständigen Migration gesperrt.
-Bei fehlgeschlagener Schreib- oder Rückleseprüfung erfolgt kein automatischer Neustart.
+Nach einem unterbrochenen Schreibvorgang **Migration fortsetzen** verwenden,
+sofern die Installationsdateien noch im Cache liegen. Das geprüfte Paket wird
+erneut installiert, ohne Flash auszulesen. Andere serielle Aktionen bleiben
+während einer unvollständigen Migration gesperrt. Nach fehlgeschlagener
+Schreibprüfung erfolgt kein automatischer Neustart.
+
+Ältere Sicherungen mit `flash-backup.bin` und `nvs.bin` bleiben unterstützt.
+Nur deren Wiederherstellung verwendet USB, ersetzt auch die Firmware und
+prüft den vollständigen Flash durch Rücklesen.

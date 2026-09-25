@@ -177,7 +177,7 @@ contain the corresponding files.
 - A **configuration backup** contains settings provided by the device backup
   feature.
 - **Firmware Backup** reads the active app partition via USB.
-- A **migration backup** contains the complete flash for migration recovery.
+- A **migration backup** contains the API settings backup and migration report.
 
 These are not interchangeable. See [Migration](#migration) for an interrupted
 migration.
@@ -264,24 +264,26 @@ device before writing.
 4. Start migration. Keep power and USB connected until completion.
 5. Read the final result; starting an operation does not mean it succeeded.
 
-A complete flash backup is created first. New images are then installed and
-preserved data is checked.
+The API backup is saved first. New images are then installed. NVS and LittleFS
+are retained; web files are updated.
 
 ### Recover after an interruption
 
 Follow the displayed recovery session. **Resume migration** requires the
-installation files to remain in the cache. Alternatively, use **Restore Backup**
-and select the matching migration backup folder.
-
-The backup belongs to the original device. Restoration requires USB, not WiFi.
+installation files to remain in the cache. **Restore Backup** restores saved
+settings to the installed firmware. The device must be reachable at its URL.
+After an interrupted flash operation, resume migration first.
 Other serial actions may remain blocked until recovery.
 
 :::details Backup and verification
 
-Migration backups are stored under backups/migrations and include
-flash-backup.bin, nvs.bin and report.json. Normal migration reads the complete
-flash once for backup, then reads back NVS and LittleFS after writing. esptool
-verifies the images. Backup restoration uses a complete read-back verification.
+Migration backups are stored under `backups/migrations` and contain
+`backup.json` and `report.json`. The entire API backup is kept unchanged:
+configuration, WiFi credentials, mash and fermenter plans, profiles and
+logging settings. Firmware is not included.
+There is no flash read operation; esptool verifies written images.
+Older full flash backups can still be restored over USB. Only those backups
+replace firmware and use full read-back verification.
 
 :::
 

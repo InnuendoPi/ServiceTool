@@ -246,8 +246,8 @@ explicit checkbox in the Telegraf tab only when storing them in the local
 ### Migration
 
 Migrate firmware 1.62.0 through 1.66.x to a compatible package from 1.67.0
-with a verified full flash
-backup, preserved WiFi settings and user files, and backup recovery.
+with an API settings backup, preserved WiFi settings and user files.
+Restore Backup restores settings without replacing the installed firmware.
 See [MIGRATION.md](MIGRATION.md) for instructions and package requirements.
 
 ### Maintenance mode

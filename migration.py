@@ -236,7 +236,7 @@ class Esptool:
     def command(self, *args: str, boot: bool = False) -> str:
         command = [str(self.executable), "--chip", "esp32", "--port", self.port,
                    "--baud", str(self.baud), "--before", "default-reset",
-                   "--after", "hard-reset" if boot else "no-reset", *args]
+                   "--after", "hard-reset" if boot else "no-reset-stub", *args]
         self.log("esptool: " + args[0])
         # A bounded subprocess cannot retain the serial port indefinitely.
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -357,7 +357,8 @@ class Session:
         report = json.loads((directory / "report.json").read_text(encoding="utf-8"))
         if not isinstance(report, dict) or not isinstance(report.get("id"), str) or not isinstance(report.get("phase"), str):
             raise ValueError("Invalid migration report")
-        return cls(directory, report)
+        session_class = ApiSession if report.get("backup_type") == "api" else cls
+        return session_class(directory, report)
 
     def save(self, phase: str | None = None, **values) -> None:
         self.report.update(values)
@@ -481,3 +482,57 @@ class Session:
             expected = (package / name).read_bytes().ljust(size, b"\xff")
             if current[offset:offset + size] != expected:
                 raise RuntimeError("Installed code changed; refusing an unverified restart")
+
+
+class ApiSession(Session):
+    """Migration backed by the device API; never reads flash memory."""
+
+    def capture_api(self, payload: bytes) -> None:
+        value = json.loads(payload.decode("utf-8-sig"))
+        if not isinstance(value, dict) or not isinstance(value.get("config"), list) or not value["config"]:
+            raise ValueError("Backup configuration is missing or invalid")
+        durable_write(self.directory / "backup.json", payload)
+        self.save("backup-verified", backup_type="api", backup_verified=True,
+                  backup_sha256=digest(payload))
+        self.backup()
+
+    def backup(self) -> bytes:
+        data = (self.directory / "backup.json").read_bytes()
+        if not self.report.get("backup_verified") or digest(data) != self.report.get("backup_sha256"):
+            raise RuntimeError("API backup is missing or modified")
+        value = json.loads(data.decode("utf-8-sig"))
+        if not isinstance(value, dict) or not isinstance(value.get("config"), list) or not value["config"]:
+            raise ValueError("Backup configuration is missing or invalid")
+        return data
+
+    def install(self, device, progress, *, fresh_capture: bool = False) -> None:
+        self.status("migrationStepBackupCheck")
+        self.backup()
+        self.status("migrationStepDevice")
+        mac = device.identity()
+        if self.report.get("mac") and mac != self.report["mac"]:
+            raise RuntimeError("Connected device differs from the backup device")
+        self.save(mac=mac)
+        package = self.work / "package"
+        if validate_package(package, self.report["package"]["version"]) != self.report["package"]:
+            raise RuntimeError("Staged migration package changed")
+        files = []
+        for name, (offset, size) in IMAGES.items():
+            target = self.work / (name + ".write")
+            durable_write(target, (package / name).read_bytes().ljust(size, b"\xff"))
+            files.append((offset, target))
+        coredump = self.work / "coredump.write"
+        durable_write(coredump, b"\xff" * 0x10000)
+        files.append((0x340000, coredump))
+        self.save("writing", write_started=True)
+        self.status("migrationStepInstall")
+        progress(35)
+        device.write(files)
+        self.save("flash-verified", write_verification="esptool-md5")
+        progress(70)
+
+    def restore(self, device, progress) -> None:
+        raise RuntimeError("API backups must be restored through the device restore API")
+
+    def verify_installed(self, device) -> None:
+        raise RuntimeError("Resume API migration by reinstalling the saved package")

@@ -105,7 +105,7 @@ class LanguageInstallTests(unittest.TestCase):
               patch.object(app, "download_fs_file", side_effect=verify),
               patch.object(app, "post_json", side_effect=activate)):
             result = app.install_language_job(app.Job("lang", "language", "Language"),
-                                              "http://device", "development", "english.json", package_root="Updates")
+                                              "http://device", "development_170", "english.json", package_root="Updates")
         self.assertEqual(events, ["upload", "verify", "activate"])
         manifest.assert_called_once_with(self.revision, "Updates")
         catalog.assert_called_once_with("special", self.revision, "Updates")

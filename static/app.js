@@ -365,16 +365,18 @@ const I18N = {
 
 I18N.de.migrationPackageHint = "Wähle die Firmware 1.7 und den COM Port aus. Anschließend starte die Migration";
 I18N.en.migrationPackageHint = "Select firmware 1.7 and the COM port. Then start the migration";
-I18N.de.migrationRecoveryLabel = "Migration unterbrochen";
-I18N.en.migrationRecoveryLabel = "Migration interrupted";
+I18N.de.migrationRecoveryLabel = "Gespeicherte, nicht abgeschlossene Migrationen auf diesem PC";
+I18N.en.migrationRecoveryLabel = "Saved unfinished migrations on this PC";
 I18N.de.migrationRefresh = "Liste aktualisieren";
 I18N.en.migrationRefresh = "Refresh list";
 I18N.de.migrationResume = "Migration fortsetzen";
 I18N.en.migrationResume = "Resume migration";
 I18N.de.migrationRestore = "Restore Backup";
 I18N.en.migrationRestore = "Restore Backup";
-I18N.de.migrationRecoveryHint = "Dasselbe Gerät per USB anschließen.";
-I18N.en.migrationRecoveryHint = "Connect the same device via USB.";
+I18N.de.migrationRecoveryHint = "Diese Liste zeigt gespeicherte Vorgänge, nicht den Status des angeschlossenen Geräts. Nur auf demselben Gerät fortsetzen. Abbrechen verwirft den Vorgang; die Sicherung bleibt erhalten.";
+I18N.en.migrationRecoveryHint = "This list shows saved sessions, not the connected device status. Resume only on the same device. Cancel discards the session and keeps its backup.";
+I18N.de.migrationDiscard = "Abbrechen";
+I18N.en.migrationDiscard = "Cancel";
 I18N.de.migrationHint = "Migration der Brautomat32 Firmware 1.6x auf Version 1.7x";
 I18N.de.migrationRequirementSource = "Quelle: 1.62.0 bis 1.66.x";
 I18N.de.migrationRequirementTarget = "Ziel: ab 1.67, kompatibles ServiceApp-Layout";
@@ -391,20 +393,22 @@ I18N.de.migrationTitle = "Migration auf Version 1.7";
 
 I18N.en.migrationTitle = "Migration to version 1.7";
 
-I18N.de.migrationBackupHint = "Hinweis: die Migration erstellt zuerst ein vollständiges Backup. Das Backup kann jederzeit wiederhergestellt werden. Eine Migration dauert ca. 8 Minuten.";
+I18N.de.migrationBackupHint = "Die Migration sichert zuerst die Einstellungen über die Geräte-API. Firmware wird nicht gesichert. Restore Backup spielt die gesicherten Einstellungen auf die installierte Firmware zurück.";
 
-I18N.en.migrationBackupHint = "Note: migration first creates a complete backup. The backup can be restored at any time. A migration takes approximately 8 minutes.";
+I18N.en.migrationBackupHint = "Migration first backs up settings using the device API. Firmware is not backed up. Restore Backup restores the saved settings to the installed firmware.";
 
 I18N.de.migrationStepPrerequisites = "Voraussetzungen prüfen …";
 I18N.en.migrationStepPrerequisites = "Checking prerequisites …";
-I18N.de.migrationStepPackage = "Firmware vorbereiten und prüfen …";
-I18N.en.migrationStepPackage = "Preparing and checking firmware …";
+I18N.de.migrationStepPackage = "Firmwarepaket herunterladen und prüfen …";
+I18N.en.migrationStepPackage = "Downloading and checking firmware package …";
 I18N.de.migrationStepInventory = "Benutzerdateien erfassen …";
 I18N.en.migrationStepInventory = "Inventorying user files …";
 I18N.de.migrationStepTool = "Flash-Werkzeug vorbereiten …";
 I18N.en.migrationStepTool = "Preparing flash tool …";
 I18N.de.migrationStepDevice = "Gerät und Flash prüfen …";
 I18N.en.migrationStepDevice = "Checking device and flash …";
+I18N.de.migrationStepApiBackup = "Einstellungen über die Geräte-API sichern …";
+I18N.en.migrationStepApiBackup = "Backing up settings using the device API …";
 I18N.de.migrationStepBackupFirst = "Vollständiges Flash-Backup lesen …";
 I18N.en.migrationStepBackupFirst = "Reading full flash backup …";
 I18N.de.migrationStepPreservedAfter = "Erhalt der WLAN- und Nutzdaten prüfen …";
@@ -498,7 +502,7 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.8.1",
+  service_tool_version: "1.8.2",
   language: "en",
   debug_output: false,
   device_url: "http://brautomat",
@@ -507,7 +511,7 @@ let appConfig = {
   package_dir: "",
   open_package_dir: "",
   inventory_root: "",
-  baud_rate: 921600,
+  baud_rate: 460800,
   serial_baud_rate: 115200,
   serial_port: ""
 };
@@ -559,7 +563,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.8.1"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.8.2"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -824,7 +828,7 @@ function applyLanguage() {
   $("firmwareReleaseTitle").textContent = currentLang === "de" ? "Veröffentlichte Firmware aktualisieren" : "Update published firmware";
   $("flashBtn").textContent = text("flashBtn");
   renderMaintenanceButton();
-  for (const id of ["migrationBackupHint", "migrationPackageHint", "migrationRecoveryLabel", "migrationRefresh", "migrationResume", "migrationRestore", "migrationRecoveryHint"]) {
+  for (const id of ["migrationBackupHint", "migrationPackageHint", "migrationRecoveryLabel", "migrationRefresh", "migrationResume", "migrationRestore", "migrationDiscard", "migrationRecoveryHint"]) {
     if ($(id)) $(id).textContent = text(id);
   }
   $("migrateBtn").textContent = text("migrateBtn");
@@ -1191,7 +1195,7 @@ async function loadOverview() {
   $("packageDir").value = $("packageSource").value === "open"
     ? openPackageDirValue()
     : (appConfig.package_dir || "");
-  $("baudSelect").value = String(appConfig.baud_rate || 921600);
+  $("baudSelect").value = String(appConfig.baud_rate || 460800);
   $("serialBaudSelect").value = String(appConfig.serial_baud_rate || 115200);
   updateInventoryRootPath();
   syncFirmwareActions();
@@ -1203,6 +1207,8 @@ async function loadOverview() {
 let packageLoadEpoch = 0;
 let packageSelectionReady = false;
 let loadedPackageGeneration = "";
+let migrationPackageSelection = false;
+function packageSelectionGeneration() { return migrationPackageSelection ? "Updates" : packageGeneration(); }
 function packageGeneration() {
   const version = parseDeviceFirmwareVersion(lastDeviceStatus?.firmware || "");
   return version && compareVersionTuple(version, [1, 67, 0]) < 0 ? "build" : "Updates";
@@ -1210,9 +1216,10 @@ function packageGeneration() {
 async function loadPackages() {
   const epoch = ++packageLoadEpoch;
   const source = $("packageSource").value;
+  const statusTarget = migrationPackageSelection ? "migrationInlineStatus" : "flashInlineStatus";
   const versionSelect = $("packageVersion");
   const versionGroup = $("packageVersionGroup");
-  loadedPackageGeneration = packageGeneration();
+  loadedPackageGeneration = packageSelectionGeneration();
   packageSelectionReady = source === "open";
   versionGroup.classList.toggle("hidden-panel", source !== "special");
   if (source === "open") { syncFirmwareActions(); return; }
@@ -1224,10 +1231,11 @@ async function loadPackages() {
   versionSelect.appendChild(loading);
   versionSelect.disabled = true;
   syncFirmwareActions();
-  setInlineStatus("flashInlineStatus", currentLang === "de" ? "Firmwarepakete werden geprüft …" : "Checking firmware packages …");
+  setInlineStatus(statusTarget, currentLang === "de" ? "Firmwarepakete werden geprüft …" : "Checking firmware packages …");
   try {
     const data = await api("/api/packages", {method:"POST", body:{
-      firmware:lastDeviceStatus?.firmware || "", include_special:source === "special"
+      firmware:lastDeviceStatus?.firmware || "", include_special:source === "special",
+      purpose:migrationPackageSelection ? "migration" : "firmware"
     }});
     if (epoch !== packageLoadEpoch || source !== $("packageSource").value) return;
     const versions = data.special_versions || [];
@@ -1244,18 +1252,20 @@ async function loadPackages() {
       versionSelect.value = selected?.ref || "";
       appConfig.package_ref = versionSelect.value;
       versionSelect.disabled = !selected;
-    } else selected = (data.packages || []).find(item => item.key === source && item.available);
+    } else selected = (data.packages || []).find(item => item.key === source);
     $("packageDir").value = selected?.base_url || selected?.path || "";
     appConfig.package_dir = $("packageDir").value;
-    packageSelectionReady = !!$("packageDir").value;
-    setInlineStatus("flashInlineStatus", packageSelectionReady ? "" : (currentLang === "de"
+    packageSelectionReady = !!$("packageDir").value && (source === "special" || selected?.available === true);
+    setInlineStatus(statusTarget, packageSelectionReady ? "" : selected?.error
+      ? `${currentLang === "de" ? "Paket konnte nicht geprüft werden" : "Could not verify package"}: ${selected.error}`
+      : (currentLang === "de"
       ? "Für diese Firmwaregeneration ist hier kein vollständiges Paket verfügbar. Bitte eine andere Paketquelle wählen."
       : "No complete package is available here for this firmware generation. Select another source."));
   } catch (err) {
     if (epoch !== packageLoadEpoch) return;
-    setInlineStatus("flashInlineStatus", currentLang === "de"
+    setInlineStatus(statusTarget, `${currentLang === "de"
       ? "Paketliste konnte nicht geladen werden. Internetverbindung prüfen und Paketquelle erneut auswählen."
-      : "Could not load packages. Check the internet connection and select the source again.");
+      : "Could not load packages. Check the internet connection and select the source again."} ${String(err)}`);
   } finally {
     if (epoch === packageLoadEpoch) syncFirmwareActions();
   }
@@ -3114,7 +3124,7 @@ function syncFirmwareActions() {
     }
   } else {
     packageDir.readOnly = true;
-    packageDir.placeholder = "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/main/build/ESP32-IDF5";
+    packageDir.placeholder = currentLang === "de" ? "Kein geprüftes Paket ausgewählt" : "No verified package selected";
     versionGroup.classList.toggle("hidden-panel", source !== "special");
   }
   syncFlashOptionDependencies();
@@ -3362,7 +3372,7 @@ async function checkDevice(options = {}) {
       }
     });
     lastDeviceStatus = { ...lastDeviceStatus, ...data, mode: data?.mode || null };
-    if (loadedPackageGeneration !== packageGeneration()) {
+    if (loadedPackageGeneration !== packageSelectionGeneration()) {
       loadPackages().then(loadRepoLanguages).catch(console.error);
     }
     updateDeviceConnectionState(data?.state || (serialDeviceAvailable() ? "serial" : "offline"));
@@ -4053,6 +4063,12 @@ async function installLanguage() {
 
 async function startMigration() {
   try {
+    if ($("packageSource").value !== "open" && (!packageSelectionReady || loadedPackageGeneration !== "Updates")) {
+      setInlineStatus("migrationInlineStatus", currentLang === "de"
+        ? "Bitte ein geprüftes Migrationspaket auswählen, z. B. 1.70 Development."
+        : "Select a verified migration package, e.g. 1.70 Development.");
+      return;
+    }
     if (!requireOnlineForDeviceAction("migrationInlineStatus", "migrationStatus", text("migrationTitle"))) {
       return;
     }
@@ -4103,13 +4119,13 @@ async function refreshMigrationSessions() {
     const data = await api("/api/migration/sessions");
     select.replaceChildren();
     const sessions = (data.sessions || []).filter(session => session.backup_verified &&
-      ["writing", "verifying", "flash-verified", "booting", "updating-webfiles", "restoring", "recovery-verified"].includes(session.phase));
+      ["backup-verified", "writing", "verifying", "flash-verified", "booting", "updating-webfiles", "restoring", "recovery-verified"].includes(session.phase));
     $("migrationRecoveryPanel").classList.toggle("hidden-panel", sessions.length === 0);
-    $("migrationSessionChoice").classList.toggle("hidden-panel", sessions.length < 2);
+    $("migrationSessionChoice").classList.toggle("hidden-panel", sessions.length === 0);
     for (const session of sessions) {
       const option = document.createElement("option");
       option.value = session.id;
-      option.textContent = `${session.id.slice(0, 8)} · ${session.source_version || "?"} → ${session.target_version || "?"} · ${session.port || ""}`;
+      option.textContent = `${session.id} · ${session.source_version || "?"} → ${session.target_version || "?"} · ${session.port || ""}`;
       option.disabled = !session.backup_verified;
       select.appendChild(option);
     }
@@ -4119,18 +4135,38 @@ async function refreshMigrationSessions() {
   }
 }
 
+async function discardMigrationSession() {
+  const sessionId = $("migrationSession").value;
+  if (!sessionId) return;
+  const prompt = currentLang === "de"
+    ? `Gespeicherten Vorgang ${sessionId} abbrechen? Die Sicherung bleibt erhalten. Am Gerät wird nichts geändert.`
+    : `Discard saved session ${sessionId}? Its backup is retained. The device is not changed.`;
+  if (!confirm(prompt)) return;
+  try {
+    await api("/api/migration/discard", {method: "POST", body: {session_id: sessionId}});
+    await refreshMigrationSessions();
+  } catch (err) {
+    appendStatus("migrationStatus", text("migrationTitle"), String(err));
+  }
+}
+
 async function recoverMigration(action) {
   try {
     const sessionId = $("migrationSession").value;
     const port = $("portSelect").value;
-    if (!port || (action !== "restore" && !sessionId)) throw new Error(currentLang === "de" ? "Sicherung und COM-Port auswählen." : "Select a backup and serial port.");
+    if (action !== "restore" && (!port || !sessionId)) throw new Error(currentLang === "de" ? "Sicherung und COM-Port auswählen." : "Select a backup and serial port.");
     let backupDir = "";
+    let backupType = "flash";
     if (action === "restore") {
       const selected = await api("/api/migration/backup/pick", {method: "POST", body: {}});
       if (!selected.directory) return;
       backupDir = selected.directory;
+      backupType = selected.backup_type || "flash";
     }
-    const message = action === "restore"
+    if (backupType === "flash" && !port) throw new Error(currentLang === "de" ? "COM-Port auswählen." : "Select a serial port.");
+    const message = action === "restore" && backupType === "api"
+      ? (currentLang === "de" ? "Gesicherte Einstellungen und WLAN-Zugangsdaten auf das ausgewählte Gerät zurückspielen? Die installierte Firmware bleibt erhalten." : "Restore saved settings and Wi-Fi credentials to the selected device? The installed firmware is retained.")
+      : action === "restore"
       ? (currentLang === "de" ? "Die vollständige Sicherung auf dasselbe Gerät zurückspielen? Der aktuelle Flash-Inhalt wird dadurch ersetzt." : "Restore the full backup to the same device? This replaces its current flash contents.")
       : (currentLang === "de" ? "Migration mit der gespeicherten Sicherung und dem geprüften Paket fortsetzen?" : "Resume migration using the saved backup and verified package?");
     if (!confirm(message)) return;
@@ -4138,7 +4174,7 @@ async function recoverMigration(action) {
     setSpinner("migrationSpinner", true);
     $("migrationProgress").value = 0;
     const data = await api("/api/migration/recovery", {method: "POST", body: {
-      session_id: sessionId, backup_dir: backupDir, port, baud: Number($("baudSelect").value), action
+      session_id: sessionId, backup_dir: backupDir, base_url: effectiveDeviceBaseUrl(), port, baud: Number($("baudSelect").value), action
     }});
     watchJobToTarget(data.job_id, "migrationStatus", text("migrationTitle"), "migrationInlineStatus", ["migrateBtn", "migrationResume", "migrationRestore"]);
   } catch (err) {
@@ -4691,10 +4727,13 @@ async function toggleMaintenance() {
 
 function placeFirmwareSelection(name) {
   const migration = name === "migration";
+  const selectionChanged = migrationPackageSelection !== migration;
+  migrationPackageSelection = migration;
   const destination = $(migration ? "migrationFirmwareSelection" : "firmwareSelectionHome");
   const controls = $("sharedFirmwareSelection");
   if (destination && controls && controls.parentElement !== destination) destination.appendChild(controls);
   $("firmwareOnlyOptions").classList.toggle("hidden-panel", migration);
+  if (selectionChanged) loadPackages().catch(console.error);
 }
 
 function activateTab(name) {
@@ -4892,6 +4931,7 @@ function attachEvents() {
   $("installLanguageBtn").addEventListener("click", installLanguage);
   $("flashBtn").addEventListener("click", startFlash);
   $("migrateBtn").addEventListener("click", startMigration);
+  $("migrationDiscard").addEventListener("click", discardMigrationSession);
   $("migrationRefresh").addEventListener("click", refreshMigrationSessions);
   $("migrationResume").addEventListener("click", () => recoverMigration("resume"));
   $("migrationRestore").addEventListener("click", () => recoverMigration("restore"));

@@ -18,7 +18,7 @@
   </div>
   <header class="hero">
     <div>
-      <h1 id="title">Brautomat32 ServiceTool V 1.8.1</h1>
+      <h1 id="title">Brautomat32 ServiceTool V 1.8.2</h1>
     </div>
     <div class="hero-actions">
       <div class="header-device">
@@ -82,8 +82,9 @@
           <label>
             <span id="packageSourceLabel">Package source</span>
             <select id="packageSource">
-              <option value="release">Latest Release</option>
-              <option value="development">Latest Development</option>
+              <option value="release">1.66 Release</option>
+              <option value="development">1.66 Development</option>
+              <option value="development_170">1.70 Development</option>
               <option value="special">Special Version</option>
               <option value="open">Open directory</option>
             </select>
@@ -110,8 +111,8 @@
             <div class="input-action">
               <select id="baudSelect">
                 <option value="115200">115200</option>
-                <option value="460800">460800</option>
-                <option value="921600" selected>921600</option>
+                <option value="460800" selected>460800</option>
+                <option value="921600">921600</option>
               </select>
               <button id="refreshPorts">Ports neu laden</button>
             </div>
@@ -719,20 +720,21 @@
         <p id="migrationHint" class="hint">Migration der Brautomat32 Firmware 1.6x auf Version 1.7x</p>
         <input id="migrationBackup" type="checkbox" checked disabled hidden>
         <p id="migrationPackageHint" class="hint">Wähle die Firmware 1.7 und den COM Port aus. Anschließend starte die Migration</p>
-        <p id="migrationBackupHint" class="hint">Hinweis: die Migration erstellt zuerst ein vollständiges Backup. Das Backup kann jederzeit wiederhergestellt werden. Eine Migration dauert ca. 8 Minuten.</p>
+        <p id="migrationBackupHint" class="hint">Die Migration sichert zuerst die Einstellungen über die Geräte-API. Firmware wird nicht gesichert. Restore Backup spielt die gesicherten Einstellungen auf die installierte Firmware zurück.</p>
         <div id="migrationFirmwareSelection"></div>
         <div class="actions">
           <button id="migrateBtn" class="danger" type="button">Migration starten</button>
           <button id="migrationRestore" class="danger" type="button">Restore Backup</button>
         </div>
         <div id="migrationRecoveryPanel" class="hidden-panel">
-        <p id="migrationRecoveryLabel" class="hint">Migration unterbrochen</p>
+        <p id="migrationRecoveryLabel" class="hint">Gespeicherte, nicht abgeschlossene Migrationen auf diesem PC</p>
         <label id="migrationSessionChoice">
           <select id="migrationSession"></select>
         </label>
         <div class="actions">
           <button id="migrationRefresh" type="button">Liste aktualisieren</button>
           <button id="migrationResume" type="button">Migration fortsetzen</button>
+          <button id="migrationDiscard" class="danger" type="button">Abbrechen</button>
         </div>
         <p id="migrationRecoveryHint" class="hint">Dasselbe Gerät per USB anschließen.</p>
         </div>

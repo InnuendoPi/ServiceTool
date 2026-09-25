@@ -203,8 +203,8 @@ enthalten.
 - Ein **Konfigurationsbackup** sichert die über die Backup-Funktion
   bereitgestellten Geräteeinstellungen.
 - **Firmware Backup** sichert die aktive App-Partition über USB.
-- Das **Migrationsbackup** enthält den vollständigen Flash und gehört zur
-  Wiederherstellung einer Migration.
+- Das **Migrationsbackup** sichert die Einstellungen über die Geräte-API
+  und enthält zusätzlich den Migrationsbericht.
 
 Diese Sicherungsarten sind nicht austauschbar. Für eine unterbrochene Migration
 lies [Migration](#migration).
@@ -302,27 +302,27 @@ Das ServiceTool prüft das Gerät vor dem Schreiben.
 5. Lies das Ergebnis. Ein gestarteter Vorgang ist noch kein erfolgreicher
    Abschluss.
 
-Zuerst entsteht eine vollständige Flash-Sicherung. Danach werden die neuen
-Images installiert und die erhaltenen Daten geprüft.
+Zuerst wird das API-Backup gespeichert. Danach werden die neuen Images
+installiert. NVS und LittleFS bleiben erhalten; Webdateien werden aktualisiert.
 
 ### Nach einem Abbruch
 
 Beachte die angezeigte Wiederherstellungssitzung. **Migration fortsetzen** ist
 möglich, wenn die benötigten Installationsdateien noch im Cache vorhanden sind.
-Alternativ verwende **Restore Backup** und wähle den passenden
-Migrationsbackupordner.
-
-Das Backup gehört zum gesicherten Gerät. Zur Wiederherstellung wird USB
-benötigt; WLAN ist dafür nicht erforderlich. Andere serielle Aktionen können bis
-zur Wiederherstellung gesperrt bleiben.
+**Restore Backup** spielt die gesicherten Einstellungen auf die installierte
+Firmware zurück. Dafür muss das Gerät über seine URL erreichbar sein.
+Nach einem unterbrochenen Flashvorgang zuerst die Migration fortsetzen.
+Andere serielle Aktionen können bis zur Wiederherstellung gesperrt bleiben.
 
 :::details Was wird gesichert und geprüft?
 
-Migrationssicherungen liegen unter backups/migrations. Sie enthalten
-flash-backup.bin, nvs.bin und report.json. Die normale Migration liest einmal
-den vollständigen Flash als Backup. Nach dem Schreiben werden NVS und LittleFS
-zurückgelesen; die Images prüft esptool. Eine Backup-Wiederherstellung verwendet
-eine vollständige Rückleseprüfung.
+Migrationssicherungen liegen unter `backups/migrations` und enthalten
+`backup.json` sowie `report.json`. Das API-Backup wird unverändert übernommen:
+Konfiguration, WLAN-Zugangsdaten, Maische- und Fermenterpläne, Profile und
+Logging-Einstellungen. Die Firmware ist nicht enthalten.
+Es gibt keinen Flash-Lesedurchlauf; esptool prüft die geschriebenen Images.
+Ältere vollständige Flash-Sicherungen bleiben über USB wiederherstellbar.
+Nur diese ersetzen auch die Firmware und verwenden eine Rückleseprüfung.
 
 :::
 

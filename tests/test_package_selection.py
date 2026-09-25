@@ -5,6 +5,22 @@ import app
 
 
 class PackageSelectionTests(unittest.TestCase):
+    def test_migration_catalog_uses_target_generation_for_legacy_device(self):
+        def query(url, **kwargs):
+            if url.endswith("version.json"):
+                return {"version": "1.70.0", "type": "Development"}
+            return [{"name": name, "type": "file"}
+                    for name in app.REQUIRED_PACKAGE_FILES + ["serviceapp.bin"]]
+        with patch.object(app, "json_request", side_effect=query):
+            catalog = app.package_catalog("1.66.0", purpose="migration")
+        self.assertEqual(catalog["package_root"], "Updates")
+        selected = next(p for p in catalog["packages"] if p["key"] == "development_170")
+        self.assertTrue(selected["available"])
+        self.assertEqual(selected["path"],
+                         "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/development/Updates/ESP32-IDF5dev")
+        self.assertTrue(all(not p["available"] for p in catalog["packages"]
+                            if p["key"] in ("release", "development")))
+
     def test_generation_boundary(self):
         for version, root in (("1.65.5", "build"), ("1.66.0", "build"), ("1.66.99", "build"), ("1.67.0", "Updates"),
                               ("Brautomat32 V 1.67.2 Develop", "Updates"), ("", "Updates")):
@@ -13,7 +29,7 @@ class PackageSelectionTests(unittest.TestCase):
     def test_display_and_pinned_download_use_same_directory(self):
         for source, kind, root, directory in (
                 ("release", "Release", "build", "ESP32-IDF5"),
-                ("development", "Development", "Updates", "ESP32-IDF5dev"),
+                ("development_170", "Development", "Updates", "ESP32-IDF5dev"),
                 ("special", "Development", "Updates", "ESP32-IDF5dev"),
                 ("special", "Release", "Updates", "ESP32-IDF5")):
             required = app.REQUIRED_PACKAGE_FILES + (["serviceapp.bin"] if root == "Updates" else [])
@@ -42,7 +58,7 @@ class PackageSelectionTests(unittest.TestCase):
         with patch.object(app,"json_request",side_effect=[{"version":"1.67.2", "type":"Development"},
                 [{"name":name,"type":"file"} for name in app.REQUIRED_PACKAGE_FILES]]):
             with self.assertRaisesRegex(ValueError,"serviceapp.bin"):
-                app.package_location("development","","Updates")
+                app.package_location("development_170","","Updates")
 
     def test_missing_special_version_does_not_hide_other_commits(self):
         def query(url, **kwargs):
@@ -63,7 +79,7 @@ class PackageSelectionTests(unittest.TestCase):
             with (self.subTest(root=root, version=version),
                   patch.object(app, "json_request", return_value={"version": version}) as query):
                 with self.assertRaises(ValueError):
-                    app.package_location("release", "", root)
+                    app.package_location("development_170" if root == "Updates" else "development", "", root)
                 self.assertEqual(query.call_count, 1)
 
     def test_webupdate_generation_decision_is_enforced_before_device_writes(self):
@@ -75,7 +91,7 @@ class PackageSelectionTests(unittest.TestCase):
                 ("1.66.0", "1.66.0", "no_newer")):
             with (self.subTest(current=current, target=target),
                   patch.object(app, "device_status", return_value={
-                      "firmware": current, "active_process": {"state": "idle"}}),
+                      "firmware": current, "dev": True, "active_process": {"state": "idle"}}),
                   patch.object(app, "remote_repo_version_manifest", return_value={"version": target}),
                   patch.object(app, "post_empty") as backup,
                   patch.object(app, "post_disruptive_empty") as start):
@@ -105,3 +121,30 @@ class PackageSelectionTests(unittest.TestCase):
                   patch.object(app,"json_request",return_value={"version":version,"type":"Development"}) as query):
                 self.assertFalse(app.firmware_update_status("http://device")["available"])
                 self.assertTrue(query.call_args.args[0].endswith(path))
+
+
+class BranchRoutingTests(unittest.TestCase):
+    def test_generation_specific_branches(self):
+        self.assertEqual(app.package_branch("development", "build"), "development")
+        self.assertEqual(app.package_branch("release", "build"), "main")
+        self.assertEqual(app.package_branch("development_170", "Updates"), "development")
+        with self.assertRaisesRegex(ValueError, "legacy layout"):
+            app.package_branch("release", "Updates")
+
+    def test_modern_release_is_unavailable_without_network_access(self):
+        with patch.object(app, "json_request") as query:
+            with self.assertRaises(ValueError):
+                app.package_location("release", "", "Updates")
+            query.assert_not_called()
+
+    def test_migration_checks_modern_development_manifest(self):
+        with patch.object(app, "remote_repo_version_manifest", return_value={"version":"1.70.0"}) as query:
+            self.assertEqual(app.migration_target_version("development_170", "", "")[0], "1.70.0")
+            query.assert_called_once_with("development", "Updates")
+
+    def test_explicit_channel_overrides_legacy_dev_boolean(self):
+        with patch.object(app, "device_status", return_value={"firmware":"1.70.0", "dev":False, "updatechannel":2}), patch.object(app, "remote_repo_version_manifest", return_value={"version":"1.70.0"}) as query:
+            self.assertFalse(app.firmware_update_status("http://device")["available"])
+            query.assert_called_once_with("development", "Updates")
+        with self.assertRaises(ValueError):
+            app.package_branch("development", "Updates")

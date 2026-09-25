@@ -255,6 +255,17 @@ console.log('Maintenance boot-blocker regression checks passed');
   assert.equal(get('packageVersion').value,'commit');
   assert.match(get('packageDir').value,/Updates.*IDF5dev/);
   assert.equal(vm.runInContext('packageSelectionReady',ctx),true);
+  get('packageSource').value='development_170';
+  vm.runInContext('migrationPackageSelection = true',ctx);
+  let target='';
+  ctx.setInlineStatus=(id,value)=>{target=id;status=value;};
+  ctx.api=async()=>({packages:[{key:'development_170',available:false,
+    path:'https://example/development/Updates/ESP32-IDF5dev',error:'GitHub API limit: retry at 21:25:06'}]});
+  await vm.runInContext('loadPackages()',ctx);
+  assert.match(get('packageDir').value,/development\/Updates/);
+  assert.equal(vm.runInContext('packageSelectionReady',ctx),false);
+  assert.equal(target,'migrationInlineStatus');
+  assert.match(status,/retry at 21:25:06/);
   console.log('Package UI: missing release clears stale URL; special version becomes selectable');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 
@@ -286,4 +297,27 @@ console.log('Maintenance boot-blocker regression checks passed');
   assert.equal(get('installLanguageBtn').disabled,false);
   assert.equal(status.webfilesInlineStatus,undefined);
   console.log('Language list: stale failure ignored, retry clears error, operation status preserved');
+})().catch(error=>{console.error(error);process.exitCode=1;});
+
+(async () => {
+  for (const backupType of ['api', 'flash']) {
+    const elements = {migrationSession:{value:''},portSelect:{value:backupType === 'api' ? '' : 'COM3'},
+      baudSelect:{value:'921600'},migrationProgress:{value:0}};
+    const requests = [], messages = [], errors = [];
+    const ctx = vm.createContext({$:id=>elements[id], currentLang:'de',
+      effectiveDeviceBaseUrl:()=> 'http://selected',
+      api:async(url,options)=>{requests.push({url,options}); return url.endsWith('/pick')
+        ? {directory:'backup-folder',backup_type:backupType} : {job_id:'job'};},
+      confirm:message=>{messages.push(message); return true;},
+      setButtonsDisabled:()=>{},setSpinner:()=>{},watchJobToTarget:()=>{},text:k=>k,
+      appendStatus:(...args)=>errors.push(args)});
+    vm.runInContext(source.slice(source.indexOf('async function recoverMigration('),
+      source.indexOf('function sanitizeSerialLine(')),ctx);
+    await vm.runInContext('recoverMigration("restore")',ctx);
+    assert.equal(errors.length,0);
+    assert.equal(requests[1].options.body.base_url,'http://selected');
+    assert.equal(requests[1].options.body.backup_dir,'backup-folder');
+    assert.match(messages[0],backupType === 'api' ? /Firmware bleibt erhalten/ : /Flash-Inhalt/);
+  }
+  console.log('Migration restore: API without COM port, explicit API/full-flash confirmation');
 })().catch(error=>{console.error(error);process.exitCode=1;});
