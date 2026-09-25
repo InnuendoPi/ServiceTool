@@ -44,14 +44,21 @@ class PackageSelectionTests(unittest.TestCase):
                 self.assertTrue(pinned["base_url"].endswith(f"/{root}/{directory}"))
                 self.assertIn("/"+"a"*40+"/", pinned["base_url"])
 
-    def test_missing_modern_release_does_not_fall_back(self):
+    def test_missing_modern_package_keeps_url_without_legacy_fallback(self):
         urls=[]
         def query(url, **kwargs):
             urls.append(url)
             raise HTTPError(url,404,"missing",{},None)
         with patch.object(app,"json_request",side_effect=query):
             catalog=app.package_catalog("1.67.2")
-        self.assertTrue(all(not p["available"] and not p["path"] for p in catalog["packages"]))
+        self.assertTrue(all(not p["available"] for p in catalog["packages"]))
+        modern = next(p for p in catalog["packages"] if p["key"] == "development_170")
+        self.assertEqual(modern["path"],
+                         "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/development/Updates/ESP32-IDF5dev")
+        self.assertIn("404", modern["error"])
+        self.assertTrue(all(not p["path"] for p in catalog["packages"]
+                            if p["key"] in ("release", "development")))
+        self.assertTrue(urls)
         self.assertTrue(all("/Updates/" in url for url in urls))
 
     def test_modern_package_requires_serviceapp(self):

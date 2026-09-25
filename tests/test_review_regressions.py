@@ -119,11 +119,11 @@ class FlashTests(unittest.TestCase):
                 return (root / url.rsplit("/", 1)[-1]).read_bytes()
             with (patch.object(app, "CACHE_DIR", Path(folder) / "cache"),
                   patch.object(app, "json_request", return_value={"sha": sha}),
-                  patch.object(app, "package_location", return_value={"base_url": f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/Updates/ESP32-IDF5"}),
+                  patch.object(app, "package_location", return_value={"base_url": f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/Updates/ESP32-IDF5dev"}),
                   patch.object(app, "download_bytes", side_effect=download),
                   patch.object(app, "write_package_metadata")):
-                first = app.prepare_remote_package(job(), "release", False)
-                second = app.prepare_remote_package(job(), "release", False, require_base_files=False)
+                first = app.prepare_remote_package(job(), "development_170", False)
+                second = app.prepare_remote_package(job(), "development_170", False, require_base_files=False)
                 self.assertNotEqual(first, second)
                 self.assertTrue((second / "serviceapp.bin").is_file())
                 self.assertTrue(all("/" + sha + "/" in url for url in urls))
@@ -132,9 +132,9 @@ class FlashTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             with (patch.object(app, "CACHE_DIR", Path(folder)),
                   patch.object(app, "json_request", return_value={"sha": "a" * 40}),
-                  patch.object(app, "package_location", return_value={"base_url": "https://example.test/Updates/ESP32-IDF5"}),
+                  patch.object(app, "package_location", return_value={"base_url": "https://example.test/Updates/ESP32-IDF5dev"}),
                   patch.object(app, "download_bytes", return_value=image("BrautomatMain")) as download):
-                root = app.resolve_package(job(), "release", "", False, require_base_files=False, firmware_only=True)
+                root = app.resolve_package(job(), "development_170", "", False, require_base_files=False, firmware_only=True)
                 download.assert_called_once()
                 self.assertTrue(download.call_args.args[0].endswith("/firmware.bin"))
                 self.assertEqual({p.name for p in root.iterdir()}, {"firmware.bin", "package.json"})
