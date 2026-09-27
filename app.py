@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from explorer import FileExplorer
 import base64
 import hashlib
 import http.client
@@ -97,7 +98,7 @@ BACKUP_DIR = DATA_ROOT / "backups"
 LOG_DIR = DATA_ROOT / "logs"
 CACHE_DIR = DATA_ROOT / "cache" / "packages"
 TOOLS_CACHE_DIR = DATA_ROOT / "cache" / "tools"
-DEFAULT_INVENTORY_DIR = DATA_ROOT / "inventar"
+DEFAULT_INVENTORY_DIR = APP_ROOT
 UPDATE_DIR = DATA_ROOT / "updates"
 LOCAL_ESPTOOL_DIR = APP_ROOT / "esptool"
 CONFIG_FILE = DATA_ROOT / "config.json"
@@ -106,7 +107,7 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.8.3"
+SERVICE_TOOL_VERSION = "1.9.0"
 ESPTOOL_VERSION = "5.3.1"  # Pin downloads and local selection to this version.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
@@ -532,6 +533,7 @@ def default_config() -> dict[str, Any]:
         "package_dir": REMOTE_PACKAGES["release"]["base_url"],
         "open_package_dir": str(APP_ROOT),
         "inventory_root": str(DEFAULT_INVENTORY_DIR),
+        "explorer_folders": [],
         "baud_rate": 460800,
         "serial_baud_rate": 115200,
         "serial_port": "",
@@ -4865,6 +4867,80 @@ def list_local_inventory(kind: str, relpath: str = "") -> list[dict[str, Any]]:
     return entries
 
 
+EXPLORER_WRITE_LOCK = threading.Lock()
+EXPLORER_LOCAL_FOLDERS: dict[str, pathlib.Path] = {}
+
+
+def pick_explorer_folder() -> dict[str, str]:
+    selected = pick_directory("Open local folder", inventory_root_dir())
+    if not selected:
+        return {}
+    root = pathlib.Path(selected).resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("Not a directory")
+    config = load_app_config()
+    folders = config.get("explorer_folders", [])
+    existing = next((entry for entry in folders if pathlib.Path(entry["path"]).resolve() == root), None)
+    entry = existing or {"token": uuid.uuid4().hex, "path": str(root)}
+    if not existing:
+        folders.append(entry)
+        config["explorer_folders"] = folders
+        save_app_config(config)
+    EXPLORER_LOCAL_FOLDERS[entry["token"]] = root
+    return {**entry, "folders": folders}
+
+
+def remove_explorer_folder(token: str) -> dict[str, Any]:
+    config = load_app_config()
+    config["explorer_folders"] = [entry for entry in config.get("explorer_folders", []) if entry["token"] != token]
+    save_app_config(config)
+    EXPLORER_LOCAL_FOLDERS.pop(token, None)
+    return {"folders": config["explorer_folders"]}
+
+
+
+def file_explorer(base_url: str, local_folder: str = "") -> FileExplorer:
+    base = normalize_base_url(base_url)
+    root = inventory_root_dir()
+    if local_folder:
+        root = EXPLORER_LOCAL_FOLDERS.get(local_folder)
+        if root is None:
+            entry = next((entry for entry in load_app_config().get("explorer_folders", []) if entry["token"] == local_folder), None)
+            if entry is None:
+                raise ValueError("Local folder selection expired; open the folder again")
+            root = pathlib.Path(entry["path"])
+        if not root.is_dir():
+            raise FileNotFoundError(f"Directory unavailable: {root}")
+
+    def rename(source, target, maintenance):
+        kinds = {"/Rezepte": "mashplans", "/Fermenter": "fermenterplans", "/Profile": "profiles"}
+        parent = str(pathlib.PurePosixPath(source).parent)
+        if parent in kinds and source.lower().endswith(".json"):
+            return rename_device_inventory(base, kinds[parent], pathlib.PurePosixPath(source).name,
+                                           pathlib.PurePosixPath(target).name, maintenance)
+        return put_form(f"{base}/edit", {"src": source, "path": target}, timeout=30.0)
+
+    def local_action(path, new_name=None):
+        parts = pathlib.PurePosixPath(path).parts
+        for kind, spec in INVENTORY_SPECS.items():
+            if len(parts) > 2 and parts[1] == spec["local_dir"]:
+                relative = "/".join(parts[2:])
+                if new_name is None:
+                    delete_local_inventory(kind, relative)
+                else:
+                    rename_local_inventory(kind, relative, new_name)
+                return True
+        return False
+
+    return FileExplorer(root,
+                        listing=lambda path: json_request(f"{base}/list?dir={parse.quote(path, safe='/')}", timeout=20.0),
+                        read=lambda path: download_fs_file(base, path),
+                        write=lambda path, content: post_file_to_fs(base, path, content),
+                        delete=lambda path: delete_fs_path(base, path),
+                        put=lambda fields: put_form(f"{base}/edit", fields, timeout=30.0), rename=rename,
+                        local_rename=None if local_folder else local_action, local_delete=None if local_folder else local_action)
+
+
 def list_device_inventory(base_url: str, kind: str) -> list[dict[str, Any]]:
     spec = inventory_spec(kind)
     data = json_request(f"{normalize_base_url(base_url)}/list?dir={parse.quote(spec['device_dir'], safe='/')}", timeout=20.0)
@@ -6074,6 +6150,25 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             self._send_json({"languages": languages})
             return
+        if path in ("/api/explorer/list", "/api/explorer/preview", "/api/explorer/download"):
+            query = parse.parse_qs(parse.urlparse(self.path).query)
+            value = lambda key, default="": (query.get(key) or [default])[0]
+            explorer = file_explorer(value("base_url"), value("local_folder") if value("side") == "local" else "")
+            side, location = value("side", "device"), value("path", "/")
+            if path.endswith("/list"):
+                self._send_json(explorer.list(side, location, value("view", "all")))
+            elif path.endswith("/preview"):
+                self._send_json(explorer.preview(side, location))
+            else:
+                content = explorer.read(side, location)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + parse.quote(pathlib.PurePosixPath(location).name, safe=""))
+                self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(content)
+            return
         if path == "/api/inventory/list":
             query = parse.parse_qs(parse.urlparse(self.path).query)
             kind = (query.get("kind") or ["mashplans"])[0]
@@ -6170,7 +6265,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
             if MIGRATION_LOCK.locked() and path.startswith((
                 "/api/wifi/", "/api/flash", "/api/firmware/backup", "/api/firmware/update/start",
                 "/api/webfiles/", "/api/language/install", "/api/device/reboot",
-                "/api/inventory/", "/api/backups/restore", "/api/backup", "/api/restore",
+                "/api/inventory/", "/api/explorer/", "/api/backups/restore", "/api/backup", "/api/restore",
                 "/api/test-runner/start", "/api/servicetool/update/download",
             )):
                 raise RuntimeError("Device changes are blocked while migration/recovery is running")
@@ -6266,6 +6361,13 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
             if path == "/api/package/pick":
                 selected = pick_directory()
                 self._send_json({"selected": selected, "details": package_details(pathlib.Path(selected)) if selected else None})
+                return
+            if path == "/api/explorer/folder/remove":
+                data = self._read_json()
+                self._send_json(remove_explorer_folder(str(data.get("token", ""))))
+                return
+            if path == "/api/explorer/folder/pick":
+                self._send_json(pick_explorer_folder())
                 return
             if path == "/api/inventory/root/pick":
                 selected = pick_directory("Select local inventory root", inventory_root_dir())
@@ -6395,6 +6497,11 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
             if path == "/api/inventory/local-to-device":
                 data = self._read_json()
                 self._send_json(copy_local_to_device(data["base_url"], data["kind"], data["filename"]))
+                return
+            if path == "/api/explorer/action":
+                data = self._read_json()
+                with EXPLORER_WRITE_LOCK:
+                    self._send_json(file_explorer(data.get("base_url", ""), data.get("local_folder", "") if data.get("side") == "local" else "").action(data))
                 return
             if path == "/api/inventory/device/delete":
                 data = self._read_json()

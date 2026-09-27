@@ -18,7 +18,7 @@
   </div>
   <header class="hero">
     <div>
-      <h1 id="title">Brautomat32 ServiceTool V 1.8.3</h1>
+      <h1 id="title">Brautomat32 ServiceTool V 1.9.0</h1>
     </div>
     <div class="hero-actions">
       <div class="header-device">
@@ -238,247 +238,26 @@
     </section>
 
     <section class="tab-panel span-2" data-panel="management">
-      <section class="card span-2">
-        <div class="subtabs">
-          <button class="subtab active" data-management-tab="mashplans" id="managementTabMashplans">Maischepläne</button>
-          <button class="subtab" data-management-tab="fermenterplans" id="managementTabFermenterplans">Fermenter Pläne</button>
-          <button class="subtab" data-management-tab="profiles" id="managementTabProfiles">Profile</button>
-          <button class="subtab" data-management-tab="config" id="managementTabConfig">Konfiguration</button>
+      <section id="explorer" class="card span-2 explorer">
+        <div class="explorer-commandbar">
+          <div id="explorerCommands" class="explorer-buttons"></div>
+          <span id="explorerFilter" class="hint"></span>
+          <div id="explorerViewCommands" class="explorer-buttons"></div>
         </div>
-        <div class="inventory-root-bar">
-          <span id="inventoryRootLabel">Inventarverzeichnis</span>
-          <span id="inventoryRootPath" class="local-path">/</span>
-          <button id="chooseInventoryRoot" class="ghost" type="button">Open directory</button>
+        <div class="explorer-layout">
+          <nav id="explorerSidebar" aria-label="Speicherorte"></nav>
+          <div class="explorer-filepane">
+            <div class="file-table-shell">
+              <table class="file-table"><thead><tr id="explorerColumns"></tr></thead><tbody id="explorerFiles"></tbody></table>
+            </div>
+          </div>
+          <section id="explorerPreviewPane" class="explorer-preview">
+            <div class="list-head"><h2 id="explorerPreviewTitle">Vorschau</h2><div id="explorerEditCommands" class="explorer-buttons"></div></div>
+            <textarea id="explorerContent" readonly spellcheck="false" aria-labelledby="explorerPreviewTitle"></textarea>
+          </section>
         </div>
-
-        <section class="management-subpanel active" data-management-panel="mashplans">
-          <div class="management-grid">
-            <section class="management-column">
-              <div class="list-head">
-                <h2 id="managementDeviceFilesTitle">Dateien auf dem Device</h2>
-                <button id="mashplansRefreshDevice" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
-              </div>
-              <div class="file-table-shell">
-                <table class="file-table">
-                  <thead>
-                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
-                  </thead>
-                  <tbody id="mashplansDeviceList"></tbody>
-                </table>
-              </div>
-              <div class="actions list-actions">
-                <button id="mashplansInfoDevice" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
-                <button id="mashplansRenameDevice" class="ghost" type="button">Rename</button>
-                <button id="mashplansDeleteDevice" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
-              </div>
-            </section>
-            <section class="management-transfer">
-              <button id="mashplansCopyToLocal" type="button"><i class="icon-step-forward button-icon" aria-hidden="true"></i></button>
-              <button id="mashplansCopyToDevice" type="button"><i class="icon-step-backward button-icon" aria-hidden="true"></i></button>
-            </section>
-            <section class="management-column">
-              <div class="local-inventory-head">
-                <h2 id="managementLocalFilesTitle">Dateien im lokalen Inventar</h2>
-                <button id="mashplansLocalUp" class="ghost" type="button">..</button>
-                <span id="mashplansLocalPath" class="local-path">/</span>
-                <button id="mashplansLocalNewFolder" class="ghost" type="button">+ Ordner</button>
-                <button id="mashplansLocalNewFile" class="ghost" type="button">+ Datei</button>
-                <button id="mashplansRefreshLocal" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
-              </div>
-              <div class="file-table-shell">
-                <table class="file-table">
-                  <thead>
-                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
-                  </thead>
-                  <tbody id="mashplansLocalList"></tbody>
-                </table>
-              </div>
-              <div class="actions list-actions">
-                <button id="mashplansInfoLocal" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
-                <button id="mashplansRenameLocal" class="ghost" type="button">Rename</button>
-                <button id="mashplansDeleteLocal" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
-              </div>
-            </section>
-          </div>
-          <div class="status-inline">
-            <span id="mashplansSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
-            <p id="mashplansInlineStatus" class="status-line"></p>
-          </div>
-        </section>
-
-        <section class="management-subpanel" data-management-panel="fermenterplans">
-          <div class="management-grid">
-            <section class="management-column">
-              <div class="list-head">
-                <h2 id="managementDeviceFilesTitle2">Dateien auf dem Device</h2>
-                <button id="fermenterplansRefreshDevice" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
-              </div>
-              <div class="file-table-shell">
-                <table class="file-table">
-                  <thead>
-                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
-                  </thead>
-                  <tbody id="fermenterplansDeviceList"></tbody>
-                </table>
-              </div>
-              <div class="actions list-actions">
-                <button id="fermenterplansInfoDevice" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
-                <button id="fermenterplansRenameDevice" class="ghost" type="button">Rename</button>
-                <button id="fermenterplansDeleteDevice" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
-              </div>
-            </section>
-            <section class="management-transfer">
-              <button id="fermenterplansCopyToLocal" type="button"><i class="icon-step-forward button-icon" aria-hidden="true"></i></button>
-              <button id="fermenterplansCopyToDevice" type="button"><i class="icon-step-backward button-icon" aria-hidden="true"></i></button>
-            </section>
-            <section class="management-column">
-              <div class="local-inventory-head">
-                <h2 id="managementLocalFilesTitle2">Dateien im lokalen Inventar</h2>
-                <button id="fermenterplansLocalUp" class="ghost" type="button">..</button>
-                <span id="fermenterplansLocalPath" class="local-path">/</span>
-                <button id="fermenterplansLocalNewFolder" class="ghost" type="button">+ Ordner</button>
-                <button id="fermenterplansLocalNewFile" class="ghost" type="button">+ Datei</button>
-                <button id="fermenterplansRefreshLocal" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
-              </div>
-              <div class="file-table-shell">
-                <table class="file-table">
-                  <thead>
-                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
-                  </thead>
-                  <tbody id="fermenterplansLocalList"></tbody>
-                </table>
-              </div>
-              <div class="actions list-actions">
-                <button id="fermenterplansInfoLocal" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
-                <button id="fermenterplansRenameLocal" class="ghost" type="button">Rename</button>
-                <button id="fermenterplansDeleteLocal" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
-              </div>
-            </section>
-          </div>
-          <div class="status-inline">
-            <span id="fermenterplansSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
-            <p id="fermenterplansInlineStatus" class="status-line"></p>
-          </div>
-        </section>
-
-        <section class="management-subpanel" data-management-panel="profiles">
-          <div class="management-grid">
-            <section class="management-column">
-              <div class="list-head">
-                <h2 id="managementDeviceFilesTitle3">Dateien auf dem Device</h2>
-                <button id="profilesRefreshDevice" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
-              </div>
-              <div class="file-table-shell">
-                <table class="file-table">
-                  <thead>
-                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
-                  </thead>
-                  <tbody id="profilesDeviceList"></tbody>
-                </table>
-              </div>
-              <div class="actions list-actions">
-                <button id="profilesInfoDevice" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
-                <button id="profilesRenameDevice" class="ghost" type="button">Rename</button>
-                <button id="profilesDeleteDevice" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
-              </div>
-            </section>
-            <section class="management-transfer">
-              <button id="profilesCopyToLocal" type="button"><i class="icon-step-forward button-icon" aria-hidden="true"></i></button>
-              <button id="profilesCopyToDevice" type="button"><i class="icon-step-backward button-icon" aria-hidden="true"></i></button>
-            </section>
-            <section class="management-column">
-              <div class="local-inventory-head">
-                <h2 id="managementLocalFilesTitle3">Dateien im lokalen Inventar</h2>
-                <button id="profilesLocalUp" class="ghost" type="button">..</button>
-                <span id="profilesLocalPath" class="local-path">/</span>
-                <button id="profilesLocalNewFolder" class="ghost" type="button">+ Ordner</button>
-                <button id="profilesLocalNewFile" class="ghost" type="button">+ Datei</button>
-                <button id="profilesRefreshLocal" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
-              </div>
-              <div class="file-table-shell">
-                <table class="file-table">
-                  <thead>
-                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
-                  </thead>
-                  <tbody id="profilesLocalList"></tbody>
-                </table>
-              </div>
-              <div class="actions list-actions">
-                <button id="profilesInfoLocal" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
-                <button id="profilesRenameLocal" class="ghost" type="button">Rename</button>
-                <button id="profilesDeleteLocal" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
-              </div>
-            </section>
-          </div>
-          <div class="status-inline">
-            <span id="profilesSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
-            <p id="profilesInlineStatus" class="status-line"></p>
-          </div>
-        </section>
-
-        <section class="management-subpanel" data-management-panel="config">
-          <div class="management-grid">
-            <section class="management-column">
-              <div class="list-head">
-                <h2 id="managementDeviceFilesTitle4">Dateien auf dem Device</h2>
-                <button id="configRefreshDevice" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
-              </div>
-              <div class="file-table-shell">
-                <table class="file-table">
-                  <thead>
-                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
-                  </thead>
-                  <tbody id="configDeviceList"></tbody>
-                </table>
-              </div>
-              <div class="actions list-actions">
-                <button id="configInfoDevice" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
-                <button id="configRenameDevice" class="ghost" type="button">Rename</button>
-                <button id="configDeleteDevice" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
-              </div>
-            </section>
-            <section class="management-transfer">
-              <button id="configCopyToLocal" type="button"><i class="icon-step-forward button-icon" aria-hidden="true"></i></button>
-              <button id="configCopyToDevice" type="button"><i class="icon-step-backward button-icon" aria-hidden="true"></i></button>
-            </section>
-            <section class="management-column">
-              <div class="local-inventory-head">
-                <h2 id="managementLocalFilesTitle4">Dateien im lokalen Inventar</h2>
-                <button id="configLocalUp" class="ghost" type="button">..</button>
-                <span id="configLocalPath" class="local-path">/</span>
-                <button id="configLocalNewFolder" class="ghost" type="button">+ Ordner</button>
-                <button id="configLocalNewFile" class="ghost" type="button">+ Datei</button>
-                <button id="configRefreshLocal" class="ghost" type="button"><i class="icon-refresh button-icon" aria-hidden="true"></i></button>
-              </div>
-              <div class="file-table-shell">
-                <table class="file-table">
-                  <thead>
-                    <tr><th>Datei</th><th>Datum</th><th>Größe</th></tr>
-                  </thead>
-                  <tbody id="configLocalList"></tbody>
-                </table>
-              </div>
-              <div class="actions list-actions">
-                <button id="configInfoLocal" class="ghost" type="button"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
-                <button id="configRenameLocal" class="ghost" type="button">Rename</button>
-                <button id="configDeleteLocal" class="danger" type="button"><i class="icon-trash2 button-icon" aria-hidden="true"></i></button>
-              </div>
-            </section>
-          </div>
-          <div class="status-inline">
-            <span id="configSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
-            <p id="configInlineStatus" class="status-line"></p>
-          </div>
-        </section>
-      </section>
-
-      <section class="card span-2 debug-panel">
-        <h2 id="managementStatusTitle">Status</h2>
-        <pre id="managementStatus" class="output"></pre>
-        <div class="actions logging-actions">
-          <button id="managementStatusClearBtn" class="danger" type="button">Clear log</button>
-          <button id="managementStatusCopyBtn" class="primary" type="button">Copy to clip</button>
-        </div>
+        <p id="explorerStatus" class="status-line" role="status" aria-live="polite"></p>
+        <input id="explorerUploadInput" type="file" hidden>
       </section>
     </section>
 
@@ -833,6 +612,7 @@
   </dialog>
   <script src="/workspace.js"></script>
   <script src="/help.js"></script>
+  <script src="/explorer.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

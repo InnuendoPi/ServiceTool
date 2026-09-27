@@ -502,7 +502,7 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.8.3",
+  service_tool_version: "1.9.0",
   language: "en",
   debug_output: false,
   device_url: "http://brautomat",
@@ -563,7 +563,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.8.3"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.9.0"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -739,6 +739,7 @@ async function saveConfig(partial = {}) {
 }
 
 function applyLanguage() {
+  if (typeof translateExplorer === "function") translateExplorer();
   if (typeof translateWorkspace === "function") translateWorkspace();
   document.documentElement.lang = currentLang;
   document.title = serviceToolTitle();
@@ -781,43 +782,20 @@ function applyLanguage() {
   $("backupRenameBtn").innerHTML = '<i class="icon-pencil button-icon" aria-hidden="true"></i>';
   $("backupInfoBtn").innerHTML = '<i class="icon-eye button-icon" aria-hidden="true"></i>';
   $("backupDeleteBtn").innerHTML = '<i class="icon-trash-o button-icon" aria-hidden="true"></i>';
-  $("restoreFilePickBtn").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
+  $("restoreFilePickBtn").innerHTML = '<i class="icon-folder-open button-icon" aria-hidden="true"></i>';
   $("wifiResetBtn").textContent = text("wifiResetBtn");
   $("wifiScanBtn").innerHTML = text("wifiScanBtn");
   $("wifiSaveBtn").innerHTML = text("wifiSaveBtn");
   $("restoreBtn").innerHTML = '<i class="icon-box-add button-icon" aria-hidden="true"></i>';
   $("refreshPorts").innerHTML = '<i class="icon-refresh button-icon" aria-hidden="true"></i>';
-  $("choosePackageDir").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
-  if ($("chooseInventoryRoot")) $("chooseInventoryRoot").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
-  $("telegrafBinaryPickBtn").innerHTML = '<span class="button-icon" aria-hidden="true">📄</span>';
+  $("choosePackageDir").innerHTML = '<i class="icon-folder-open button-icon" aria-hidden="true"></i>';
+  if ($("chooseInventoryRoot")) $("chooseInventoryRoot").innerHTML = '<i class="icon-folder-open button-icon" aria-hidden="true"></i>';
+  $("telegrafBinaryPickBtn").innerHTML = '<i class="icon-file-empty button-icon" aria-hidden="true"></i>';
   $("telegrafBinaryPickBtn").setAttribute("aria-label", text("telegrafBinaryPickBtn"));
-  $("telegrafTemplatesPickBtn").innerHTML = '<span class="button-icon" aria-hidden="true">📂</span>';
+  $("telegrafTemplatesPickBtn").innerHTML = '<i class="icon-folder-open button-icon" aria-hidden="true"></i>';
   $("telegrafTemplatesPickBtn").setAttribute("aria-label", text("telegrafTemplatesPickBtn"));
   $("backupFirmwareBtn").innerHTML = '<i class="icon-download button-icon" aria-hidden="true"></i>';
-  Object.keys(MANAGEMENT_KINDS).forEach(kind => {
-    $(`${kind}RefreshDevice`).innerHTML = '<i class="icon-refresh button-icon" aria-hidden="true"></i>';
-    $(`${kind}RefreshLocal`).innerHTML = '<i class="icon-refresh button-icon" aria-hidden="true"></i>';
-    $(`${kind}DeleteDevice`).innerHTML = '<i class="icon-trash-o button-icon" aria-hidden="true"></i>';
-    $(`${kind}DeleteLocal`).innerHTML = '<i class="icon-trash-o button-icon" aria-hidden="true"></i>';
-    $(`${kind}InfoDevice`).innerHTML = '<i class="icon-eye button-icon" aria-hidden="true"></i>';
-    $(`${kind}InfoLocal`).innerHTML = '<i class="icon-eye button-icon" aria-hidden="true"></i>';
-    $(`${kind}CopyToLocal`).innerHTML = '<i class="icon-step-forward button-icon" aria-hidden="true"></i>';
-    $(`${kind}CopyToDevice`).innerHTML = '<i class="icon-step-backward button-icon" aria-hidden="true"></i>';
-    $(`${kind}RenameDevice`).innerHTML = '<i class="icon-pencil button-icon" aria-hidden="true"></i>';
-    $(`${kind}RenameLocal`).innerHTML = '<i class="icon-pencil button-icon" aria-hidden="true"></i>';
-    if ($(`${kind}LocalUp`)) $(`${kind}LocalUp`).textContent = "..";
-    if ($(`${kind}LocalNewFolder`)) {
-      $(`${kind}LocalNewFolder`).innerHTML = '<i class="icon-folder-plus button-icon" aria-hidden="true"></i>';
-      $(`${kind}LocalNewFolder`).title = text("managementLocalNewFolderBtn");
-      $(`${kind}LocalNewFolder`).setAttribute("aria-label", text("managementLocalNewFolderBtn"));
-    }
-    if ($(`${kind}LocalNewFile`)) {
-      $(`${kind}LocalNewFile`).innerHTML = '<i class="icon-file-empty button-icon" aria-hidden="true"></i>';
-      $(`${kind}LocalNewFile`).title = text("managementLocalNewFileBtn");
-      $(`${kind}LocalNewFile`).setAttribute("aria-label", text("managementLocalNewFileBtn"));
-    }
-    updateManagementLocalPath(kind);
-  });
+
   $("updateWebfilesBtn").textContent = text("updateWebfilesBtn");
   if ($("checkFirmwareUpdateBtn")) $("checkFirmwareUpdateBtn").textContent = text("checkFirmwareUpdateBtn");
   $("installLanguageBtn").textContent = text("installLanguageBtn");
@@ -845,7 +823,7 @@ function applyLanguage() {
   $("serialClearBtn").innerHTML = text("serialClearBtn");
   $("serialAutoscrollBtn").innerHTML = '<i class="icon-arrow-down2 button-icon" aria-hidden="true"></i>';
   $("serialRebootBtn").innerHTML = '<i class="icon-refresh button-icon" aria-hidden="true"></i>';
-  $("serialCopyBtn").innerHTML = '<i class="icon-pencil button-icon" aria-hidden="true"></i>';
+  $("serialCopyBtn").innerHTML = '<i class="icon-copy button-icon" aria-hidden="true"></i>';
   updateSerialAutoscrollButton();
   updateFlashBackupWarning();
   updateActiveProcessState(lastDeviceStatus);
@@ -868,7 +846,7 @@ function applyLanguage() {
     "migrationStatusCopyBtn"
   ].forEach(id => {
     const node = $(id);
-    if (node) node.innerHTML = '<i class="icon-pencil button-icon" aria-hidden="true"></i>';
+    if (node) node.innerHTML = '<i class="icon-copy button-icon" aria-hidden="true"></i>';
   });
   if ($("testRunnerStartBtn")) $("testRunnerStartBtn").textContent = text("testRunnerStartBtn");
   if ($("testRunnerStopBtn")) $("testRunnerStopBtn").textContent = text("testRunnerStopBtn");
@@ -879,6 +857,7 @@ function applyLanguage() {
   if ($("startFirmwareWebUpdate")) $("startFirmwareWebUpdate").textContent = text("firmwareUpdateStartBtn");
   if ($("cancelFirmwareUpdate")) $("cancelFirmwareUpdate").textContent = text("firmwareUpdateCloseBtn");
   applyButtonTooltips();
+  if (typeof applyAppActionIcons === "function") applyAppActionIcons();
   updateDeviceConnectionState($("deviceConnectionState").dataset.state || "offline");
   renderGuide();
   renderTestRunnerSuiteInfo($("testRunnerSuite")?.value || "");
@@ -989,7 +968,7 @@ function applyButtonTooltips() {
   };
   Object.entries(mappings).forEach(([id, key]) => {
     const node = $(id);
-    if (node) node.title = buttonTooltip(key);
+    if (node) { node.title = buttonTooltip(key); node.setAttribute("aria-label", node.title); }
   });
 }
 
@@ -2464,6 +2443,7 @@ function managementDeviceUrl() {
 }
 
 async function loadInventory(kind, options = {}) {
+  if (document.getElementById("explorer")) return loadExplorer();
   const includeDevice = options.includeDevice !== false;
   setSpinner(`${kind}Spinner`, true);
   setInlineStatus(`${kind}InlineStatus`, currentLang === "de" ? "Lade Inventar. Bitte warten ..." : "Loading inventory. Please wait ...");
@@ -3173,6 +3153,16 @@ function setProgressState(panelId, barId, textId, value = 0, visible = false, fi
 
 let displayedActiveProcess = {};
 
+function recordExplorerDeviceResponse() {
+  const wasOnline = deviceIsOnline();
+  lastDeviceStatus = { ...lastDeviceStatus, state: "online", transport: "http" };
+  if (!wasOnline) {
+    lastDeviceStatus.active_process = {state: "unknown"};
+    updateActiveProcessState(lastDeviceStatus);
+  }
+  updateDeviceConnectionState("online");
+}
+
 function updateDeviceConnectionState(state) {
   const node = $("deviceConnectionState");
   const button = $("checkDevice");
@@ -3194,8 +3184,9 @@ function renderDeviceStatusBadge() {
   node.title = node.dataset.versionTooltip || "";
   if (normalized === "online") {
     let detail;
-    if (process.state === "idle") {
-      detail = currentLang === "de" ? "Kein Prozess aktiv" : "No active process";
+    if (process.runtime_power === false || process.state === "idle") {
+      node.textContent = text("checkDeviceOnline");
+      return;
     } else if (process.state === "active") {
       node.classList.add("process-active");
       const label = process.mode === "fermenter" ? text("activeProcessFermenter") : text("activeProcessMash");
@@ -3532,7 +3523,7 @@ async function refreshAfterFirmwareUpdate() {
     console.error(err);
   }
   try {
-    await Promise.all(Object.keys(MANAGEMENT_KINDS).map(kind => loadInventory(kind)));
+    if (document.querySelector('[data-panel="management"].active')) await loadExplorer();
   } catch (err) {
     console.error(err);
   }
@@ -4308,7 +4299,7 @@ async function copySerialLog() {
       document.body.appendChild(textarea);
       textarea.focus();
       textarea.select();
-      document.execCommand("copy");
+      if (!document.execCommand("copy")) { textarea.remove(); throw new Error(currentLang === "de" ? "Kopieren fehlgeschlagen." : "Copy failed."); }
       document.body.removeChild(textarea);
     }
     appendLocalSerialLine(currentLang === "de" ? "Log in Zwischenablage kopiert" : "Log copied to clipboard");
@@ -4332,7 +4323,7 @@ async function copyPlainTextToClipboard(content) {
   document.body.appendChild(textarea);
   textarea.focus();
   textarea.select();
-  document.execCommand("copy");
+  if (!document.execCommand("copy")) { textarea.remove(); throw new Error(currentLang === "de" ? "Kopieren fehlgeschlagen." : "Copy failed."); }
   document.body.removeChild(textarea);
 }
 
@@ -4737,6 +4728,7 @@ function placeFirmwareSelection(name) {
 }
 
 function activateTab(name) {
+  if (name !== "management" && typeof explorerCanLeave === "function" && !explorerCanLeave()) return;
   if (typeof workspaceTabActivated === "function") workspaceTabActivated(name);
   placeFirmwareSelection(name);
   if (name === "testrunner" && hideTestRunnerViaQuery()) {
@@ -4756,7 +4748,7 @@ function activateTab(name) {
     const select = $("wifiNetworks");
     const isScanning = spinner && !spinner.classList.contains("hidden-spinner");
     const hasNetworks = !!(select && select.options && select.options.length && select.options[0].value);
-    const canProbe = deviceIsOnline() || serialDeviceAvailable();
+    const canProbe = !!$("deviceUrl").value.trim() || deviceIsOnline() || serialDeviceAvailable();
     if (!isScanning && !hasNetworks && canProbe) {
       writeStartupTrace("activateTab firmware requests device check");
       pendingFirmwareTabWifiRefresh = true;
@@ -4768,7 +4760,7 @@ function activateTab(name) {
     }
   }
   if (name === "management") {
-    loadInventory(currentManagementKind()).catch(console.error);
+    loadExplorer().catch(console.error);
   }
   if (name === "backup") {
     loadBackups().catch(console.error);
@@ -4788,6 +4780,7 @@ function activateTab(name) {
 }
 
 function attachEvents() {
+  initExplorer();
   $("language").value = currentLang;
   $("language").addEventListener("change", async () => {
     currentLang = $("language").value;
@@ -4980,21 +4973,7 @@ function attachEvents() {
     const checkbox = $(id);
     if (checkbox) checkbox.addEventListener("change", updateTelegrafTabIndicators);
   });
-  Object.keys(MANAGEMENT_KINDS).forEach(kind => {
-    $(`${kind}RefreshDevice`).addEventListener("click", () => loadInventory(kind));
-    $(`${kind}RefreshLocal`).addEventListener("click", () => loadInventory(kind));
-    $(`${kind}CopyToLocal`).addEventListener("click", () => inventoryActionExplorer(kind, "device-to-local", "device"));
-    $(`${kind}CopyToDevice`).addEventListener("click", () => inventoryActionExplorer(kind, "local-to-device", "local"));
-    $(`${kind}InfoDevice`).addEventListener("click", () => inventoryInfoAction(kind, "device"));
-    $(`${kind}InfoLocal`).addEventListener("click", () => inventoryInfoAction(kind, "local"));
-    $(`${kind}DeleteDevice`).addEventListener("click", () => inventoryActionExplorer(kind, "device-delete", "device"));
-    $(`${kind}DeleteLocal`).addEventListener("click", () => inventoryActionExplorer(kind, "local-delete", "local"));
-    $(`${kind}RenameDevice`).addEventListener("click", () => inventoryActionExplorer(kind, "device-rename", "device"));
-    $(`${kind}RenameLocal`).addEventListener("click", () => inventoryActionExplorer(kind, "local-rename", "local"));
-    $(`${kind}LocalUp`)?.addEventListener("click", () => navigateLocalInventory(kind, parentLocalInventoryPath(managementCurrentDir(kind))));
-    $(`${kind}LocalNewFolder`)?.addEventListener("click", () => inventoryActionExplorer(kind, "local-create-dir", "local"));
-    $(`${kind}LocalNewFile`)?.addEventListener("click", () => inventoryActionExplorer(kind, "local-create-file", "local"));
-  });
+
 }
 
 async function init() {

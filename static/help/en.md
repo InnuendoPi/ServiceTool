@@ -157,13 +157,29 @@ contain the corresponding files.
 
 ## Data
 
-### Transfer files
+### Explorer
 
-1. Open **Data → Files** and select mash plans, fermenter plans, profiles or
-   configuration.
-2. Identify the device and local-inventory sides.
-3. Select a file and the required copy action. Review any overwrite prompt.
-4. Read the result. Rename and delete actions apply to the selected entry.
+Open **Data → Explorer**. Select the active device or local inventory on the
+left. Shortcuts lead to plans, profiles, configuration and logs. **All files**
+shows the selected storage location. The path bar shows the current folder;
+an active filter is displayed alongside it.
+
+Click a file for its text preview; double-click a folder to open it. The **Preview** side-pane
+button toggles the preview. Hover or focus a command button for its tooltip.
+
+- **Copy contents** copies text to the clipboard.
+- **Download file** saves it to your PC. **Upload file** opens the PC file picker.
+- **Save to local inventory** or **Transfer to device** asks for the destination
+  path and confirmation before replacing an existing file.
+- **Edit file** enables supported text files. Saving validates JSON and rejects
+  files changed since loading. Application by firmware depends on the file type.
+- **Rename** and **Delete** affect the selected storage location. Only empty
+  folders can be deleted.
+
+The **Logs** shortcut shows `webUpdateLog.txt` and `autotune_log.txt`.
+Binary files and files larger than 4 MiB can be downloaded, but not edited.
+Select the inventory directory under **Menu → Settings → Local inventory**.
+Without a saved selection, the application directory is used.
 
 ### Back up and restore configuration
 

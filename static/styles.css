@@ -1192,3 +1192,78 @@ button:disabled:hover {
 #maintenanceStatus { flex-basis: 100%; }
 
 .maintenance-actions > button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.75rem; padding: 0.56rem 0.92rem; line-height: 1.25rem; }
+
+/* Shared explorer: storage navigation, one list, optional text preview. */
+.explorer { padding: 0; overflow: visible; }
+.explorer-commandbar { display: flex; align-items: center; gap: .6rem; padding: .6rem; border-bottom: 1px solid var(--border, #dbe3ef); }
+.explorer-buttons { display: flex; align-items: center; gap: .25rem; flex-wrap: wrap; }
+.explorer-icon:has(.explorer-command-label) { display: inline-flex; align-items: center; gap: .45rem; }
+.explorer [data-ex-action="transfer"] { color: #245bea; border-color: #245bea; }
+.explorer [data-ex-action="transfer"]:disabled { opacity: .5; }
+.icon-preview-pane { display: inline-block; position: relative; width: 18px; height: 15px; border: 1.5px solid currentColor; border-radius: 3px; vertical-align: middle; }
+.icon-preview-pane::before { content: ""; position: absolute; right: 4px; top: 0; bottom: 0; border-left: 1.5px solid #2874de; }
+#settingsInventoryPath { flex: 1; min-width: 0; }
+.explorer-commandbar { flex-wrap: wrap; }
+#explorerViewCommands { margin-left: auto; }
+.explorer-layout { display: grid; grid-template-columns: 175px minmax(250px, 1fr) minmax(280px, .85fr); min-height: 440px; }
+.explorer.without-preview .explorer-layout { grid-template-columns: 175px minmax(0, 1fr); }
+#explorerSidebar { padding: .65rem; border-right: 1px solid var(--border, #dbe3ef); }
+#explorerSidebar h3 { font-size: .85rem; margin: .65rem 0 .3rem; overflow-wrap: anywhere; }
+#explorerSidebar button { display: block; width: 100%; text-align: left; border: none; margin: .15rem 0; }
+#explorerSidebar button[aria-current] { background: #e8efff; color: #245bea; }
+.explorer-filepane { display: flex; flex-direction: column; padding: .5rem; min-width: 0; min-height: 0; overflow: auto; }
+.explorer-filepane .file-table-shell { height: 100%; max-height: none; flex: 1; }
+.explorer-layout { height: auto; }
+.explorer-preview { display: flex; flex-direction: column; min-height: 0; }
+.explorer #explorerContent { flex: 1; height: auto; min-height: 120px; }
+.explorer .file-table td { padding: .3rem .45rem; }
+.explorer .file-table th button { padding: 0; border: none; text-align: left; }
+.explorer .file-table .selected { background: #e8efff; }
+.explorer-filename { display: flex; align-items: center; gap: .4rem; border: none !important; text-align: left; overflow-wrap: anywhere; }
+.explorer-preview { min-width: 0; padding: .75rem; border-left: 1px solid var(--border, #dbe3ef); }
+.explorer-preview[hidden] { display: none; }
+.explorer-preview h2 { font-size: .95rem; }
+#explorerContent { width: 100%; min-height: 330px; height: 48vh; resize: vertical; font: 12px/1.5 monospace; white-space: pre; overflow: auto; }
+#explorerContent:not([readonly]) { border-color: #2864ed; background: #fffef2; }
+#explorerStatus { padding: .4rem .75rem; margin: 0; overflow-wrap: anywhere; }
+.explorer-icon { position: relative; min-width: 30px; }
+.explorer-icon[hidden] { display: none; }
+#explorerSidebar button { overflow-wrap: anywhere; }
+.explorer-tooltip { display: none; pointer-events: none; position: absolute; z-index: 50; top: calc(100% + 5px); left: 0; white-space: nowrap; padding: .4rem .6rem; background: #253248; color: white; border-radius: 4px; font: 12px/1.4 sans-serif; }
+.explorer-icon:hover:not(:disabled) .explorer-tooltip, .explorer-icon:focus-visible .explorer-tooltip { display: block; }
+#explorerEditCommands .explorer-tooltip, #explorerViewCommands .explorer-tooltip { left: auto; right: 0; }
+@media (max-width: 1050px) {
+  .explorer-layout { grid-template-columns: 150px minmax(0, 1fr); height: auto; }
+  .explorer-filepane .file-table-shell { height: 60vh; flex: auto; }
+  .explorer-preview { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--border, #dbe3ef); }
+  #explorerContent { height: 260px; min-height: 200px; }
+}
+@media (max-width: 560px) {
+  .explorer-layout, .explorer.without-preview .explorer-layout { grid-template-columns: minmax(0, 1fr); }
+  #explorerSidebar { display: flex; gap: .2rem; flex-wrap: wrap; border-right: none; }
+  #explorerSidebar h3 { width: 100%; }
+  #explorerSidebar button { width: auto; }
+}
+
+.app-icon-button { position: relative; }
+.app-icon-button:focus-visible::after {
+  content: attr(data-icon-tip); position: absolute; top: calc(100% + 5px); left: 0;
+  z-index: 50; white-space: nowrap; background: #253248; color: white;
+  padding: .4rem .6rem; border-radius: 4px; font: 12px/1.4 sans-serif;
+}
+
+#explorerSidebar .explorer-quick-heading { display: flex; align-items: center; justify-content: space-between; gap: .4rem; }
+#explorerSidebar .explorer-quick-add { width: auto; margin: 0; font-size: 20px; padding: 0 .4rem; }
+.explorer-quick-row { display: flex; align-items: center; position: relative; width: 100%; min-width: 0; }
+#explorerSidebar .explorer-quick-link { display: flex; align-items: center; gap: .4rem; flex: 1; min-width: 0; }
+.explorer-quick-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#explorerSidebar .explorer-quick-more { width: auto; flex: 0 0 auto; opacity: 0; padding: .15rem .35rem; }
+.explorer-quick-row:hover .explorer-quick-more, .explorer-quick-row:focus-within .explorer-quick-more { opacity: 1 !important; }
+.explorer-quick-menu { position: absolute; bottom: 100%; left: 0; right: 0; z-index: 60; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; box-shadow: 0 3px 10px #0002; }
+.explorer-quick-menu[hidden] { display: none; }
+@media (hover: none) { #explorerSidebar .explorer-quick-more { opacity: 1; } }
+
+.explorer .file-table td:first-child:has(.explorer-version-toggle) { display: flex; align-items: center; gap: .25rem; }
+.explorer-version-toggle { min-width: 28px; padding: .15rem .35rem; }
+.explorer-version-row .explorer-filename { padding-left: 2.5rem; }
+.explorer-version-label { font-weight: 600; white-space: nowrap; margin-right: .75rem; }

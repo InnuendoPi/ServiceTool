@@ -6,7 +6,7 @@ let profileChangePending = false;
 const workspaceGroups = {
   device: [["connection", "Gerät", "Device", "firmware"]],
   firmware: [["install", "Firmware", "Firmware", "firmware"]],
-  data: [["management", "Dateien", "Files", "management"], ["backup", "Sichern & Wiederherstellen", "Backup & restore", "backup"]],
+  data: [["management", "Explorer", "Explorer", "management"], ["backup", "Sichern & Wiederherstellen", "Backup & restore", "backup"]],
   service: [["logging", "Serial Monitor", "Serial monitor", "logging"], ["telegraf", "Telegraf", "Telegraf", "telegraf"], ["maintenance", "Wartung", "Maintenance", "firmware"], ["migration", "Migration", "Migration", "migration"], ["testrunner", "Test Runner", "Test runner", "testrunner"]]
 };
 function workspaceText(de, en) { return currentLang === "de" ? de : en; }
@@ -15,7 +15,9 @@ function workspaceProfiles() {
 }
 function deviceProfileName(index, count, profile = {}) { return profile.name?.trim() || (count === 1 ? "Brautomat" : index === 0 ? "Master" : `worker${index}`); }
 function refreshWorkspaceProfiles() {
+  if (typeof syncExplorerContext === "function") syncExplorerContext();
   if (!workspaceReady) return;
+  document.getElementById("settingsInventoryPath").value = appConfig.inventory_root || "";
   const profiles = workspaceProfiles();
   const active = appConfig.active_device_id || profiles[0].id;
   const select = document.getElementById("activeDeviceSelect");
@@ -37,12 +39,17 @@ function translateWorkspace() {
     addDeviceProfile:["Gerät hinzufügen", "Add device"], workspaceConnectionTitle:["Gerät & Verbindung", "Device & connection"],
     workspaceSettingsTitle:["Einstellungen", "Settings"], workspaceMaintenanceTitle:["Wartung", "Maintenance"],
     workspaceDevicesTitle:["Geräte", "Devices"],
+    settingsInventoryLabel:["Lokales Inventar", "Local inventory"],
+    settingsInventoryHint:["Standard: Programmverzeichnis. Eine gespeicherte Auswahl bleibt erhalten.", "Default: application directory. A saved selection is retained."],
     workspaceSettingsButton:["Einstellungen", "Settings"], profilePortLabel:["COM-Port", "Serial port"],
     profileNameLabel:["Profilname (optional)", "Profile name (optional)"],
     profileUrlLabel:["Geräte-URL", "Device URL"], profileSave:["Speichern", "Save"], profileCancel:["Abbrechen", "Cancel"],
     profileRemove:["Gerät entfernen", "Remove device"], profileHelp:["COM-Port und URL sind Pflicht. Die URL muss noch nicht erreichbar sein.", "Serial port and URL are required. The URL does not have to be reachable yet."]
   };
   for (const [id, pair] of Object.entries(labels)) document.getElementById(id).textContent = workspaceText(...pair);
+  const inventoryPick = document.getElementById("settingsInventoryPick");
+  inventoryPick.title = workspaceText("Inventarverzeichnis auswählen", "Choose inventory directory");
+  inventoryPick.setAttribute("aria-label", inventoryPick.title);
   const menuToggle = document.getElementById("workspaceMenuToggle");
   menuToggle.setAttribute("aria-label", workspaceText("Menü", "Menu"));
   menuToggle.title = workspaceText("Menü", "Menu");
@@ -100,6 +107,7 @@ function renderWorkspaceNavigation() {
   document.body.dataset.workspaceView = workspaceView;
 }
 function selectWorkspaceView(view) {
+  if (view !== "management" && typeof explorerCanLeave === "function" && !explorerCanLeave()) return;
   workspaceView = view;
   const row = Object.values(workspaceGroups).flat().find(item => item[0] === view);
   activateTab(row ? row[3] : "settings");
@@ -112,6 +120,7 @@ function workspaceTabActivated(tab) {
 }
 async function submitDeviceProfile(payload) {
   if (profileChangePending) return;
+  if (typeof explorerCanLeave === "function" && !explorerCanLeave()) throw new Error(workspaceText("Gerätewechsel abgebrochen.", "Device change cancelled."));
   // Wait for current startup detection instead of changing connection fields mid-request.
   if (checkDeviceInFlight || appStartupPendingTasks > 0 || maintenanceBusy || maintenanceStatusPending || !document.getElementById("wifiSpinner").classList.contains("hidden-spinner")) throw new Error(workspaceText("Bitte die laufende Geräteprüfung abwarten.", "Please wait for the current device check."));
   profileChangePending = true;
@@ -181,6 +190,24 @@ function initializeWorkspace() {
   const deviceActions = document.createElement("div"); deviceActions.className = "actions";
   for (const id of ["editDeviceProfile", "addDeviceProfile"]) deviceActions.appendChild(document.getElementById(id));
   devices.append(devicesHeading, selectedDevice, deviceActions); settingsCard.appendChild(devices);
+  const inventory = document.createElement("section"); inventory.className="workspace-settings-devices";
+  const inventoryLabel=document.createElement("label");inventoryLabel.id="settingsInventoryLabel";inventoryLabel.htmlFor="settingsInventoryPath";
+  const inventoryActions=document.createElement("div");inventoryActions.className="input-action";
+  const inventoryPath=document.createElement("input");inventoryPath.id="settingsInventoryPath";inventoryPath.readOnly=true;
+  const inventoryPick=document.createElement("button");inventoryPick.id="settingsInventoryPick";inventoryPick.type="button";inventoryPick.className="ghost";
+  const inventoryIcon=document.createElement("i");inventoryIcon.className="icon-folder-open button-icon";inventoryIcon.setAttribute("aria-hidden","true");inventoryPick.appendChild(inventoryIcon);
+  const inventoryHint=document.createElement("p");inventoryHint.id="settingsInventoryHint";inventoryHint.className="hint";
+  const inventoryStatus=document.createElement("p");inventoryStatus.id="settingsInventoryStatus";inventoryStatus.setAttribute("role","status");
+  inventoryPick.addEventListener("click",async()=>{
+    if(typeof explorerCanLeave === "function" && !explorerCanLeave())return;
+    inventoryPick.disabled=true;inventoryStatus.textContent="";
+    try {
+      const result=await api("/api/inventory/root/pick",{method:"POST",body:{}});
+      if(result.selected)await saveConfig({inventory_root:result.selected});
+    } catch(error){inventoryStatus.textContent=String(error);}
+    finally{inventoryPick.disabled=false;}
+  });
+  inventoryActions.append(inventoryPath,inventoryPick);inventory.append(inventoryLabel,inventoryActions,inventoryHint,inventoryStatus);settingsCard.appendChild(inventory);
   settings.appendChild(settingsCard); document.querySelector("main.layout").appendChild(settings);
   const settingsButton = document.createElement("button"); settingsButton.type = "button"; settingsButton.id = "workspaceSettingsButton"; settingsButton.className = "ghost";
   settingsButton.addEventListener("click", () => selectWorkspaceView("settings"));

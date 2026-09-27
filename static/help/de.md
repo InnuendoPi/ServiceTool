@@ -179,15 +179,32 @@ enthalten.
 
 ## Daten
 
-### Dateien übertragen
+### Explorer
 
-1. Öffne **Daten → Dateien** und wähle Maischepläne, Fermenterpläne, Profile
-   oder Konfiguration.
-2. Prüfe, welche Seite das Gerät und welche das lokale Inventar zeigt.
-3. Wähle die Datei und die gewünschte Kopieraktion. Beachte mögliche Rückfragen
-   beim Überschreiben.
-4. Kontrolliere die Statusmeldung. Umbenennen und Löschen wirken auf die
-   jeweilige Auswahl.
+Öffne **Daten → Explorer**. Links wählst du das aktive Gerät oder das lokale
+Inventar. Schnellzugriffe führen zu Plänen, Profilen, Konfiguration und Logs.
+**Alle Dateien** zeigt das Dateisystem des gewählten Speicherorts. Der Pfad oben
+zeigt deinen aktuellen Ordner; ein aktiver Filter wird daneben angezeigt.
+
+Ein Klick wählt eine Datei und zeigt rechts die Textvorschau. Ein Doppelklick
+öffnet einen Ordner. Die Vorschau lässt sich über das Seitenbereich-Symbol **Vorschau** ein- und ausblenden.
+Die Symbole erklären ihre Funktion per Tooltip, auch bei Tastaturfokus.
+
+- **Inhalt kopieren** kopiert den Text in die Zwischenablage.
+- **Herunterladen** speichert die Datei auf dem PC; **Hochladen** öffnet die
+  Dateiauswahl des PCs.
+- **Im lokalen Inventar speichern** beziehungsweise **Auf Gerät übertragen**
+  fragt nach dem Zielpfad und bestätigt das Ersetzen vorhandener Dateien.
+- **Bearbeiten** schaltet unterstützte Textdateien frei. Speichern prüft JSON
+  und verhindert das Überschreiben einer seit dem Laden geänderten Datei.
+  Wann die Firmware eine Datei übernimmt, hängt vom Dateityp ab.
+- **Umbenennen** und **Löschen** betreffen die ausgewählte Datei am angezeigten
+  Speicherort. Ordner können nur gelöscht werden, wenn sie leer sind.
+
+Unter **Logs** findest du `webUpdateLog.txt` und `autotune_log.txt`.
+Binärdateien und Dateien über 4 MiB kannst du herunterladen, aber nicht im
+Explorer bearbeiten. Unter **Menü → Einstellungen → Lokales Inventar** wählst du
+das Inventarverzeichnis. Ohne gespeicherte Auswahl gilt das Programmverzeichnis.
 
 ### Konfiguration sichern und wiederherstellen
 

@@ -3,8 +3,28 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 require('./help_regressions.js');
 require('./runner_results_regressions.js');
+require('./explorer_regressions.js');
 const source = fs.readFileSync('static/app.js', 'utf8');
 const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
+
+// HTTP startup detection must not depend on an already-online badge or a COM port.
+{
+  let url='http://brautomat.local',serial=false,scanning=false;
+  const checks=[];
+  const ctx=vm.createContext({
+    $:id=>id==='deviceUrl' ? {value:url} : id==='wifiSpinner' ? {classList:{contains:()=>!scanning}} : {options:[]},
+    document:{querySelectorAll:()=>[]},placeFirmwareSelection(){},refreshMaintenance(){},writeStartupTrace(){},
+    deviceIsOnline:()=>false,serialDeviceAvailable:()=>serial,
+    checkDevice:options=>{checks.push(options);return Promise.resolve();},console
+  });
+  vm.runInContext(source.slice(source.indexOf('function activateTab('),source.indexOf('function attachEvents(')),ctx);
+  vm.runInContext('activateTab("firmware")',ctx);
+  assert.equal(checks.length,1);assert.equal(checks[0].preferSerial,false);assert.equal(checks[0].refreshPorts,false);
+  url='';vm.runInContext('activateTab("firmware")',ctx);assert.equal(checks.length,1);
+  serial=true;vm.runInContext('activateTab("firmware")',ctx);assert.equal(checks.length,2);
+  scanning=true;vm.runInContext('activateTab("firmware")',ctx);assert.equal(checks.length,2);
+  console.log('Startup detection: configured URL triggers HTTP check without selected COM port');
+}
 
 // Firmware 1.66.x remains on the legacy layout, including later patch releases.
 {
@@ -72,12 +92,16 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
   assert.equal(badge.textContent,'Online · Prozessstatus unbekannt');
   assert.ok(classes.has('process-unknown'));
   vm.runInContext('updateActiveProcessState({active_process:{state:"idle"}})',ctx);
-  assert.equal(badge.textContent,'Online · Kein Prozess aktiv');
+  assert.equal(badge.textContent,'Online');
   assert.ok(!classes.has('process-unknown'));
   vm.runInContext('updateActiveProcessState({active_process:{state:"active",mode:"mash",step:"Rast",name:"Sud",remaining_sec:120}})',ctx);
   assert.equal(badge.textContent,'Online · Maischen: Rast');
   assert.equal(badge.title,'1.67.2 · Sud · ~2 min');
   assert.ok(classes.has('process-active'));
+  vm.runInContext('updateActiveProcessState({active_process:{state:"active",runtime_power:false,persisted:true,mode:"mash",step:"Ruehrwerk:ON"}})',ctx);
+  assert.equal(badge.textContent,'Online');assert.ok(!classes.has('process-active'));assert.ok(!classes.has('process-unknown'));
+  assert.equal(badge.title,'1.67.2');
+
   vm.runInContext('updateDeviceConnectionState("serial")',ctx);
   assert.equal(badge.textContent,'Seriell verbunden');
   assert.ok(!classes.has('process-active'));
