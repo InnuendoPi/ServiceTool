@@ -1,7 +1,7 @@
 # Maintaining the local help
 
 `de.md` and `en.md` are bundled with the static frontend and need no external
-service. Each file has one level-one document title and eight level-two
+service. Each file has one level-one document title and nine level-two
 chapter headings in the order listed in
 `guideChapterIds` in `../help.js`. Keep both languages in sync.
 
@@ -26,3 +26,9 @@ is escaped. External links and embedded scripts are not rendered.
 
 Verify instructions against the corresponding UI and device workflow before
 editing. Do not turn intended behavior into a claim of hardware verification.
+
+Screenshots use a standalone `![Caption](img/name.png)` line, with blank lines
+before and after it. Only local PNG, JPG and WebP files with simple filenames
+below `static/help/img/` are rendered. Clicking opens the image at full size.
+Use example data and matching DE/EN screenshots. The planner screenshots show
+the repository UI rendered offline; they do not document a live device session.

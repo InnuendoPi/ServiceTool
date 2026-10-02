@@ -30,6 +30,19 @@ class DeviceProfilesTests(unittest.TestCase):
         self.assertEqual(selected["telegraf"], original["telegraf"])
         self.assertEqual(len(app.load_app_config()["device_profiles"]), 2)
 
+    def test_edit_and_remove_inactive_profile_keep_active_connection(self):
+        added = app.change_device_profile({"action": "add", "name": "Worker", "port": "COM5", "url": "http://worker"})
+        worker = added["active_device_id"]
+        app.change_device_profile({"action": "select", "id": "primary"})
+        edited = app.change_device_profile({"action": "update", "id": worker,
+            "name": "Test device", "port": "COM9", "url": "http://test"})
+        self.assertEqual(edited["active_device_id"], "primary")
+        self.assertEqual((edited["serial_port"], edited["device_url"]), ("COM4", "http://existing.local"))
+        self.assertEqual(edited["device_profiles"][1]["port"], "COM9")
+        removed = app.change_device_profile({"action": "remove", "id": worker})
+        self.assertEqual(removed["active_device_id"], "primary")
+        self.assertEqual(removed["serial_port"], "COM4")
+
     def test_empty_and_invalid_connections_do_not_change_config(self):
         before = self.path.read_bytes()
         for port, url in (("", "http://worker"), ("COM5", ""), ("COM5", "file:///bad")):
@@ -54,11 +67,12 @@ class DeviceProfilesTests(unittest.TestCase):
         self.assertEqual(saved["device_profiles"][-1]["name"], "Standalone")
         self.assertEqual(app.load_app_config()["device_profiles"], saved["device_profiles"])
 
-    def test_four_device_limit_and_remove_returns_single_device(self):
-        for index in range(1, 4):
+    def test_twenty_profile_limit_and_remove_returns_single_device(self):
+        for index in range(1, 20):
             app.change_device_profile({"action": "add", "port": f"COM{4+index}", "url": f"http://worker{index}"})
-        with self.assertRaises(ValueError):
-            app.change_device_profile({"action": "add", "port": "COM9", "url": "http://worker4"})
+        self.assertEqual(len(app.load_app_config()["device_profiles"]), 20)
+        with self.assertRaisesRegex(ValueError, "20 Geräteprofile"):
+            app.change_device_profile({"action": "add", "port": "COM24", "url": "http://worker20"})
         for profile in app.load_app_config()["device_profiles"][1:]:
             app.change_device_profile({"action": "remove", "id": profile["id"]})
         config = app.load_app_config()

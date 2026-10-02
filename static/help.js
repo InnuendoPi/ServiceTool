@@ -1,5 +1,5 @@
 // Local help book. No external libraries, services or device requests.
-const guideChapterIds = ['start', 'devices', 'firmware', 'data', 'service', 'migration', 'settings', 'troubleshooting'];
+const guideChapterIds = ['start', 'devices', 'firmware', 'designer', 'data', 'service', 'migration', 'settings', 'troubleshooting'];
 const guideBooks = new Map();
 let guideChapter = 'start';
 let guideLoadEpoch = 0;
@@ -27,14 +27,21 @@ function guideMarkdown(markdown) {
   const lines = [];
   for (const raw of markdown.split(/\r?\n/)) {
     const previous = lines.at(-1) || '';
-    const block = /^(?:#{1,6} |:::|- |\d+\. )/;
-    if (raw.trim() && !block.test(raw.trim()) && previous && !/^(?:#{1,6} |:::)/.test(previous)) {
+    const block = /^(?:#{1,6} |:::|!\[|- |\d+\. )/;
+    if (raw.trim() && !block.test(raw.trim()) && previous && !/^(?:#{1,6} |:::|!\[)/.test(previous)) {
       lines[lines.length - 1] += ` ${raw.trim()}`;
     } else lines.push(raw.trim());
   }
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) { closeList(); continue; }
+    const picture = line.match(/^!\[([^\]]*)\]\(img\/([a-zA-Z0-9_-]+\.(?:png|jpg|webp))\)$/);
+    if (picture) {
+      closeList();
+      const caption = guideEscape(picture[1]);
+      out.push(`<figure class="guide-screenshot"><a href="/help/img/${picture[2]}" target="_blank" rel="noopener" aria-label="${caption}"><img src="/help/img/${picture[2]}" alt="${caption}" loading="lazy"></a><figcaption>${caption}</figcaption></figure>`);
+      continue;
+    }
     const item = line.match(/^(?:([-])|\d+\.)\s+(.+)$/);
     if (item) {
       const type = item[1] ? 'ul' : 'ol';
@@ -125,7 +132,7 @@ async function loadGuideBook() {
 }
 
 function openGuideBook() {
-  const context = {connection:'devices', install:'firmware', management:'data', backup:'data', logging:'service', telegraf:'service', maintenance:'service', migration:'migration', testrunner:'service', settings:'settings'};
+  const context = {connection:'devices', install:'firmware', designer:'designer', management:'data', backup:'data', logging:'service', telegraf:'service', maintenance:'service', migration:'migration', testrunner:'service', settings:'settings'};
   guideChapter = context[typeof workspaceView === 'string' ? workspaceView : ''] || 'start';
   guideReturnFocus = document.getElementById('workspaceMenuToggle') || document.activeElement;
   const modal = document.getElementById('guideModal');

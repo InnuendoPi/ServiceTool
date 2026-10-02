@@ -20,7 +20,8 @@ richtige Gerät aus. Alle Geräteaktionen beziehen sich auf diese Auswahl.
 - **Gerät:** Verbindung und WLAN einrichten.
 - **Firmware:** Firmware installieren, Webdateien aktualisieren und die
   Websprache ändern.
-- **Daten:** Dateien verwalten und Sicherungen bearbeiten.
+- **Daten:** Pläne im Rezept Planer bearbeiten, Dateien im Explorer verwalten
+  und Sicherungen bearbeiten.
 - **Service:** Serial Monitor, Telegraf, Wartung, Migration und gegebenenfalls
   Test Runner.
 - **Drei-Punkte-Menü:** Einstellungen, ServiceTool-Updates und diese Hilfe.
@@ -171,23 +172,346 @@ Die Sprache des ServiceTools selbst stellst du unter **Einstellungen** um.
 :::details Paketpfade und ältere Firmware
 
 Die Paketgeneration bestimmt die Verzeichnisse: bis einschließlich 1.66.x
-wird build verwendet, ab 1.67 Updates. ServiceApp-Pakete benötigen zusätzlich die passende
+wird build verwendet, ab 1.67 Updates. ServiceApp-Pakete benötigen zusätzlich
+die passende
 ServiceApp. Eine lokale Paketquelle muss die zusammengehörigen Dateien
 enthalten.
 
 :::
 
+## Rezept Planer
+
+Die Abbildungen zeigen einen Beispielplan. Klicke auf ein Bild, um es
+in voller Größe in einem neuen Tab zu öffnen.
+
+### Einen Plan bearbeiten
+
+Öffne **Daten → Rezept Planer**. Links stehen Quellen und Bausteine, in der Mitte
+liegt der ausführbare Plan. Rechts bearbeitest du den ausgewählten Schritt;
+darunter liegt das **Dock**. Die Symbolbuttons zeigen beim Darüberfahren
+ihre Funktion. Blau kennzeichnet Neu, Öffnen und Speichern; Grün die Übernahme
+ins Inventar. Eigenschaften, Prüfen und Vergleichen verwenden ebenfalls Blau.
+Deaktivierte Buttons sind hellgrau, Löschen ist rot.
+
+1. Lade einen Plan aus einer Quelle oder beginne mit **Neuer Plan**.
+2. Gib oben einen Namen ein. Die Zielgeneration **bis 1.66** oder **ab 1.70**
+   wird aus der eingelesenen Konfiguration vorbelegt. Ohne Konfiguration gilt
+   **ab 1.70**. Die Auswahl beeinflusst die Kompatibilitätshinweise der
+   Planprüfung, nicht das Exportformat oder das Uploadziel.
+3. Ziehe Bausteine, Aktoren oder Profile von links an die gewünschte Stelle.
+   Ein Klick fügt ihn wie **Einf** hinter dem markierten Schritt ein; ohne
+   Markierung am Ende. Bei einer Markierung im Dock wird dort eingefügt.
+4. Ziehe vorhandene Schritte an eine andere Position.
+5. Prüfe den Plan und speichere einen Entwurf, bevor du ihn überträgst.
+
+**Rückgängig** und **Wiederholen** betreffen Änderungen am geöffneten Entwurf.
+Sie machen weder Datei-Löschungen noch Übertragungen auf ein Gerät rückgängig.
+
+Die Rubriken im Schnellstart lassen sich über ihre Überschrift ein- und
+ausklappen, auch per Touch oder mit Enter/Leertaste. Der Zustand bleibt während
+der Sitzung beim Bearbeiten und beim Sprachwechsel erhalten.
+
+Mit **Einf** fügst du eine neue Rast hinter dem markierten Schritt ein;
+ohne Markierung am Ende. **Entf** löscht markierte Tabellenzeilen. In einem
+Eingabefeld bearbeitest du mit der Tastatur weiterhin dessen Inhalt.
+Dialoge schließt du über das **X oben rechts**. Bei ungespeicherten
+Planänderungen erscheint beim Planwechsel eine Rückfrage.
+
+![Rezept Planer: Übersicht](img/planner-overview-de.png)
+
+Schnellstart links, Plan in der Mitte, Eigenschaften und Dock rechts.
+
+### Einen Plan manuell erstellen
+
+Unter **Schritte** stehen **Rast**, **Kochen**, **Hopfengabe** und **Zutaten**.
+Eine Rast lässt sich in den Eigenschaften über **Vorlage** vorbelegen, etwa
+als Einmaischen, Maltoserast, Kombirast, Verzuckerung, Abmaischen oder
+Nachisomerisierung. Dafür gelten **0 °C und eine Dauer größer als 0 min**.
+Die Vorlage übernimmt die Nachisomerisierungsdauer aus den Maischeplan
+Eigenschaften; ist diese 0, wird 1 min vorbelegt. Bei anderen Rasten bleiben
+Name, Temperatur und Dauer frei bearbeitbar.
+
+Hopfengaben bieten die Vorlagen **Hopfengabe** (Standard),
+**Vorderwürzenhopfung** und **Whirlpoolhopfung**. Die Temperatur wird aus
+den jeweiligen Importvorgaben übernommen. Dauer und Position bleiben erhalten.
+
+Für Hopfengaben und Zutaten kannst du Name und Menge eingeben; bei Zutaten
+zusätzlich die Einheit. **Dauer min** bleibt die Dauer des jeweiligen
+Brautomat-Schritts. Die Schritte laufen in der Reihenfolge der Tabelle ab.
+Es gibt keine automatische Umsortierung oder Umrechnung auf einen Zeitpunkt
+vor Kochende.
+
+Mit **Shift + Klick** markierst du einen Bereich, mit **Strg + Klick**
+einzelne zusätzliche Schritte oder wählst sie wieder ab. Ziehe eine markierte
+Zeile, um die gesamte Auswahl innerhalb des Plans oder ins Dock zu verschieben.
+Die Reihenfolge bleibt erhalten. **Entf** oder der Löschbutton in den
+Eigenschaften löscht die Auswahl. **Rückgängig** nimmt die Gruppenaktion zurück.
+Die Auswahl gilt jeweils innerhalb der Plantabelle oder des Docks.
+
+### Quellen und Einstellungen
+
+- **Inventar:** Maischepläne im Ordner `Rezepte` und seinen
+  Unterordnern. `..` führt zurück, höchstens bis `Rezepte`. Ordnerverwaltung
+  erfolgt im Explorer. Andere JSON-Dateien werden hier ausgeblendet.
+  Die Spaltenköpfe sortieren die Liste; Pfeile zeigen die Sortierrichtung.
+- **Entwürfe:** lokal gespeicherte Arbeitsstände einschließlich Dock und
+  gespeicherter Gerätekonfiguration.
+- **Brewfather:** Rezepte oder Sude aus deinem Konto. Die Suche filtert die
+  bereits geladenen Einträge; **Weitere laden** ruft weitere Einträge ab.
+- **kleinerBrauhelfer2:** Rezepte aus der eingestellten SQLite-Datenbank, ausschließlich
+  lesend.
+- **Datei Import:** Öffnet direkt die Dateiauswahl. Unterstützt werden JSON-
+  Exporte von Brautomat, MaischeMalzundMehr, Brewfather, kleinerBrauhelfer2 und
+  ServiceTool-Entwürfe. Das Format wird automatisch erkannt. Andere JSON-Dateien
+  wie Konfigurationen sind keine Rezeptdateien.
+- **Pläne auf dem Gerät:** JSON-Pläne aus `/Rezepte` des aktiven Geräts.
+  Die Quelle ist nur bei verfügbarer Netzwerkverbindung sichtbar. Eine
+  gespeicherte Konfiguration allein ist keine Geräteverbindung.
+
+Unter **Einstellungen → Rezeptquellen** hinterlegst du Brewfather User ID und
+API Key sowie den Pfad zur KBH2-Datenbank. Der Schlüssel wird lokal gespeichert
+und anschließend maskiert angezeigt. Der Löschen-Button am Schlüsselfeld
+entfernt ihn. Der Speichern-Button steht oben bei Sprache und Debug-Ausgabe.
+
+Die **Importvorgaben** legen Koch-, Abmaisch-, Vorderwürze- und
+Whirlpooltemperatur fest. Diese Vorgaben
+wirken beim Import, nicht nachträglich auf bereits geöffnete Entwürfe.
+
+### Sude aus kleinerBrauhelfer2 auswählen
+
+Wähle über **Alle**, **Rezept**, **Gebraut** und **Abgefüllt** die gewünschten
+Stadien. **Merkliste** schränkt diese Auswahl auf in kbh2 vorgemerkte Sude ein;
+der Filter ist zunächst ausgeschaltet. **Sude suchen** filtert zusätzlich nach
+Sudname oder Sudnummer.
+
+Die Tabelle zeigt **Sud**, **Braudatum**, **Erstellt** und **Gespeichert**.
+**Gespeichert** ist das Datum der letzten Speicherung in kbh2. Ein Klick auf
+einen Spaltenkopf sortiert, der Pfeil zeigt die Richtung. Ein Klick auf den
+Sudnamen importiert den Sud. Die SQLite-Datenbank bleibt unverändert.
+
+### Eigenschaften und Aktoren
+
+Ein Klick auf eine Planzeile öffnet deren Eigenschaften: **Rast**, Temperatur,
+Dauer und **Automatisch fortsetzen**. Die grüne Diskette rechts oben neben
+**Eigenschaften** übernimmt die Eingabe, ohne einen Entwurf zu speichern.
+In der Spalte **autonext** bedeutet der
+grüne Pfeil automatisches Fortsetzen, das rote Dreieck einen manuellen
+Übergang. Temperatur wird in °C, Dauer in Minuten angegeben.
+
+Neue Aktorschritte werden mit **0 °C und 0 min** vorbelegt. Andere Werte
+bleiben bearbeitbar, können aber zusätzliche Temperatur- oder Warteabläufe
+auslösen. **Profilwechsel** sind dagegen fest auf **0 °C und 0 min** gesetzt.
+Abweichende Werte in einem geöffneten Plan werden mit einem Hinweis korrigiert;
+der Arbeitsstand gilt dann als geändert. **Automatisch fortsetzen** bestimmt
+weiterhin, ob der nächste Schritt ohne Benutzerfreigabe folgt.
+
+Bei erkannten Aktorschritten wählst du **ON** oder **OFF**. Für lokale
+PWM-Aktoren steht zusätzlich **PWM %** mit ganzzahliger Leistung von 0 bis 100
+zur Verfügung. Beispielsweise wird 37 % als `Ruehrwerk:37` gespeichert.
+Die Konfiguration bestimmt, welche Aktoren PWM unterstützen. Ohne vollständige
+Geräteinformationen müssen die Befehle gegen das Zielgerät geprüft werden.
+
+Über **Maischeplan Eigenschaften** in der Werkzeugleiste erreichst du Kochdauer und
+Nachisomerisierung. Diese Planangaben ersetzen keine Bearbeitung der einzelnen
+Schritte; ihre Änderung berechnet die Schrittfolge nicht automatisch neu.
+
+Die Planeigenschaften enthalten auch die untere und obere Temperaturgrenze
+des **Enzym-Limiters**. Temperaturen werden als ganze Gradwerte übernommen.
+Weicht die Summe der Kochschritte von der eingetragenen Kochdauer ab, zeigen
+die Eigenschaften und **Plan prüfen** einen Hinweis. Dieser verändert den
+Plan nicht. Bei Kochdauer **0** wird kein solcher Hinweis ausgegeben.
+
+Bei eingeschalteter **Debug-Ausgabe** zeigt der separate Abschnitt **Status**
+unter dem Planer die Importdaten der markierten Schritte. Mit dem roten
+Papierkorb leerst du nur diese Anzeige; die Importdaten im Plan bleiben
+erhalten. Das Kopieren-Symbol übernimmt den angezeigten Text in die
+Zwischenablage. Beim Wechsel der Auswahl aktualisiert sich die Anzeige.
+
+### Kessel, Profile und Befehlsnamen
+
+Einen allgemeinen Baustein „Sonderbefehl“ gibt es nicht. Ziehe den betreffenden
+Aktor, Kessel oder das Profil aus der linken Leiste in den Plan.
+
+Bei **Kesseln** wählst du Ausgangsleistung und ON/OFF beziehungsweise 0–100 %.
+Maische, Sud und HLT bieten zusätzlich **Leistung ab Übergang**. Der
+Schnellstart erzeugt `MAISCHETHRESOUT`, `SUDTHRESOUT` oder `HLTTHRESOUT`.
+Der Wert von 0 bis 100 % setzt die feste Kochleistung ab dem eingestellten
+Übergang zum Kochen, unabhängig von der allgemeinen Leistungsbegrenzung.
+Beispiel: Aufheizen mit 100 %, anschließend Kochen mit `MAISCHETHRESOUT:80`.
+Der Befehl verändert und speichert die Gerätekonfiguration.
+Dies setzt die Firmware-Erweiterung für den jeweiligen Kessel voraus.
+Bestehende Aliase wie `IDSTHRESOUT` und `<Kesselname>THRESOUT` werden erkannt
+und beim Ändern der Leistung beibehalten. Bei Auswahl der Funktion gilt
+Dauer 0 min und automatisches Fortsetzen; Dauer und Aktion sind ausgeblendet.
+Verfügbar sind
+nur aktivierte Maische-, Sud- und Nachgusskessel. Der Fermenter gehört nicht
+zu den auswählbaren Geräten eines Maischeplans.
+
+Profile fügst du ausschließlich über **Profile** im Schnellstart hinzu.
+Die Kesselfunktion bietet keinen Wechsel zu einem Profilbefehl.
+
+Bei **Profilen** wählst du Zielkessel und Profilname. Importierte Aliase wie
+`IDS`, `MLT`, `NACHGUSS`, deren Profilbefehle und konfigurierte Kesselnamen
+werden erkannt. Die Anzeige bleibt an den vorhandenen Ressourcen orientiert.
+
+Multidevice-Befehle berücksichtigen die gespeicherte Rollenzuordnung.
+Remote-Aktoren erlauben derzeit nur ON/OFF, kein PWM. Nicht zugeordnete
+Kessel und nicht unterstützte Remote-Kesselbefehle meldet **Plan prüfen**.
+Für Remote-Kessel mit explizitem ON/OFF- oder Leistungsbefehl sind derzeit
+nur die Rollen Sud und Nachguss mit Dauer 0 unterstützt.
+
+### Das Dock verwenden
+
+Das Dock ist eine dauerhafte Ablage für wiederverwendbare Schritte und
+Sequenzen. Es bleibt beim Wechsel des Maischeplans und nach einem Neustart
+erhalten. Änderungen werden automatisch lokal gespeichert.
+
+- Aus dem Plan ins Dock ziehen **verschiebt** die ausgewählten Schritte.
+- Aus dem Dock in den Plan ziehen **kopiert** sie. Die Vorlage bleibt erhalten.
+- Ein Klick markiert einen Dock-Schritt. **Entf** löscht die markierten
+  Schritte; mit Umschalt/Strg lässt sich eine Mehrfachauswahl bilden.
+- Das Papierkorb-Icon **Dock leeren** entfernt nach einer Rückfrage den gesamten
+  Inhalt. Löschen und Leeren lassen sich rückgängig machen.
+
+Ein gespeicherter Entwurf enthält zusätzlich eine Momentaufnahme des Docks.
+Beim Öffnen bleibt die aktuelle Ablage bestehen. Enthält der geladene Plan
+weitere Dock-Schritte, bietet der Hinweis **Dock aus Entwurf hinzufügen** deren
+Übernahme an. Bereits vorhandene identische Schritte werden berücksichtigt.
+Auch beim Import nicht zugeordnete Zugaben werden auf diesem Weg angeboten.
+Prüfe deren Temperatur, Dauer und Menge vor der Verwendung.
+
+Geräte- und Ressourcenbezüge bleiben beim Kopieren erhalten. **Plan prüfen**
+meldet fehlende Ressourcen im Zielplan. Das Dock wird nicht auf das Gerät
+übertragen; nur die Schritte in der Plantabelle werden ausgeführt.
+
+So übernimmst du beispielsweise eine Anfangssequenz aus Plan A in Plan B:
+
+1. Öffne Plan A und markiere die gewünschten Schritte.
+2. Ziehe sie ins Dock. Dadurch werden sie aus dem aktuellen Plan entfernt;
+   speichere diese Änderung nur, wenn du auch Plan A ändern möchtest.
+3. Öffne Plan B. Entscheide bei einer Rückfrage, ob du Plan A speichern willst.
+4. Ziehe die Dock-Schritte an die gewünschte Stelle in Plan B. Im Dock bleiben
+   sie für weitere Pläne verfügbar.
+
+### Entwürfe, Dock und Inventar
+
+Ein **Entwurf** ist ein Zwischenstand: Du planst, probierst Varianten aus und
+parkst Schritte im **Dock**. Nur die Schritte in der Plantabelle werden später
+auf dem Gerät ausgeführt. Dock, Konfiguration und Importdaten bleiben lokal.
+
+**Entwurf speichern** bietet bei vorhandenen Entwürfen:
+
+- **Version aktualisieren:** den geöffneten Zwischenstand überschreiben.
+- **Neue Version speichern:** einen weiteren Zwischenstand behalten.
+- **Als eigenständige Variante speichern:** einen unabhängigen Entwurf erzeugen.
+  Gib Varianten einen unterscheidbaren Plannamen.
+
+**Ins Inventar übernehmen** schließt den Entwurf ab. Im Dialog kannst du den
+Plannamen und Zielordner wählen oder einen Ordner anlegen. Bei gleichem Namen
+im selben Ordner wird standardmäßig eine neue
+Inventarversion angelegt; alternativ kannst du den aktuellen Stand ersetzen.
+Erst nach erfolgreicher Übernahme verschwinden der Entwurf und seine
+Zwischenversionen aus **Entwürfe**. Andere Varianten bleiben erhalten.
+
+Einzelne Dateien und Entwürfe werden direkt angezeigt. Nur bei mehreren
+Versionen gibt es eine aufklappbare Gruppe. Der Pfeil zeigt deren Stände,
+neueste zuerst. **Neueste** kennzeichnet den letzten Stand. Ein Klick auf den
+Namen öffnet den gewählten Stand; im Explorer erscheint die Dateivorschau.
+**Erstellt** und **Aktualisiert** zeigen die verfügbaren Zeitangaben. Wenn kein
+Erstellungsdatum bekannt ist, steht dort **—**.
+Öffnest du einen Inventarplan im Rezept Planer, entsteht ein neuer
+Arbeitsstand. Die Inventardatei bleibt bis zur erneuten Übernahme unverändert.
+Die Konfiguration wird wiederhergestellt; zusätzliche gespeicherte Dock-Schritte
+werden zur Übernahme angeboten.
+Auf das Gerät gelangt ausschließlich der ausführbare Plan.
+
+Der rote Papierkorb löscht den gewählten Stand. Bei einer Gruppenzeile
+bezieht er sich auf alle Versionen; die Rückfrage benennt diesen Umfang.
+Nach einer Rückfrage wird die Auswahl gelöscht. Verbleibende Versionen werden
+lückenlos neu nummeriert. Wird der aktuelle Inventarstand gelöscht, rückt die
+jüngste archivierte Version nach. Kennungen bleiben dabei stabil; ein geöffneter
+Entwurf wird nicht versehentlich einer anderen Version zugeordnet.
+Löschen lässt sich nicht mit **Rückgängig** widerrufen.
+
+Die Ordnerstruktur im Inventar ist frei wählbar: beispielsweise
+`Brautomat32/Rezepte` oder `Rezepte/Brautomat32`. Zusätzliche Geräteordner sind
+optional. Konfiguration, Profile und Fermenterpläne können entsprechend
+geordnet werden. Versionen werden innerhalb ihres Ordners zusammengefasst.
+Ein Maischeplan für Master und Worker bleibt ein gemeinsamer Plan beim Master.
+Beim Upload wird für Maischepläne `/Rezepte/Dateiname.json` vorausgewählt;
+lokale Geräteordner werden nicht auf das Gerät übertragen. Der Ordnername
+ändert nicht das ausgewählte Zielgerät.
+Entwürfe und ergänzende Rezept Planer-Daten liegen im Unterordner `designer` des
+ServiceTool-Datenverzeichnisses. Für eine spätere Bearbeitung mit Dock und
+Konfiguration müssen beide Bestände erhalten bleiben.
+
+### Zwei Pläne vergleichen
+
+Öffne **Maischeplan vergleichen** und wähle einen Entwurf. Über das Datei-Icon
+neben der Überschrift kannst du stattdessen eine Datei wählen. Links steht
+der aktuelle Plan, rechts der Vergleichsplan. Unterschiede werden zeilenweise
+hervorgehoben. Sonderbefehle, die nur auf einer Seite als nächster Schritt
+stehen, erhalten eine eigene Zeile ohne Vergleich. Stehen auf beiden Seiten
+Sonderbefehle, werden sie miteinander verglichen. Normale Rasten werden
+weiterhin in ihrer Reihenfolge verglichen; zusätzliche Rasten können die
+Zuordnung verschieben. Mit dem **Pfeil nach links** zwischen den Tabellenhälften
+übernimmst du einen rechten Schritt ans Ende des aktuellen Plans links.
+Das rote X in der Werkzeugleiste (**Vergleich beenden**) führt zurück
+zur Bearbeitung.
+Anschließend kannst du ihn an die gewünschte Position ziehen.
+
+![Zwei Pläne vergleichen](img/planner-comparison-de.png)
+
+Geänderte Schritte sind farbig hervorgehoben.
+
+### Gerätewissen und Planprüfung
+
+**Vom Gerät lesen** erfasst Konfiguration, Profile und verfügbare
+Multidevice-Ressourcen des aktiven Geräteprofils. Der Stand wird lokal für
+Offlinearbeit gespeichert. **Config importieren** liest eine lokale
+Konfiguration ein; separate Profildateien und aktuelle Remote-Daten fehlen
+in diesem Fall gegebenenfalls.
+
+**Plan prüfen** gibt Hinweise, etwa zu fehlenden Ressourcen, veralteten
+Konfigurationsständen, Werten, Gerätegeneration und manuellen Übergängen.
+Ein Klick auf einen schrittbezogenen Hinweis wählt den Schritt aus.
+Die Prüfung ändert nichts und blockiert weder Speichern noch Übertragen.
+Sie ersetzt keinen Funktionstest am Zielgerät.
+
+Mit **autonext prüfen** beziehst du auch manuelle Übergänge in die Hinweise
+ein; die Checkbox ist zunächst ausgeschaltet. Die Zusammenfassung zeigt
+Schrittanzahl, manuelle Übergänge und Zeitangaben. Die Zeiten enthalten kein
+Aufheizen, Abkühlen oder manuelles Warten/Läutern. Bei Dekoktion ist die Zeit
+bis zum ersten Kochschritt nicht die gesamte Maischedauer.
+
+![Planprüfung und Zeitübersicht](img/planner-review-de.png)
+
+Hinweise und Zeitangaben helfen bei der Kontrolle des Plans.
+
+### Maischepläne öffnen und übertragen
+
+Lokale Dateien öffnest du über die Einträge unter **Quellen**.
+**Maischeplan auf Gerät übertragen** schreibt den aktuellen Plan ohne Dock
+nach `/Rezepte` auf dem aktiven Gerät. Eine gleichnamige Datei wird ersetzt.
+Bei Multidevice erfolgt die Übertragung auf den Master. Der Maischeprozess
+wird dadurch nicht gestartet. Alternativ steht der **Explorer** zur Verfügung.
+
 ## Daten
 
 ### Explorer
+
+Unter **Inventar → Entwürfe** findest du direkt unter **Maischepläne**
+deine gespeicherten Entwürfe mit ihren Versionen. Ein Klick auf einen Stand
+öffnet ihn im Rezept Planer. Sortieren und Löschen funktionieren wie dort.
 
 Öffne **Daten → Explorer**. Links wählst du das aktive Gerät oder das lokale
 Inventar. Schnellzugriffe führen zu Plänen, Profilen, Konfiguration und Logs.
 **Alle Dateien** zeigt das Dateisystem des gewählten Speicherorts. Der Pfad oben
 zeigt deinen aktuellen Ordner; ein aktiver Filter wird daneben angezeigt.
 
-Ein Klick wählt eine Datei und zeigt rechts die Textvorschau. Ein Doppelklick
-öffnet einen Ordner. Die Vorschau lässt sich über das Seitenbereich-Symbol **Vorschau** ein- und ausblenden.
+Ein Klick wählt eine Datei und zeigt rechts die Textvorschau. Ein Klick auf den Ordnernamen
+öffnet den Ordner. Die Vorschau lässt sich über das Seitenbereich-Symbol
+**Vorschau** ein- und ausblenden.
 Die Symbole erklären ihre Funktion per Tooltip, auch bei Tastaturfokus.
 
 - **Inhalt kopieren** kopiert den Text in die Zwischenablage.
@@ -205,6 +529,49 @@ Unter **Logs** findest du `webUpdateLog.txt` und `autotune_log.txt`.
 Binärdateien und Dateien über 4 MiB kannst du herunterladen, aber nicht im
 Explorer bearbeiten. Unter **Menü → Einstellungen → Lokales Inventar** wählst du
 das Inventarverzeichnis. Ohne gespeicherte Auswahl gilt das Programmverzeichnis.
+
+#### Navigation und Schnellzugriff
+
+Die Überschriften für Gerät, **Inventar** und **Schnellzugriff** lassen sich
+ein- und ausklappen. Der Zustand bleibt beim Aktualisieren erhalten.
+Mit **..** gehst du einen Ordner zurück; im Stammverzeichnis entfällt dieser
+Eintrag. Über die Pfadangabe kannst du übergeordnete Ordner direkt öffnen.
+Im Rezept Planer endet die Navigation dagegen beim Ordner `Rezepte`.
+
+Das **Plus** bei Schnellzugriff bindet einen vorhandenen lokalen Ordner ein.
+Das Entfernen eines Schnellzugriffs löscht dessen Dateien nicht.
+Neue Ordner legst du über das Ordnersymbol in der Werkzeugleiste an.
+Das Inventar kannst du auch ohne erreichbaren Brautomat verwenden.
+Scheitert der Gerätezugriff, prüfe unter **Gerät** die Adresse und Verbindung
+und versuche es anschließend mit **Aktualisieren** erneut.
+
+#### Ordner und Versionen im Inventar
+
+Für ein einzelnes Gerät genügt beispielsweise `Rezepte/MeinPlan.json`.
+Für mehrere Geräte funktionieren beide Strukturen:
+
+- `worker1/Rezepte/MeinPlan.json`: zuerst nach Gerät ordnen.
+- `Rezepte/worker1/MeinPlan.json`: zuerst nach Dateityp ordnen.
+
+Ein einzelner Stand erscheint direkt als Datei. Erst mehrere Versionen bilden
+eine aufklappbare Gruppe. **Erstellt** und **Aktualisiert** zeigen die
+verfügbaren Datumsangaben; **—** bedeutet, dass kein Datum bekannt ist.
+Der rote Papierkorb einer Version löscht diesen Stand, der einer Gruppe alle
+zugehörigen Versionen. Die Rückfrage nennt den Umfang. Verbleibende Versionen
+werden neu nummeriert. **Entwürfe** unter Inventar öffnet gespeicherte
+Arbeitsstände im Rezept Planer, einschließlich der dortigen Dock-Funktionen.
+
+#### Einen Inventarplan auf das Gerät übertragen
+
+1. Wähle oben das gewünschte Zielgerät und im Inventar den Maischeplan.
+2. Klicke auf **Auf Gerät übertragen**.
+3. Kontrolliere Dateiname und Zielverzeichnis im Dialog.
+
+Für Maischepläne wird `Rezepte` als Ziel vorgeschlagen. Aus
+`worker1/Rezepte/MeinPlan.json` wird auf dem Gerät `/Rezepte/MeinPlan.json`.
+Der lokale Geräteordner wird nicht mit übertragen und wählt auch kein Gerät
+aus. Ein gemeinsamer Multidevice-Plan gehört auf den Master.
+Die Übertragung startet keinen Maischeprozess.
 
 ### Konfiguration sichern und wiederherstellen
 

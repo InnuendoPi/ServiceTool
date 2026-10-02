@@ -17,7 +17,7 @@ first: device actions apply to that selection.
 
 - **Device:** connection and WiFi.
 - **Firmware:** firmware installation, web files and device web language.
-- **Data:** file management, backup and restore.
+- **Data:** Recipe Planner, Explorer, backup and restore.
 - **Service:** Serial Monitor, Telegraf, Maintenance, Migration and the optional
   Test Runner.
 - **Three-dot menu:** Settings, Check for updates and Help.
@@ -155,20 +155,318 @@ contain the corresponding files.
 
 :::
 
+## Recipe Planner
+
+The screenshots show an example plan. Click an image to open it at full
+size in a new tab.
+
+### Edit a plan
+
+Open **Data → Recipe Planner**. Sources and building blocks are on the left, the
+executable plan is in the centre, and selected-step properties are on the
+right, above the **Dock**. Hover over an icon button to see its function.
+Blue marks new, open and save actions; green marks moving to the inventory.
+Properties, review and comparison also use blue. Disabled buttons are
+light grey; deletion is red.
+
+1. Load a source or choose **New plan**.
+2. Enter a name. The target generation **up to 1.66** or **from 1.70** is
+   selected from the loaded configuration. Without a configuration it defaults
+   to **from 1.70**. It affects compatibility findings in the plan review,
+   not the export format or upload destination.
+3. Drag steps, actors or profiles from the left to the required position.
+   Clicking adds it after the selected step, or at the end if none is selected.
+   Selecting a Dock step makes the Dock the insertion target.
+4. Drag existing steps to reorder them.
+5. Review the plan and save a draft before transferring it.
+
+**Undo** and **Redo** apply to edits in the open draft. They do not undo file
+removal or transfers to a device.
+
+Expand or collapse quick-start sections using their headings, by touch or
+with Enter/Space. Their state is retained during editing and language changes
+within the current session.
+
+**Insert** adds a rest after the selected step, or at the end when none is
+selected. **Delete** removes selected table rows. Inside an input field,
+the keyboard continues to edit its contents. Close dialogs with the **X at
+the top right**. Switching plans prompts you if there are unsaved plan changes.
+
+![Recipe Planner: overview](img/planner-overview-en.png)
+
+Quick start, plan table, properties and Dock at a glance.
+
+### Create a plan manually
+
+**Steps** offers **Rest**, **Boil**, **Hop addition** and **Ingredients**.
+In a rest's properties, **Template** provides presets for mash-in, maltose
+rest, single infusion, saccharification, mash-out and post-boil
+isomerization. This requires **0 °C and a duration greater than 0 min**.
+The template uses the post-boil duration from Mash plan properties, or 1 min
+if that setting is 0. Other rests allow editing name, temperature and duration.
+
+Hop additions offer **Hop addition** (default), **First-wort hopping**
+and **Whirlpool hopping** templates. Temperature comes from the corresponding
+import defaults. Duration and position remain unchanged.
+
+Hop additions and ingredients provide name and amount fields; ingredients
+also provide a unit selector. **Duration min** remains the duration of each
+Brautomat step. Steps run in table order, without automatic reordering or
+conversion to a time before the end of the boil.
+
+Use **Shift + click** to select a range and **Ctrl + click** to add or remove
+individual steps. Drag a selected row to move the whole selection within the
+plan or into the Dock, preserving its order. **Delete** or the delete button
+in properties removes the selection. **Undo** reverses the group action.
+Selection is limited to either the plan or the Dock at a time.
+
+### Sources and settings
+
+- **Inventory:** mash plans in `Rezepte` and its subfolders.
+  Use `..` to return, up to `Rezepte`. Manage folders in Explorer. Other JSON
+  files are hidden here. Column headers sort the list; arrows show direction.
+- **Drafts:** local working copies, including Dock and configuration snapshot.
+- **Brewfather:** recipes or batches from your account. Search filters entries
+  already loaded; **Load more** fetches additional entries.
+- **kleinerBrauhelfer2:** recipes from the configured SQLite database, accessed read-only.
+- **File import:** opens the file picker directly. Supported JSON exports include
+  Brautomat, MaischeMalzundMehr, Brewfather, kleinerBrauhelfer2 and ServiceTool
+  drafts. The format is detected automatically. Other JSON files, such as
+  configurations, are not recipe files.
+- **Device plans:** JSON plans in `/Rezepte` on the active device. This source
+  is visible only with an available network connection. A saved configuration
+  alone does not mean the device is connected.
+
+Under **Settings → Recipe sources**, enter your Brewfather User ID and API Key
+and the KBH2 database path. The key is stored locally and then shown masked.
+The delete button beside the key removes it. **Save** is at the top, beside
+the language and debug controls.
+
+**Import defaults** set boil, mash-out, first-wort and whirlpool temperatures.
+Defaults affect imports, not existing drafts.
+
+### Select batches from kleinerBrauhelfer2
+
+Select stages using **All**, **Recipe**, **Brewed** and **Bottled**.
+**Watchlist** restricts the selected stages to batches bookmarked in kbh2;
+it is initially unchecked. **Search batches** also filters by name or number.
+
+The table shows **Batch**, **Brew date**, **Created** and **Saved**. **Saved**
+is the last save date in kbh2. Click a column heading to sort; the arrow shows
+the direction. Click a batch name to import it. The SQLite database stays
+unchanged.
+
+### Step and actor properties
+
+Select a row to edit its name, temperature, duration and **Continue
+automatically**. The green floppy-disk button at the top right beside
+**Properties** applies the input without saving a draft. The **autonext** column
+shows a green arrow
+for automatic
+continuation and a red triangle for a manual transition. Temperature is
+in °C; duration is in minutes.
+
+New actor steps default to **0 °C and 0 min**. Other values remain editable
+but may introduce temperature or waiting stages. **Profile changes** are fixed
+at **0 °C and 0 min**. Different values in an opened plan are corrected with
+a notice and mark the working copy as changed. **Continue automatically**
+still determines whether the next step requires user confirmation.
+
+Recognised actor commands offer **ON** and **OFF**. Local PWM actors also
+provide **PWM %**, with an integer power value from 0 to 100. For example,
+37 % is stored as `Ruehrwerk:37`. Configuration determines PWM support.
+Without complete device information, check commands against the target device.
+
+**Mash plan properties** in the toolbar opens boil duration and post-boil
+isomerization time. Changing this metadata does not recalculate step order
+or duration automatically; edit individual steps as needed.
+
+Plan properties also include the lower and upper temperature limits of the
+**Enzyme limiter**. Temperatures use whole degrees. If the boil step total
+differs from the planned boil duration, properties and **Review plan** show
+an advisory note without changing the plan. A planned duration of **0**
+disables this note.
+
+With **Debug output** enabled, the separate **Status** section below the
+planner shows import data for the selected steps. The red trash icon clears
+only this display; source data in the plan is retained. The copy icon copies
+the displayed text to the clipboard. Changing selection refreshes the display.
+
+### Kettles, profiles and command names
+
+There is no generic command building block. Drag the relevant actor, kettle
+or profile from the sidebar into the plan.
+
+**Kettles** offer an output limit with ON/OFF or 0–100 %. Mash, Sud and HLT
+also offer **Power after boil transition**. Quick start generates
+`MAISCHETHRESOUT`, `SUDTHRESOUT` or `HLTTHRESOUT`. A value of 0–100 %
+sets the fixed boiling power after the configured transition to boiling,
+independently of the general output limit. For example, heat at 100 % and
+then boil with `MAISCHETHRESOUT:80`. This changes and saves device configuration.
+This requires the firmware extension for the corresponding kettle. Existing
+aliases such as `IDSTHRESOUT` and `<KettleName>THRESOUT` are recognised and
+retained when editing power. Selecting the function sets duration to 0 min
+and enables automatic continuation; duration and action fields are hidden.
+Only enabled mash, Sud and HLT kettles are available.
+The fermenter is not a selectable device for a mash plan.
+
+Add profiles through **Profiles** in quick start. Kettle functions do not
+convert a kettle step into a profile command.
+
+For **profiles**, choose the target kettle and profile name. Imported aliases
+such as `IDS`, `MLT`, `NACHGUSS`, their profile commands and configured kettle
+names are recognised and associated with available resources.
+
+Multidevice commands use the saved role assignments. Remote actors currently
+support only ON/OFF, not PWM. **Review plan** reports unassigned kettles and
+unsupported remote kettle commands. Explicit ON/OFF or output commands for
+remote kettles currently support only the Sud and HLT roles with duration 0.
+
+### Use the Dock
+
+The Dock is a persistent collection of reusable steps and sequences. It stays
+available when switching plans and after restarting. Changes are saved locally
+automatically.
+
+- Dragging from the plan to the Dock **moves** the selected steps.
+- Dragging from the Dock to the plan **copies** them, preserving the templates.
+- Click to select a Dock step. **Delete** removes the selected steps; use
+  Shift/Ctrl for multiple selection.
+- The **Clear dock** trash icon removes all Dock steps after confirmation.
+  Deleting and clearing can both be undone.
+
+Saved drafts also contain a Dock snapshot. Opening a draft keeps the current
+Dock. If the loaded plan contains additional Dock steps, use **Add dock from
+draft** in the notice to add them. Existing identical steps are accounted for.
+Unmapped imported additions are offered in the same way. Check their
+temperature, duration and quantity before use.
+
+Device and resource references stay unchanged when copying. **Review plan**
+reports resources missing from the target plan. Dock steps are never transferred
+to the device; only the main plan is executed.
+
+To reuse a starting sequence from plan A in plan B:
+
+1. Open plan A and select the steps.
+2. Drag them to the Dock. This removes them from the current plan; save that
+   change only if you also want to change plan A.
+3. Open plan B, deciding whether to save plan A if prompted.
+4. Drag the Dock steps into plan B. They remain in the Dock for further plans.
+
+### Drafts, Dock and inventory
+
+A **draft** is work in progress. Explore variants and park unused steps in the
+**Dock**. Only the steps in the main plan execute on the device. Dock contents,
+configuration and import data remain local.
+
+**Save draft** offers these choices for an existing draft:
+
+- **Update version:** overwrite the current working version.
+- **Save new version:** keep another intermediate version.
+- **Save as separate variant:** create an independent draft. Give variants
+  distinct plan names.
+
+**Move to inventory** completes the draft. Change the plan name in the dialog
+and choose or create the destination folder. An existing name in the same
+folder creates a new inventory version by default;
+alternatively, replace the current version. Only after a successful transfer
+are the draft and its intermediate versions removed from **Drafts**.
+Other variants are retained.
+
+Single files and drafts are shown directly. Only multiple versions form an
+expandable group. The arrow reveals all versions, newest first; **Latest** marks
+the latest version. Click the name to open a version; Explorer shows its preview.
+**Created** and **Updated** show available timestamps. Unknown creation dates
+are displayed as **—**.
+Opening an inventory plan creates a new working copy. The inventory file stays
+unchanged until you move the edited plan back to inventory. Configuration is
+restored from local designer storage; additional saved Dock
+steps are offered for explicit import. Device exports contain
+only the executable plan.
+
+The red trash icon deletes the selected version. On a group row it deletes
+all versions; confirmation explains the scope. Remaining
+versions are renumbered without gaps. Deleting
+the current inventory version promotes the newest archive. Stable identifiers
+keep working copies associated with the correct version. File deletion cannot
+be undone with **Undo**.
+
+Inventory folders are optional. Both `Brautomat32/Rezepte` and
+`Rezepte/Brautomat32` are supported. Configuration, profiles and fermenter plans
+can be organised in the same way. Versions are grouped within their folder.
+A master/worker mash plan remains one shared plan assigned to the master.
+Mash plan uploads default to `/Rezepte/Filename.json`; local device folders
+are not included. Folder names never change the selected target device.
+Drafts and supporting designer data reside in the ServiceTool data directory's
+`designer` subdirectory. Keep both locations to retain Dock and configuration
+for future editing.
+
+### Compare two plans
+
+Choose **Compare mash plan** and select a draft. Alternatively, use the file
+icon beside the heading to choose a file. Your plan is on the
+left; the comparison plan is on the right. Differences are highlighted by row
+position. A special command appearing next on only one side gets its own row
+without comparison. When both next steps are special commands, they are
+compared. Regular rests are still compared in sequence; additional rests can
+shift their alignment. The **left arrow** between the table halves adds a right-hand
+step to the end of the current plan on the left. The red X in the toolbar
+(**Close comparison**) returns to editing.
+You can then drag it to the required position.
+
+![Compare two plans](img/planner-comparison-en.png)
+
+Changed steps are highlighted.
+
+### Configuration snapshots and review
+
+**Read from device** captures configuration, profiles and available multidevice
+resources for the active device profile. The snapshot is stored locally for
+offline use. **Import config** reads a local configuration file; separate
+profiles and current remote information may therefore be unavailable.
+
+**Review plan** reports missing resources, old snapshots, values, target
+generation and manual transitions. Click a step-specific note to select that
+step. Review does not modify the plan or block saving or transfer. It does
+not replace a functional test on the target device.
+
+Enable **Check autonext** to include manual transitions in the findings;
+it is initially unchecked. The summary shows step counts, manual transitions
+and durations. Times exclude heating, cooling and manual waiting/lautering.
+For decoction, the time before the first boil step is not the full mash time.
+
+![Plan review and timing](img/planner-review-en.png)
+
+Findings and durations help you check the plan.
+
+### Open and transfer mash plans
+
+Open local files using the entries under **Sources**.
+**Transfer mash plan to device** writes the current plan without the Dock
+to `/Rezepte` on the active device, replacing a file of the same name.
+Multidevice plans are transferred to the master. This does not start the mash
+process. Alternatively, use the **Explorer**.
+
 ## Data
 
 ### Explorer
+
+Under **Inventory → Drafts**, directly below **Mash plans**, you can
+browse saved drafts and their versions. Click a version to open it in the
+Recipe Planner. Sorting and deletion work as in the planner.
 
 Open **Data → Explorer**. Select the active device or local inventory on the
 left. Shortcuts lead to plans, profiles, configuration and logs. **All files**
 shows the selected storage location. The path bar shows the current folder;
 an active filter is displayed alongside it.
 
-Click a file for its text preview; double-click a folder to open it. The **Preview** side-pane
+Click a file for its text preview; click a folder to open it. The
+**Preview** side-pane
 button toggles the preview. Hover or focus a command button for its tooltip.
 
 - **Copy contents** copies text to the clipboard.
-- **Download file** saves it to your PC. **Upload file** opens the PC file picker.
+- **Download file** saves it to your PC. **Upload file** opens the PC file
+  picker.
 - **Save to local inventory** or **Transfer to device** asks for the destination
   path and confirmation before replacing an existing file.
 - **Edit file** enables supported text files. Saving validates JSON and rejects
@@ -180,6 +478,45 @@ The **Logs** shortcut shows `webUpdateLog.txt` and `autotune_log.txt`.
 Binary files and files larger than 4 MiB can be downloaded, but not edited.
 Select the inventory directory under **Menu → Settings → Local inventory**.
 Without a saved selection, the application directory is used.
+
+#### Navigation and quick access
+
+Expand or collapse the device, **Inventory** and **Quick access** sections
+using their headings. Their state is retained when refreshing.
+**..** goes up one folder and is hidden at the root. The path bar also opens
+parent folders directly. In Recipe Planner, navigation stops at `Rezepte`.
+
+The **plus** beside Quick access adds an existing local folder. Removing a
+shortcut does not delete its files. Create new folders using the folder icon
+in the toolbar. Inventory remains available without a connected device.
+If device access fails, check its address and connection under **Device**,
+then use **Refresh** to retry.
+
+#### Inventory folders and versions
+
+For a single device, `Rezepte/MyPlan.json` is sufficient. For multiple devices,
+both structures work:
+
+- `worker1/Rezepte/MyPlan.json`: organise by device first.
+- `Rezepte/worker1/MyPlan.json`: organise by file type first.
+
+A single version appears directly as a file. Multiple versions form an
+expandable group. **Created** and **Updated** show available dates; **—** means
+no date is known. A version's trash icon deletes that version; a group's icon
+deletes all its versions. Confirmation describes the scope. Remaining versions
+are renumbered. **Drafts** under Inventory opens saved working copies in Recipe
+Planner, including its Dock features.
+
+#### Transfer an inventory plan to a device
+
+1. Select the target device at the top and the mash plan in Inventory.
+2. Click **Transfer to device**.
+3. Check the filename and destination folder in the dialog.
+
+Mash plans default to `Rezepte`. A local `worker1/Rezepte/MyPlan.json` becomes
+`/Rezepte/MyPlan.json` on the device. The local device folder is not copied and
+does not select a device. A shared multidevice plan belongs on the master.
+Transferring a plan does not start the mash process.
 
 ### Back up and restore configuration
 

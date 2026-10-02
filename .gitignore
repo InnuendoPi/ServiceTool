@@ -24,6 +24,9 @@ esptool-*.zip
 esptool/
 telegraf/
 
+# Designer drafts, snapshots and recipe-source credentials
+/designer/
+
 # ServiceTool runtime data
 backups/
 cache/
@@ -54,3 +57,4 @@ Thumbs.db
 Desktop.ini
 *.swp
 *.tmp
+*.cmd

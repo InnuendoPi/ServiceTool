@@ -4,6 +4,8 @@ Brautomat32 ServiceTool is the desktop companion for Brautomat32 devices.
 
 It provides:
 
+- recipe planning with reusable dock steps, drafts, versioning and comparison
+- recipe import from Brautomat JSON, MaischeMalzundMehr, KBH2 and Brewfather
 - configuration backup and restore
 - firmware flashing and firmware backup
 - web files update

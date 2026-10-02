@@ -21,6 +21,7 @@ if exist "dist" rmdir /s /q "dist"
   --clean ^
   --onefile ^
   --name Brautomat32ServiceTool ^
+  --icon "static\icons\servicetool-exe.ico" ^
   --collect-all zeroconf ^
   --collect-all ifaddr ^
   --collect-all serial ^

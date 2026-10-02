@@ -28,6 +28,15 @@ def clean_path(value):
     return "/" + "/".join(parts)
 
 
+def device_file_path(path):
+    path = clean_path(path)
+    if path == "/" or str(PurePosixPath(path).parent) not in {
+        "/", "/Fermenter", "/language", "/Profile", "/Rezepte"
+    }:
+        raise ValueError("Auf dem Gerät sind nur Dateien im Hauptverzeichnis oder direkt in Fermenter, language, Profile und Rezepte erlaubt.")
+    return path
+
+
 def renamed_path(path, name):
     if not name or "/" in name or "\\" in name:
         raise ValueError("Enter a filename, not a path")
@@ -66,8 +75,17 @@ class FileExplorer:
                 except ValueError:
                     continue
                 info = file.stat()
+                kind = ""
+                if file.is_file() and file.suffix.lower() == ".json" and info.st_size <= PREVIEW_LIMIT:
+                    try:
+                        value = json.loads(file.read_text(encoding="utf-8-sig"))
+                        if isinstance(value, dict) and isinstance(value.get("mash"), list):
+                            kind = "mashplan"
+                    except (OSError, ValueError):
+                        pass
                 result.append({"name": file.name, "path": child, "type": "dir" if file.is_dir() else "file",
-                               "size": info.st_size if file.is_file() else 0,
+                               "size": info.st_size if file.is_file() else 0, "kind": kind,
+                               "created_at": datetime.fromtimestamp(getattr(info, "st_birthtime", info.st_ctime)).isoformat(timespec="seconds") if hasattr(info, "st_birthtime") or os.name == "nt" else None,
                                "mtime": datetime.fromtimestamp(info.st_mtime).isoformat(timespec="seconds")})
         else:
             data = self.listing(path)
@@ -84,18 +102,21 @@ class FileExplorer:
                 if str(PurePosixPath(child).parent) != path or child == "/":
                     continue
                 result.append({"name": PurePosixPath(child).name, "path": child, "type": item["type"],
-                               "size": int(item.get("size") or 0), "mtime": item.get("mtime") or ""})
+                               "size": int(item.get("size") or 0), "created_at": item.get("created_at") or item.get("birthtime"), "mtime": item.get("mtime") or ""})
         return sorted(result, key=lambda f: (f["type"] != "dir", f["name"].casefold()))
 
     def list(self, side, path, view="all"):
-        if view not in ("all", "logs", "config"):
+        if view not in ("all", "logs", "config", "mashplans"):
             raise ValueError("Unknown view")
         rows = self.entries(side, path)
-        if view != "all":
+        if view == "mashplans":
+            rows = [row for row in rows if row["type"] == "dir" or row.get("kind") == "mashplan"]
+        elif view != "all":
             names = LOG_FILES if view == "logs" else CONFIG_FILES
-            rows = [row for row in rows if row["type"] == "file" and (
-                row["name"] in names or (view == "config" and side == "local"
-                                         and PurePosixPath(row["name"]).suffix.lower() in {".txt", ".json"}))]
+            local_config = view == "config" and side == "local"
+            rows = [row for row in rows if (local_config and row["type"] == "dir") or (
+                row["type"] == "file" and (row["name"] in names or (
+                    local_config and PurePosixPath(row["name"]).suffix.lower() in {".txt", ".json"})))]
         return {"files": rows, "path": clean_path(path), "root": str(self.root) if side == "local" else "/"}
 
     def read(self, side, path):
@@ -131,6 +152,8 @@ class FileExplorer:
         path = clean_path(path)
         if path == "/":
             raise ValueError("Select a file")
+        if side == "device":
+            device_file_path(path)
         if not overwrite and self.exists(side, path):
             raise FileExistsError("Destination already exists: " + path)
         if side == "local":
@@ -162,13 +185,14 @@ class FileExplorer:
             content = base64.b64decode(data.get("content", ""), validate=True) if action == "upload" else (b"{}\n" if path.endswith(".json") else b"")
             self.write(side, path, content, bool(data.get("overwrite")))
         elif action == "mkdir":
+            if side == "device":
+                raise ValueError("Eigene Ordner können nur im lokalen Inventar erstellt werden.")
             if path == "/" or self.exists(side, path):
                 raise FileExistsError("Destination already exists")
-            if side == "local":
-                self.local(path).mkdir()
-            else:
-                self.device_put({"path": path + "/"})
+            self.local(path).mkdir()
         elif action == "delete":
+            if side == "device" and path in {"/Fermenter", "/language", "/Profile", "/Rezepte"}:
+                raise ValueError("Standardordner auf dem Gerät können nicht gelöscht werden.")
             if path == "/":
                 raise ValueError("Cannot delete the storage root")
             if side == "local":
@@ -186,6 +210,11 @@ class FileExplorer:
             if path == "/":
                 raise ValueError("Cannot rename the storage root")
             target = renamed_path(path, data["name"])
+            if side == "device":
+                device_file_path(target)
+                entry = next((row for row in self.entries(side, str(PurePosixPath(path).parent)) if row["path"] == path), None)
+                if entry and entry["type"] == "dir":
+                    raise ValueError("Geräteordner können nicht umbenannt werden.")
             if self.exists(side, target):
                 raise FileExistsError("Destination already exists")
             if side == "local":
@@ -195,7 +224,25 @@ class FileExplorer:
                 self.device_rename(path, target, bool(data.get("maintenance")))
         elif action == "transfer":
             target_side = "local" if side == "device" else "device"
-            self.write(target_side, clean_path(data["target"]), self.read(side, path), bool(data.get("overwrite")))
+            target = clean_path(data["target"])
+            if target_side == "local":
+                mode = data.get("conflict")
+                exists = self.exists("local", target)
+                if exists and mode not in ("replace", "version"):
+                    return {"action": action, "path": path, "done": False,
+                            "conflict": True, "target": target}
+                content = self.read(side, path)
+                if exists and mode == "version":
+                    current = self.local(target)
+                    index = 1
+                    while current.with_name(f"{current.stem}_{index}{current.suffix}").exists():
+                        index += 1
+                    archive = current.with_name(f"{current.stem}_{index}{current.suffix}")
+                    with archive.open("xb") as stream:
+                        stream.write(current.read_bytes())
+                self.write("local", target, content, overwrite=exists)
+            else:
+                self.write(target_side, target, self.read(side, path), bool(data.get("overwrite")))
         else:
             raise ValueError("Unknown file action")
         return {"action": action, "path": path, "done": True}

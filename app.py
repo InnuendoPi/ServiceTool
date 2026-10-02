@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from explorer import FileExplorer
+from designer import DesignerStore, validate_master_target, snapshot as designer_snapshot
 import base64
 import hashlib
 import http.client
@@ -107,7 +108,7 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "1.9.0"
+SERVICE_TOOL_VERSION = "2.0.0"
 ESPTOOL_VERSION = "5.3.1"  # Pin downloads and local selection to this version.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
@@ -620,8 +621,8 @@ def change_device_profile(data: dict[str, Any]) -> dict[str, Any]:
         if len(name) > 80 or any(ord(char) < 32 for char in name):
             raise ValueError("Profilname darf höchstens 80 Zeichen und keine Steuerzeichen enthalten.")
         if action == "add":
-            if len(profiles) >= 4:
-                raise ValueError("Maximal vier Geräte möglich.")
+            if len(profiles) >= 20:
+                raise ValueError("Maximal 20 Geräteprofile möglich.")
             if not profiles[0]["port"] or not profiles[0]["url"]:
                 raise ValueError("Bitte zuerst COM-Port und URL des ersten Geräteprofils speichern.")
             identity = uuid.uuid4().hex
@@ -633,14 +634,16 @@ def change_device_profile(data: dict[str, Any]) -> dict[str, Any]:
             match.update(port=port, url=url)
             if "name" in data:
                 match["name"] = name
-        active = identity
+        if action == "add":
+            active = identity
     elif action == "select":
         active = identity
     elif action == "remove":
         if len(profiles) == 1 or identity == profiles[0]["id"]:
             raise ValueError("Das erste Gerät kann nicht entfernt werden.")
         profiles = [p for p in profiles if p["id"] != identity]
-        active = profiles[0]["id"]
+        if active == identity:
+            active = profiles[0]["id"]
     else:
         raise ValueError("Unbekannte Profilaktion.")
     chosen = next((p for p in profiles if p["id"] == active), None)
@@ -3153,11 +3156,12 @@ def serial_firmware_version(port: str, baud: int = 115200, timeout: float = 12.0
                 "mdns": str((data or {}).get("mdns") or "").strip(),
                 "lines": [],
             }
-    except Exception:
-        pass
+    except Exception as exc:
+        if not allow_reset:
+            raise RuntimeError(f"Serial firmware detection failed: {exc}") from exc
 
     if not allow_reset:
-        raise RuntimeError("Serial firmware version not available without reset")
+        raise RuntimeError("Serial info response contains no firmware version")
 
     with exclusive_serial_access(timeout=max(10.0, timeout + 2.0)):
         if has_pyserial():
@@ -4871,6 +4875,18 @@ EXPLORER_WRITE_LOCK = threading.Lock()
 EXPLORER_LOCAL_FOLDERS: dict[str, pathlib.Path] = {}
 
 
+def pick_inventory_destination() -> dict[str, str]:
+    root = inventory_root_dir().resolve()
+    selected = pick_directory("Zielordner im Inventar auswählen", root)
+    if not selected:
+        return {}
+    folder = pathlib.Path(selected).resolve(strict=True)
+    if not folder.is_dir() or not folder.is_relative_to(root):
+        raise ValueError("Bitte einen Ordner innerhalb des Inventars auswählen.")
+    relative = folder.relative_to(root).as_posix()
+    return {"path": "/" if relative == "." else "/" + relative}
+
+
 def pick_explorer_folder() -> dict[str, str]:
     selected = pick_directory("Open local folder", inventory_root_dir())
     if not selected:
@@ -4900,7 +4916,8 @@ def remove_explorer_folder(token: str) -> dict[str, Any]:
 
 
 def file_explorer(base_url: str, local_folder: str = "") -> FileExplorer:
-    base = normalize_base_url(base_url)
+    def device_base():
+        return normalize_base_url(base_url)
     root = inventory_root_dir()
     if local_folder:
         root = EXPLORER_LOCAL_FOLDERS.get(local_folder)
@@ -4916,11 +4933,22 @@ def file_explorer(base_url: str, local_folder: str = "") -> FileExplorer:
         kinds = {"/Rezepte": "mashplans", "/Fermenter": "fermenterplans", "/Profile": "profiles"}
         parent = str(pathlib.PurePosixPath(source).parent)
         if parent in kinds and source.lower().endswith(".json"):
-            return rename_device_inventory(base, kinds[parent], pathlib.PurePosixPath(source).name,
+            return rename_device_inventory(device_base(), kinds[parent], pathlib.PurePosixPath(source).name,
                                            pathlib.PurePosixPath(target).name, maintenance)
-        return put_form(f"{base}/edit", {"src": source, "path": target}, timeout=30.0)
+        return put_form(f"{device_base()}/edit", {"src": source, "path": target}, timeout=30.0)
 
     def local_action(path, new_name=None):
+        if new_name is None:
+            candidate = (root / path.lstrip("/")).resolve()
+            if candidate.is_relative_to(root) and candidate.is_file() and candidate.suffix.lower() == ".json":
+                try:
+                    content = json.loads(candidate.read_text(encoding="utf-8-sig"))
+                except (OSError, ValueError):
+                    content = None
+                if isinstance(content, dict) and isinstance(content.get("mash"), list):
+                    DesignerStore(DATA_ROOT / "designer").inventory("inventory-delete", {"path": path},
+                        inventory_local_dir("mashplans"), inventory_root=root)
+                    return True
         parts = pathlib.PurePosixPath(path).parts
         for kind, spec in INVENTORY_SPECS.items():
             if len(parts) > 2 and parts[1] == spec["local_dir"]:
@@ -4933,11 +4961,11 @@ def file_explorer(base_url: str, local_folder: str = "") -> FileExplorer:
         return False
 
     return FileExplorer(root,
-                        listing=lambda path: json_request(f"{base}/list?dir={parse.quote(path, safe='/')}", timeout=20.0),
-                        read=lambda path: download_fs_file(base, path),
-                        write=lambda path, content: post_file_to_fs(base, path, content),
-                        delete=lambda path: delete_fs_path(base, path),
-                        put=lambda fields: put_form(f"{base}/edit", fields, timeout=30.0), rename=rename,
+                        listing=lambda path: json_request(f"{device_base()}/list?dir={parse.quote(path, safe='/')}", timeout=20.0),
+                        read=lambda path: download_fs_file(device_base(), path),
+                        write=lambda path, content: post_file_to_fs(device_base(), path, content),
+                        delete=lambda path: delete_fs_path(device_base(), path),
+                        put=lambda fields: put_form(f"{device_base()}/edit", fields, timeout=30.0), rename=rename,
                         local_rename=None if local_folder else local_action, local_delete=None if local_folder else local_action)
 
 
@@ -5121,6 +5149,9 @@ def delete_local_inventory(kind: str, filename: str) -> dict[str, Any]:
     target = local_inventory_item_path(kind, filename)
     if not target.exists():
         raise FileNotFoundError(f"Local path not found: {target}")
+    if kind == "mashplans" and target.is_file() and target.suffix.lower() == ".json":
+        result = DesignerStore(DATA_ROOT / "designer").inventory("inventory-delete", {"path": filename}, inventory_local_dir(kind))
+        return {**result, "type": "file"}
     values = load_inventory_info(kind)
     rel_path = inventory_rel_from_path(kind, target)
     if target.is_dir():
@@ -6151,23 +6182,30 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send_json({"languages": languages})
             return
         if path in ("/api/explorer/list", "/api/explorer/preview", "/api/explorer/download"):
-            query = parse.parse_qs(parse.urlparse(self.path).query)
-            value = lambda key, default="": (query.get(key) or [default])[0]
-            explorer = file_explorer(value("base_url"), value("local_folder") if value("side") == "local" else "")
-            side, location = value("side", "device"), value("path", "/")
-            if path.endswith("/list"):
-                self._send_json(explorer.list(side, location, value("view", "all")))
-            elif path.endswith("/preview"):
-                self._send_json(explorer.preview(side, location))
-            else:
-                content = explorer.read(side, location)
-                self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + parse.quote(pathlib.PurePosixPath(location).name, safe=""))
-                self.send_header("Content-Length", str(len(content)))
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                self.wfile.write(content)
+            try:
+                query = parse.parse_qs(parse.urlparse(self.path).query)
+                value = lambda key, default="": (query.get(key) or [default])[0]
+                explorer = file_explorer(value("base_url"), value("local_folder") if value("side") == "local" else "")
+                side, location = value("side", "device"), value("path", "/")
+                if path.endswith("/list"):
+                    self._send_json(explorer.list(side, location, value("view", "all")))
+                elif path.endswith("/preview"):
+                    self._send_json(explorer.preview(side, location))
+                else:
+                    content = explorer.read(side, location)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + parse.quote(pathlib.PurePosixPath(location).name, safe=""))
+                    self.send_header("Content-Length", str(len(content)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(content)
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=400)
+            except FileNotFoundError as exc:
+                self._send_json({"error": str(exc)}, status=404)
+            except (OSError, RuntimeError) as exc:
+                self._send_json({"error": str(exc)}, status=500)
             return
         if path == "/api/inventory/list":
             query = parse.parse_qs(parse.urlparse(self.path).query)
@@ -6269,6 +6307,86 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                 "/api/test-runner/start", "/api/servicetool/update/download",
             )):
                 raise RuntimeError("Device changes are blocked while migration/recovery is running")
+            if path.startswith("/api/designer/"):
+                if int(self.headers.get("Content-Length", "0")) > 8 * 1024 * 1024:
+                    raise ValueError("Designer request exceeds 8 MB")
+                data = self._read_json()
+                action = path.removeprefix("/api/designer/")
+                store = DesignerStore(DATA_ROOT / "designer")
+                if action in ("inventory-load", "inventory-publish", "inventory-delete"):
+                    with EXPLORER_WRITE_LOCK:
+                        self._send_json(store.inventory(action, data, inventory_local_dir("mashplans"), inventory_root=inventory_root_dir()))
+                elif action == "pick-kbh":
+                    self._send_json({"path": pick_file("KBH2 SQLite") or ""})
+                elif action == "snapshot-device":
+                    if MIGRATION_LOCK.locked() or STATE.serial_access_lock.locked():
+                        raise ValueError("Device busy")
+                    config = load_app_config()
+                    profile = str(config.get("active_device_id") or "primary")
+                    if data.get("profile") != profile:
+                        raise ValueError("Device profile changed")
+                    base = normalize_base_url(config["device_url"])
+                    fs = file_explorer(base)
+                    payload = json.loads(fs.read("device", "/config.txt").decode("utf-8-sig"))
+                    profiles = None
+                    try:
+                        profiles = {}
+                        for row in fs.entries("device", "/Profile"):
+                            if row["type"] == "file" and row["name"].endswith(".json"):
+                                profiles[row["name"]] = json.loads(fs.read("device", row["path"]).decode("utf-8-sig"))
+                    except Exception:
+                        profiles = None
+                    remote = None
+                    try:
+                        status = json_request(f"{base}/api/multidevice/status", timeout=10.0)
+                        # Keep the configured workers even when their telemetry is unavailable.
+                        try:
+                            telemetry = json_request(f"{base}/api/multidevice/sensors", timeout=10.0)
+                        except Exception:
+                            telemetry = {}
+                        feeds = {row["id"]: row for row in telemetry.get("workers", []) if row.get("id")}
+                        remote = {"workers": [dict(row, **{k: v for k, v in feeds.get(row.get("id"), {}).items() if k != "id"})
+                                               for row in status.get("workers", [])],
+                                  "kettleRoles": status.get("kettleRoles", []),
+                                  "master_id": status.get("id", ""), "mode": status.get("role") }
+                    except Exception:
+                        pass
+                    if remote:
+                        for worker in remote["workers"]:
+                            if worker.get("enabled") is False or not worker.get("host") or not worker.get("id"):
+                                continue
+                            if not (worker.get("online") is True or worker.get("actorsFresh") or worker.get("kettlesFresh")):
+                                continue
+                            try:
+                                worker_base = normalize_base_url(worker["host"])
+                                identity = json_request(f"{worker_base}/api/multidevice/status", timeout=5.0)
+                                if identity.get("id") != worker["id"]:
+                                    continue
+                                worker_fs = file_explorer(worker_base)
+                                worker_config = json.loads(worker_fs.read("device", "/config.txt").decode("utf-8-sig"))
+                                worker_profiles = None
+                                try:
+                                    worker_profiles = {}
+                                    for entry in worker_fs.entries("device", "/Profile"):
+                                        if entry["type"] == "file" and entry["name"].endswith(".json"):
+                                            worker_profiles[entry["name"]] = json.loads(worker_fs.read("device", entry["path"]).decode("utf-8-sig"))
+                                except Exception:
+                                    worker_profiles = None
+                                worker["configuration"] = designer_snapshot(worker_config, worker_profiles)
+                                if worker_profiles is not None:
+                                    worker["profiles"] = worker_profiles
+                                    worker["profilesFresh"] = True
+                                worker["sensors"] = worker["configuration"]["sensors"]
+                                worker["sensorsFresh"] = True
+                            except Exception:
+                                # One unavailable worker must not invalidate the master's inventory.
+                                pass
+                    result = store.handle("snapshot-save", {"profile": profile, "config": payload,
+                                                            "profiles": profiles, "remote": remote})
+                    self._send_json(result)
+                else:
+                    self._send_json(store.handle(action, data))
+                return
             if path == "/api/device/status":
                 data = self._read_json()
                 self._send_json(
@@ -6365,6 +6483,9 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
             if path == "/api/explorer/folder/remove":
                 data = self._read_json()
                 self._send_json(remove_explorer_folder(str(data.get("token", ""))))
+                return
+            if path == "/api/explorer/inventory-destination/pick":
+                self._send_json(pick_inventory_destination())
                 return
             if path == "/api/explorer/folder/pick":
                 self._send_json(pick_explorer_folder())
@@ -6501,6 +6622,21 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
             if path == "/api/explorer/action":
                 data = self._read_json()
                 with EXPLORER_WRITE_LOCK:
+                    if data.get("designer_context") is not None:
+                        context = data["designer_context"]
+                        config = load_app_config()
+                        base = normalize_base_url(config["device_url"])
+                        if context.get("profile") != str(config.get("active_device_id") or "primary") or normalize_base_url(data.get("base_url", "")) != base:
+                            raise ValueError("Gerät wurde gewechselt. Upload abgebrochen.")
+                        plan = json.loads(base64.b64decode(data.get("content", ""), validate=True))
+                        snap = context.get("snapshot") or {}
+                        remote_plan = snap.get("multidevice", {}).get("mode") == 1 or bool(snap.get("remote", {}).get("workers")) or any("/" in str(step.get("Rast", "")).split(":")[0] and ":" in str(step.get("Rast", "")) for step in plan.get("mash", []))
+                        if remote_plan:
+                            status = json_request(f"{base}/api/multidevice/status", timeout=10.0)
+                            validate_master_target(snap, context["profile"], status)
+                        latest = load_app_config()
+                        if latest.get("active_device_id", "primary") != context["profile"] or normalize_base_url(latest["device_url"]) != base:
+                            raise ValueError("Gerät wurde gewechselt. Upload abgebrochen.")
                     self._send_json(file_explorer(data.get("base_url", ""), data.get("local_folder", "") if data.get("side") == "local" else "").action(data))
                 return
             if path == "/api/inventory/device/delete":

@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.0.0 - Unveröffentlicht
+
+- Neuer Rezept Planer mit Schnellstart, Drag-and-drop, Mehrfachauswahl,
+  Entwürfen, Versionsverwaltung und Planvergleich.
+- Rezepte aus Brautomat JSON, MaischeMalzundMehr, kleinerBrauhelfer2 und
+  Brewfather übernehmen und als Maischeplan auf das Gerät übertragen.
+- Wiederkehrende Schritte im Dock dauerhaft speichern oder vorübergehend
+  ablegen und zwischen Rezepten übernehmen.
+- Bekannte Worker-Ressourcen beim Master speichern und für die Planung
+  auch bei offline Workern verfügbar halten.
+- Einheitliche Versionsdarstellung im Explorer und Rezept Planer;
+  vorhandene Inventardateien gezielt aktualisieren oder versionieren.
+- Ordnerauswahl beim Speichern im Inventar, zentrale Löschaktion im Explorer
+  und Schutz der Standardordner auf dem Gerät.
+- Bis zu 20 Geräteprofile; inaktive Profile ohne Gerätewechsel bearbeiten.
+- Automatische COM-Auswahl auch mit Profilen; getrennte Behandlung
+  abweichender Geräteverbindungen und erneuter WLAN-Scan bei unbekannter Firmware.
+- Überarbeitete Einstellungen, einklappbare Bereiche und erweiterte Hilfe
+  für Explorer und Rezept Planer mit Screenshots.
+- Korrigierte Uploadprüfung: wechselnde Bereitschaftsstatus blockieren
+  das Speichern eines Plans bei unveränderter Zuordnung nicht mehr.
+- Zeigt während der Firmwareinstallation den laufenden Vorgang an und prüft
+  anschließend den Gerätestatus erneut.
+
 ## 1.8.3 - Unveröffentlicht
 
 - Sichert bei neuen Migrationen die Einstellungen über die API statt per
@@ -20,31 +44,42 @@
 
 ## 1.8.0 - 2026-09-18
 
-- Modernisiert die Oberfläche mit vier Hauptbereichen, einheitlichen Bedienelementen und Drei-Punkte-Menü.
-- Speichert bis zu vier Geräteprofile mit COM-Port und URL; Gerätewechsel über die Kopfzeile.
+- Modernisiert die Oberfläche mit vier Hauptbereichen, einheitlichen
+  Bedienelementen und Drei-Punkte-Menü.
+- Speichert bis zu vier Geräteprofile mit COM-Port und URL; Gerätewechsel über
+  die Kopfzeile.
 - Bündelt Verbindung und Prozesszustand in einem Statusbadge.
-- Ergänzt lokale Hilfe auf Deutsch und Englisch mit Suche und aufgabenbezogenen Anleitungen.
+- Ergänzt lokale Hilfe auf Deutsch und Englisch mit Suche und aufgabenbezogenen
+  Anleitungen.
 
 ## 1.7.11 - 2026-09-18
 
-- Beschleunigt die Migration: ein vollständiges Flash-Backup statt zweier Lesedurchläufe.
-- Nutzt die esptool-Schreibprüfung und liest anschließend nur NVS und LittleFS zur Kontrolle zurück.
-- Prüft erhaltene Daten vor dem Schreiben nur bei Wiederaufnahme; vollständige Restore-Prüfung bleibt erhalten.
+- Beschleunigt die Migration: ein vollständiges Flash-Backup statt zweier
+  Lesedurchläufe.
+- Nutzt die esptool-Schreibprüfung und liest anschließend nur NVS und LittleFS
+  zur Kontrolle zurück.
+- Prüft erhaltene Daten vor dem Schreiben nur bei Wiederaufnahme; vollständige
+  Restore-Prüfung bleibt erhalten.
 
 ## 1.7.10 - 2026-09-17
 
-- Behebt den Migrationsabbruch bei fehlendem NVS-Bereich settings; verwendet die Firmware-Standardwerte.
+- Behebt den Migrationsabbruch bei fehlendem NVS-Bereich settings; verwendet die
+  Firmware-Standardwerte.
 - Erkennt entpackte GitHub-Firmwarepakete ohne Versionsmetadaten.
-- Liest Migrations-Webdateien aus Littlefs.bin; Nutzerdaten bleiben ausgeschlossen.
+- Liest Migrations-Webdateien aus Littlefs.bin; Nutzerdaten bleiben
+  ausgeschlossen.
 - Unterstützt Updates/data als lokale Webdateiquelle.
-- Vervollständigt die Sprachauswahl bei GitHub-API-Ausfällen und ignoriert veraltete Antworten.
-- Verschiebt das WLAN-Firmwareupdate in den Firmwarebereich und kennzeichnet USB- und WLAN-Installation.
+- Vervollständigt die Sprachauswahl bei GitHub-API-Ausfällen und ignoriert
+  veraltete Antworten.
+- Verschiebt das WLAN-Firmwareupdate in den Firmwarebereich und kennzeichnet
+  USB- und WLAN-Installation.
 
 ## 1.7.9 - 2026-09-15
 
 - Unterscheidet alte Firmwarepakete unter build/ und neue Pakete ab 1.66 unter
   Updates/. Fehlende Pakete werden gesperrt; veraltete Paket-URLs verschwinden.
-- Zeigt den Ladevorgang für Special Version und lädt aus demselben Buildverzeichnis
+- Zeigt den Ladevorgang für Special Version und lädt aus demselben
+  Buildverzeichnis
   wie in der Auswahl. Fehlende historische Pakete verbergen andere Versionen nicht.
 - Verwendet passende Sprach- und Webdateipfade für die jeweilige Generation.
 - Wartet bei Special Version auf die Versionsauswahl, bevor Sprachen abgefragt
@@ -71,7 +106,8 @@
 - Validiert Backup-JSON vor Übertragung und wartet nach Restore auf erneute
   Geräteerreichbarkeit. Unbestätigte Übertragungen erscheinen nicht als Erfolg.
 - Verhindert konkurrierende serielle Monitorstarts und meldet getrennte Ports.
-- Bereinigt fehlgeschlagene Telegraf-Starts und beendet Unterprozesse beim Schließen.
+- Bereinigt fehlgeschlagene Telegraf-Starts und beendet Unterprozesse beim
+  Schließen.
 - Zeigt unbekannte Prozesszustände an und sperrt dann Firmware-WebUpdates.
 - Lehnt ServiceTool-Updates ohne gültige SHA256-Prüfsumme ab.
 
@@ -84,7 +120,8 @@
   Hauptfirmware. Automatische Statusanzeige und verständliche Aktionsbuttons.
 - WLAN-Zugangsdaten auch im Wartungsmodus über USB speichern.
 - Kürzere Startdauer des Wartungsmodus und ausführliche, lesbare Debug-Ausgaben.
-- Migration von Firmware 1.62–1.65.5 auf 1.70 mit vollständigem Backup und Erhalt
+- Migration von Firmware 1.62–1.65.5 auf 1.70 mit vollständigem Backup und
+  Erhalt
   von WLAN-Einstellungen und Nutzdaten. Firmwareauswahl, COM-Port und aktueller
   Arbeitsschritt direkt im Migrationstab.
 - Verständliche Backupnamen mit Firmwareversion und Datum. Wiederherstellung

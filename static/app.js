@@ -502,7 +502,7 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "1.9.0",
+  service_tool_version: "2.0.0",
   language: "en",
   debug_output: false,
   device_url: "http://brautomat",
@@ -563,7 +563,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "1.9.0"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "2.0.0"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -720,7 +720,39 @@ function sleep(ms) {
   return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
+// A different USB device is a session connection, never an edit of a saved profile.
+let temporarySerialConnection = null;
+let selectedConnectionPort = null;
+function connectionRequestOptions(path, options) {
+  if (!temporarySerialConnection || !options.body) return options;
+  const body = { ...options.body };
+  if (Object.hasOwn(body, "base_url") || Object.hasOwn(body, "device_url")) {
+    const url = $("deviceUrl").value.trim();
+    const serialOnly = path === "/api/device/status" ||
+      path === "/api/maintenance/status" ||
+      (path.startsWith("/api/wifi/") && !!body.serial_port);
+    const localOnly = body.side === "local" && path.startsWith("/api/explorer/");
+    if (!url && !serialOnly && !localOnly && path !== "/api/config") {
+      throw new Error(currentLang === "de"
+        ? "Für das angeschlossene Gerät ist noch keine Netzwerkadresse bekannt. Bitte die Geräteverbindung prüfen."
+        : "The connected device has no known network address yet. Please check its connection.");
+    }
+    if (Object.hasOwn(body, "base_url")) body.base_url = url;
+    if (Object.hasOwn(body, "device_url") && path !== "/api/config") body.device_url = url;
+  }
+  return { ...options, body };
+}
 async function api(path, options = {}) {
+  if (temporarySerialConnection && path.includes("?")) {
+    const [route, query] = path.split("?", 2);
+    const params = new URLSearchParams(query);
+    if (params.has("base_url")) {
+      const adjusted = connectionRequestOptions(route, { body: Object.fromEntries(params) });
+      params.set("base_url", adjusted.body.base_url);
+      path = `${route}?${params}`;
+    }
+  }
+  options = connectionRequestOptions(path, options);
   const res = await fetch(path, {
     method: options.method || "GET",
     headers: { "Content-Type": "application/json" },
@@ -732,7 +764,11 @@ async function api(path, options = {}) {
 }
 
 async function saveConfig(partial = {}) {
-  appConfig = await api("/api/config", { method: "POST", body: { ...appConfig, ...partial } });
+  const connection = temporarySerialConnection ? {
+    serial_port: temporarySerialConnection.savedPort,
+    device_url: temporarySerialConnection.savedUrl
+  } : {};
+  appConfig = await api("/api/config", { method: "POST", body: { ...appConfig, ...partial, ...connection } });
   currentLang = appConfig.language || "en";
   if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
   return appConfig;
@@ -852,10 +888,12 @@ function applyLanguage() {
   if ($("testRunnerStopBtn")) $("testRunnerStopBtn").textContent = text("testRunnerStopBtn");
   if ($("serviceToolUpdateTitle")) $("serviceToolUpdateTitle").textContent = text("serviceToolUpdateTitle");
   if ($("downloadServiceToolUpdate")) $("downloadServiceToolUpdate").textContent = text("serviceToolUpdateDownloadBtn");
-  if ($("cancelServiceToolUpdate")) $("cancelServiceToolUpdate").textContent = text("serviceToolUpdateCloseBtn");
   if ($("firmwareUpdateTitle")) $("firmwareUpdateTitle").textContent = text("firmwareUpdateTitle");
+  document.querySelectorAll(".dialog-close").forEach(button => {
+    button.title = text("serviceToolUpdateCloseBtn");
+    button.setAttribute("aria-label", button.title);
+  });
   if ($("startFirmwareWebUpdate")) $("startFirmwareWebUpdate").textContent = text("firmwareUpdateStartBtn");
-  if ($("cancelFirmwareUpdate")) $("cancelFirmwareUpdate").textContent = text("firmwareUpdateCloseBtn");
   applyButtonTooltips();
   if (typeof applyAppActionIcons === "function") applyAppActionIcons();
   updateDeviceConnectionState($("deviceConnectionState").dataset.state || "offline");
@@ -1917,6 +1955,7 @@ function askLocalCopyConflict(filename) {
         <div class="modal-card inventory-conflict-card" role="dialog" aria-modal="true" aria-labelledby="inventoryConflictTitle">
           <div class="modal-head">
             <h2 id="inventoryConflictTitle"></h2>
+            <button id="inventoryConflictClose" class="ghost icon-button dialog-close" type="button">×</button>
           </div>
           <p id="inventoryConflictMessage"></p>
           <div class="actions end">
@@ -1942,6 +1981,9 @@ function askLocalCopyConflict(filename) {
     $("inventoryConflictOverwrite").onclick = () => finish("overwrite");
     $("inventoryConflictVersion").onclick = () => finish("version");
     $("inventoryConflictCancel").onclick = () => finish("abort");
+    $("inventoryConflictClose").title = text("serviceToolUpdateCloseBtn");
+    $("inventoryConflictClose").setAttribute("aria-label", text("serviceToolUpdateCloseBtn"));
+    $("inventoryConflictClose").onclick = () => finish("abort");
     modal.classList.remove("hidden-panel");
   });
 }
@@ -2181,6 +2223,7 @@ function deviceIsOnline() {
 function effectiveDeviceBaseUrl() {
   const resolved = String(lastDeviceStatus?.base_url || "").trim();
   if (resolved) return resolved;
+  if (temporarySerialConnection) return $("deviceUrl").value.trim();
   return ($("deviceUrl").value || "").trim() || "http://brautomat.local";
 }
 
@@ -2983,9 +3026,6 @@ function serialPortScore(port, preferredPort = "") {
 function choosePreferredSerialPort(ports = [], preferredPort = "") {
   if (!Array.isArray(ports) || !ports.length) return "";
   const preferred = String(preferredPort || "").trim();
-  if (typeof appConfig !== "undefined" && (appConfig.device_profiles || []).length > 1) {
-    return ports.find(port => String(port?.port || "").trim().toUpperCase() === preferred.toUpperCase())?.port || "";
-  }
   if (preferred) {
     const exact = ports.find(port => String(port?.port || "").trim().toUpperCase() === preferred.toUpperCase());
     if (exact) {
@@ -3009,11 +3049,29 @@ async function applySelectedSerialPort(port, persist = true) {
       select.value = normalized;
     }
   });
-  appConfig.serial_port = normalized;
-  if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
-  if (persist) {
-    await saveConfig({ serial_port: normalized });
+  const savedPort = temporarySerialConnection?.savedPort ?? appConfig.serial_port ?? "";
+  const savedUrl = temporarySerialConnection?.savedUrl ?? appConfig.device_url ?? "";
+  const profile = (appConfig.device_profiles || []).find(p => p.id === appConfig.active_device_id);
+  const changed = selectedConnectionPort !== normalized;
+  selectedConnectionPort = normalized;
+  if (normalized && normalized.toUpperCase() !== String(savedPort).toUpperCase() && (savedPort || profile)) {
+    temporarySerialConnection = { port: normalized, savedPort, savedUrl };
+    if (changed) $("deviceUrl").value = "";
+  } else {
+    if (temporarySerialConnection) $("deviceUrl").value = savedUrl;
+    temporarySerialConnection = null;
   }
+  if (changed) {
+    lastDeviceStatus = {};
+    updateDeviceConnectionState("");
+    if (pendingOnlineUpgradeCheck) window.clearTimeout(pendingOnlineUpgradeCheck);
+    pendingOnlineUpgradeCheck = null;
+  }
+  if (!temporarySerialConnection && !profile) {
+    appConfig.serial_port = normalized;
+    if (persist) await saveConfig({ serial_port: normalized });
+  }
+  if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
 }
 
 async function loadPorts() {
@@ -3036,19 +3094,15 @@ async function loadPorts() {
     });
   });
   if (!ports.length) {
+    selectedConnectionPort = "";
+    lastDeviceStatus = {};
+    updateDeviceConnectionState("");
+    if (temporarySerialConnection) $("deviceUrl").value = "";
+    if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
     writeStartupTrace("loadPorts done: no ports found");
     return data;
   }
   const selectedPort = choosePreferredSerialPort(ports, preferredPort);
-  if (!selectedPort && (appConfig.device_profiles || []).length > 1) {
-    for (const id of ["portSelect", "serialPortSelect"]) {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = currentLang === "de" ? "Profil-Port nicht angeschlossen" : "Profile port disconnected";
-      $(id).prepend(option);
-      $(id).value = "";
-    }
-  }
   if (selectedPort && available.has(selectedPort)) {
     await applySelectedSerialPort(selectedPort, false);
   }
@@ -3152,6 +3206,12 @@ function setProgressState(panelId, barId, textId, value = 0, visible = false, fi
 }
 
 let displayedActiveProcess = {};
+const firmwareStatusJobs = new Map();
+
+function firmwareInstallationActive() {
+  return firmwareStatusJobs.size > 0 &&
+    [...firmwareStatusJobs.values()].includes(maintenanceSelectionKey());
+}
 
 function recordExplorerDeviceResponse() {
   const wasOnline = deviceIsOnline();
@@ -3173,6 +3233,7 @@ function updateDeviceConnectionState(state) {
     button.className = normalized || "";
   }
   renderDeviceStatusBadge();
+  if(typeof pdRefreshDeviceSources === "function")pdRefreshDeviceSources();
 }
 
 function renderDeviceStatusBadge() {
@@ -3182,6 +3243,13 @@ function renderDeviceStatusBadge() {
   const process = displayedActiveProcess;
   node.classList.remove("process-unknown", "process-active");
   node.title = node.dataset.versionTooltip || "";
+  node.classList.remove("installing");
+  if (firmwareInstallationActive()) {
+    node.classList.add("installing");
+    node.textContent = currentLang === "de"
+      ? "Firmware wird installiert …" : "Installing firmware …";
+    return;
+  }
   if (normalized === "online") {
     let detail;
     if (process.runtime_power === false || process.state === "idle") {
@@ -3229,7 +3297,7 @@ function formatProcessRemainingTooltip(value) {
 }
 
 async function pollActiveProcess() {
-  if (activeProcessPollInFlight) return;
+  if (activeProcessPollInFlight || firmwareInstallationActive()) return;
   if (!deviceIsOnline()) {
     updateActiveProcessState(null);
     return;
@@ -3315,13 +3383,16 @@ function shouldUseHostWifiFallback() {
   if (state === "online") {
     return !firmware;
   }
-  if (state === "serial") {
-    return !(parsed && compareVersionTuple(parsed, [1, 62, 0]) >= 0);
+  // A failed version probe does not mean that serial WiFi commands are unsupported.
+  // Retry the device on each scan; only a known old firmware needs the host fallback.
+  if (currentSerialProvisioning().serial_port) {
+    return !!parsed && compareVersionTuple(parsed, [1, 62, 0]) < 0;
   }
   return true;
 }
 
 async function checkDevice(options = {}) {
+  if (firmwareInstallationActive()) return;
   if (checkDeviceInFlight) {
     writeStartupTrace("checkDevice join existing request");
     return checkDeviceInFlight;
@@ -3352,6 +3423,7 @@ async function checkDevice(options = {}) {
     if (refreshPorts) {
       await loadPorts();
     }
+    const checkedPort = selectedConnectionPort;
     const data = await api("/api/device/status", {
       method: "POST",
       body: {
@@ -3362,12 +3434,19 @@ async function checkDevice(options = {}) {
         prefer_serial: preferSerial
       }
     });
+    if (checkedPort !== selectedConnectionPort) return;
+    if (temporarySerialConnection && data?.state === "online" && data.base_url) {
+      $("deviceUrl").value = data.base_url;
+      if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
+    }
     lastDeviceStatus = { ...lastDeviceStatus, ...data, mode: data?.mode || null };
     if (loadedPackageGeneration !== packageSelectionGeneration()) {
       loadPackages().then(loadRepoLanguages).catch(console.error);
     }
     updateDeviceConnectionState(data?.state || (serialDeviceAvailable() ? "serial" : "offline"));
     updateDeviceVersionMeta(data);
+    if(data.serial_error)writeStartupTrace(`device serial detection failed: ${data.serial_error}`);
+    if(!data.firmware&&data.http_error)writeStartupTrace(`device HTTP detection failed: ${data.http_error}`);
     if (data?.mode === "service" && data?.raw) {
       maintenanceSelection = maintenanceSelectionKey();
       maintenanceActive = true;
@@ -3385,6 +3464,7 @@ async function checkDevice(options = {}) {
       pendingOnlineUpgradeCheck = window.setTimeout(async () => {
         pendingOnlineUpgradeCheck = null;
         for (let attempt = 1; attempt <= 3; attempt += 1) {
+          if (checkedPort !== selectedConnectionPort) return;
           try {
             const onlineData = await api("/api/device/status", {
               method: "POST",
@@ -3396,6 +3476,7 @@ async function checkDevice(options = {}) {
                 prefer_serial: false
               }
             });
+            if (checkedPort !== selectedConnectionPort) return;
             if (onlineData?.state === "online") {
               lastDeviceStatus = { ...lastDeviceStatus, ...onlineData };
               updateDeviceConnectionState("online");
@@ -3424,19 +3505,15 @@ async function checkDevice(options = {}) {
       const firmwareTabActive = document.querySelector('.tab.active')?.dataset?.tab === "firmware";
       const spinner = $("wifiSpinner");
       const isScanning = spinner && !spinner.classList.contains("hidden-spinner");
-      const firmwareKnown = !!String(data?.firmware || "").trim();
       if (data?.mode === "service") {
         writeStartupTrace("checkDevice skips auto wifi scan: ServiceApp maintenance mode");
         finishGlobalSpinner();
-      } else if (firmwareTabActive && !isScanning && ["serial", "online"].includes(String(data?.state || "").trim()) && firmwareKnown) {
+      } else if (firmwareTabActive && !isScanning && ["serial", "online"].includes(String(data?.state || "").trim())) {
         writeStartupTrace("checkDevice schedules wifi scan");
         globalSpinnerHandedOff = true;
         window.setTimeout(() => {
-          scanWifi(true, false, { globalSpinner: useGlobalSpinner }).catch(console.error);
+          scanWifi(true, true, { globalSpinner: useGlobalSpinner }).catch(console.error);
         }, 250);
-      } else if (firmwareTabActive && ["serial", "online"].includes(String(data?.state || "").trim()) && !firmwareKnown) {
-        writeStartupTrace("checkDevice skips auto wifi scan: firmware unknown");
-        finishGlobalSpinner();
       } else if (firmwareTabActive && !["serial", "online"].includes(String(data?.state || "").trim())) {
         writeStartupTrace(`checkDevice skips auto wifi scan: state=${data?.state || "-"}`);
         finishGlobalSpinner();
@@ -3523,7 +3600,7 @@ async function refreshAfterFirmwareUpdate() {
     console.error(err);
   }
   try {
-    if (document.querySelector('[data-panel="management"].active')) await loadExplorer();
+    if (document.querySelector('[data-panel="management"].active')) await loadExplorer({automatic:true});
   } catch (err) {
     console.error(err);
   }
@@ -4358,6 +4435,12 @@ function serialLogConflictsWithPort(port) {
 }
 
 async function watchJobToTarget(jobId, targetId, titleOverride = null, inlineStatusId = null, buttonsToEnable = [], progressConfig = null) {
+  const firmwareJob = inlineStatusId === "flashInlineStatus";
+  const selection = firmwareJob ? maintenanceSelectionKey() : null;
+  if (firmwareJob) {
+    firmwareStatusJobs.set(jobId, selection);
+    renderDeviceStatusBadge();
+  }
   return await new Promise((resolve, reject) => {
     const tick = async () => {
       try {
@@ -4441,9 +4524,6 @@ async function watchJobToTarget(jobId, targetId, titleOverride = null, inlineSta
                 if (inlineStatusId === "firmwareBackupInlineStatus") setSpinner("firmwareBackupSpinner", false);
                 if (inlineStatusId === "migrationInlineStatus") setSpinner("migrationSpinner", false);
                 if (buttonsToEnable.length) setButtonsDisabled(buttonsToEnable, false);
-                if (inlineStatusId === "flashInlineStatus") {
-                  scheduleRefreshAfterFirmwareUpdate(2200);
-                }
                 if (inlineStatusId === "migrationInlineStatus") {
                   scheduleRefreshAfterFirmwareUpdate(3200);
                 }
@@ -4498,6 +4578,16 @@ async function watchJobToTarget(jobId, targetId, titleOverride = null, inlineSta
       }
     };
     tick();
+  }).finally(() => {
+    if (!firmwareJob) return;
+    firmwareStatusJobs.delete(jobId);
+    if (selection === maintenanceSelectionKey() && !firmwareInstallationActive()) {
+      displayedActiveProcess = {};
+      updateDeviceConnectionState("checking");
+      scheduleRefreshAfterFirmwareUpdate(2200);
+    } else {
+      renderDeviceStatusBadge();
+    }
   });
 }
 
@@ -4728,6 +4818,7 @@ function placeFirmwareSelection(name) {
 }
 
 function activateTab(name) {
+  if (name === "designer") openDesigner().catch(console.error);
   if (name !== "management" && typeof explorerCanLeave === "function" && !explorerCanLeave()) return;
   if (typeof workspaceTabActivated === "function") workspaceTabActivated(name);
   placeFirmwareSelection(name);
@@ -4760,7 +4851,7 @@ function activateTab(name) {
     }
   }
   if (name === "management") {
-    loadExplorer().catch(console.error);
+    loadExplorer({automatic:true}).catch(console.error);
   }
   if (name === "backup") {
     loadBackups().catch(console.error);
@@ -4780,6 +4871,9 @@ function activateTab(name) {
 }
 
 function attachEvents() {
+  for (const id of ["wifiSettingsForm", "telegrafSettingsForm"]) {
+    $(id)?.addEventListener("submit", event => event.preventDefault());
+  }
   initExplorer();
   $("language").value = currentLang;
   $("language").addEventListener("change", async () => {
@@ -4792,7 +4886,10 @@ function attachEvents() {
     applyDebugPanels();
   });
   $("deviceUrl").addEventListener("change", async () => {
-    await saveConfig({ device_url: $("deviceUrl").value.trim() || "http://brautomat" });
+    if (!temporarySerialConnection) {
+      await saveConfig({ device_url: $("deviceUrl").value.trim() || "http://brautomat" });
+    }
+    lastDeviceStatus = {};
     updateDeviceConnectionState("");
   });
   $("checkDevice").addEventListener("click", checkDevice);
@@ -4801,10 +4898,8 @@ function attachEvents() {
   $("openGuide").addEventListener("click", () => openGuideBook());
   $("closeGuide").addEventListener("click", closeGuideBook);
   $("closeServiceToolUpdate")?.addEventListener("click", closeServiceToolUpdateModal);
-  $("cancelServiceToolUpdate")?.addEventListener("click", closeServiceToolUpdateModal);
   $("downloadServiceToolUpdate")?.addEventListener("click", downloadServiceToolUpdate);
   $("closeFirmwareUpdate")?.addEventListener("click", closeFirmwareUpdateModal);
-  $("cancelFirmwareUpdate")?.addEventListener("click", closeFirmwareUpdateModal);
   $("startFirmwareWebUpdate")?.addEventListener("click", startFirmwareWebUpdate);
   $("closeInventoryDetail")?.addEventListener("click", () => {
     inventoryDetailState = null;
@@ -4987,6 +5082,7 @@ async function init() {
     initializeBackupSortHeader();
     await loadOverview();
     if (typeof initializeWorkspace === "function") initializeWorkspace();
+    if (typeof initializeDesigner === "function") initializeDesigner();
     writeStartupTrace("loadOverview done");
     applyLanguage();
     writeStartupTrace("applyLanguage done");

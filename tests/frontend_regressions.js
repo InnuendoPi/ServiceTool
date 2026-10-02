@@ -4,6 +4,9 @@ const assert = require('node:assert/strict');
 require('./help_regressions.js');
 require('./runner_results_regressions.js');
 require('./explorer_regressions.js');
+require('./firmware_status_regressions.js');
+require('./designer_regressions.js');
+require('./designer_ui_regressions.js');
 const source = fs.readFileSync('static/app.js', 'utf8');
 const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
 
@@ -76,6 +79,9 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
   assert.equal(ctx.document.body.dataset.workspaceView,'maintenance');
   elements.mainNavigation.children[0].listeners.click();
   assert.equal(ctx.document.body.dataset.workspaceView,'connection');
+  ctx.designerCanLeave=()=>{throw new Error('Tab changes must not prompt for the retained plan');};
+  vm.runInContext('workspaceView="designer";selectWorkspaceView("management")',ctx);
+  assert.equal(ctx.document.body.dataset.workspaceView,'management');
   console.log('Workspace navigation: combined pages, service order and conditional Test Runner verified');
 }
 
@@ -145,7 +151,7 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
 {
   const ctx=vm.createContext({appConfig:{device_profiles:[{},{}]},serialPortScore:()=>99});
   vm.runInContext(source.slice(source.indexOf('function choosePreferredSerialPort('),source.indexOf('async function applySelectedSerialPort(')),ctx);
-  assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"}],"COM4")',ctx),'');
+  assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"}],"COM4")',ctx),'COM5');
   assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"},{port:"COM4"}],"COM4")',ctx),'COM4');
   ctx.appConfig.device_profiles=[];
   assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"}],"COM4")',ctx),'COM5');
@@ -345,3 +351,22 @@ console.log('Maintenance boot-blocker regression checks passed');
   }
   console.log('Migration restore: API without COM port, explicit API/full-flash confirmation');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+// Unknown serial firmware must still schedule the existing host WLAN fallback.
+{
+  const source=fs.readFileSync('static/app.js','utf8');
+  const begin=source.indexOf('    if (pendingFirmwareTabWifiRefresh) {');
+  const block=source.slice(begin,source.indexOf('  } catch (_err) {',begin));
+  const calls=[];
+  const ctx=vm.createContext({data:{state:'serial',firmware:''},pendingFirmwareTabWifiRefresh:true,
+    document:{querySelector:()=>({dataset:{tab:'firmware'}})},
+    $:()=>({classList:{contains:()=>true}}),writeStartupTrace(){},finishGlobalSpinner(){},
+    globalSpinnerHandedOff:false,useGlobalSpinner:true,console,
+    window:{setTimeout:fn=>fn()},scanWifi:(...args)=>{calls.push(args);return Promise.resolve();}});
+  vm.runInContext(block,ctx);assert.equal(calls.length,1);assert.equal(calls[0][1],true);
+  ctx.pendingFirmwareTabWifiRefresh=true;ctx.data={state:'serial',mode:'service'};
+  vm.runInContext(block,ctx);assert.equal(calls.length,1);
+  ctx.pendingFirmwareTabWifiRefresh=true;ctx.data={state:'offline'};
+  vm.runInContext(block,ctx);assert.equal(calls.length,1);
+  console.log('WLAN startup: unknown firmware schedules fallback; maintenance and offline remain excluded');
+}

@@ -30,8 +30,8 @@ function helpContext(fetch) {
   for (const language of ['de','en']) {
     ctx.markdown=books[language];
     const chapters=run('parseGuideBook(markdown)');
-    assert.equal(chapters.length,8);
-    assert.equal(new Set(chapters.map(c=>c.id)).size,8);
+    assert.equal(chapters.length,9);
+    assert.equal(new Set(chapters.map(c=>c.id)).size,9);
     assert.ok(chapters.every(c=>c.title && c.body.trim()));
     for (const chapter of chapters) {
       ctx.markdown=chapter.body;
@@ -55,8 +55,16 @@ function helpContext(fetch) {
   assert.match(wrapped,/<li>A list item with a continuation\.<\/li>/);
   assert.match(wrapped,/<h3>Wrapped text<\/h3>/);
 
+  ctx.markdown='![Overview](img/planner-overview-de.png)\nCaption text.\n\n![Unsafe](https://example.com/a.png)\n\n![Traversal](img/../../a.png)';
+  const screenshots=run('guideMarkdown(markdown)');
+  assert.match(screenshots,/<figure class="guide-screenshot">/);
+  assert.ok(screenshots.includes('src="/help/img/planner-overview-de.png"'));
+  assert.match(screenshots,/<p>Caption text.<\/p>/);
+  assert.equal((screenshots.match(/<img /g)||[]).length,1);
+  for(const book of Object.values(books))for(const match of book.matchAll(/!\[[^\]]*\]\(img\/([^)]*)\)/g))assert.ok(fs.existsSync('static/help/img/'+match[1]));
+
   await run('loadGuideBook()');
-  assert.equal(nodes.guideChapters.children.length,8);
+  assert.equal(nodes.guideChapters.children.length,9);
   assert.match(run('guideInline("[Geräte](#geräte--wlan)")'),/data-guide-chapter="devices"/);
   assert.match(run('guideInline("[Einstellungen](#einstellungen)")'),/data-guide-chapter="settings"/);
   nodes.guideSearch.value='FLASH-SICHERUNG';
@@ -74,6 +82,9 @@ function helpContext(fetch) {
   nodes.guideSearch.value='';
   await run('loadGuideBook()');
   assert.equal(requests,1, 'help uses its local in-memory cache');
+  ctx.workspaceView='designer';
+  run('openGuideBook()');
+  assert.match(nodes.guideContent.innerHTML,/<h2>Rezept Planer<\/h2>/);
   ctx.workspaceView='settings';
   run('openGuideBook()');
   assert.match(nodes.guideContent.innerHTML,/<h2>Einstellungen<\/h2>/);
@@ -89,7 +100,7 @@ function helpContext(fetch) {
   assert.equal(nodes.guideContent.children.at(-1).textContent,'Retry');
   ctx.fetch=async()=>({ok:true,text:async()=>books.en});
   await nodes.guideContent.children.at(-1).listeners.click();
-  assert.equal(nodes.guideChapters.children.length,8);
+  assert.equal(nodes.guideChapters.children.length,9);
   assert.match(nodes.guideContent.innerHTML,/<h2>Settings<\/h2>/);
 
   let rejectOld;
