@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
   "version": "2.0.1",
-  "released_at": "",
+  "released_at": "2026-10-05",
   "notes": "Korrigiert den schreibgesch\u00fctzten kBh-Datenbankzugriff \u00fcber UNC-Pfade (NAS).",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.0.1/Brautomat32ServiceTool-win.zip",
+    "sha256": "e5f3b66b20e454a28646caa56c545e61ad9fbdda135e44a14c1b7b04fc5ef452"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.0.1/Brautomat32ServiceTool-linux.zip",
+    "sha256": "f2f8259232d0d066886d24da38b59be47317e35d66c5cf4c753521d3e2fcfa9a"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.0.1/Brautomat32ServiceTool-macos.zip",
+    "sha256": "ba9d8e520f7bbe73f35c7ab00f091f6db0800d6ce68ba5897031f927f8c1cf7c"
   }
 }
