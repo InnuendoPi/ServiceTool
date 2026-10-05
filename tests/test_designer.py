@@ -1,11 +1,11 @@
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import sqlite3
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from designer import validate_master_target, DesignerStore, brewfather, export_plan, import_recipe, kbh_read, snapshot
+from designer import validate_master_target, DesignerStore, brewfather, export_plan, import_recipe, kbh_database, kbh_read, snapshot
 
 
 class DesignerTests(unittest.TestCase):
@@ -524,6 +524,34 @@ class DesignerTests(unittest.TestCase):
                           "actors": [{"NAME": "Pump", "URL": "http://secret"}], "kettles": []})
         self.assertNotIn("secret", json.dumps(value))
         self.assertFalse(value["complete"])
+
+    def test_kbh_unc_uri_keeps_server_in_path(self):
+        path = PureWindowsPath(r"\\NAS-Name\Bier Rezepte\kBh #1% & Grüße.sqlite")
+        with patch("designer.Path") as path_class, patch("designer.sqlite3.connect") as connect:
+            path_class.return_value.expanduser.return_value.resolve.return_value = path
+            kbh_database(str(path))
+            connect.assert_called_once_with(
+                "file:////NAS-Name/Bier%20Rezepte/kBh%20%231%25%20%26%20Gr%C3%BC%C3%9Fe.sqlite?mode=ro",
+                uri=True, timeout=2)
+
+    def test_kbh_special_filename_and_read_only_connection(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "kBh #1% & Grüße.sqlite"
+            with sqlite3.connect(path) as db:
+                db.execute("CREATE TABLE example(value TEXT)")
+                db.execute("INSERT INTO example VALUES ('unchanged')")
+            db.close()
+            original = path.read_bytes()
+            connection = kbh_database(path)
+            try:
+                self.assertEqual(connection.execute("SELECT value FROM example").fetchone()[0], "unchanged")
+                # Verify mode=ro, independently of the additional query_only guard.
+                connection.execute("PRAGMA query_only=OFF")
+                with self.assertRaisesRegex(sqlite3.OperationalError, "readonly"):
+                    connection.execute("INSERT INTO example VALUES ('changed')")
+            finally:
+                connection.close()
+            self.assertEqual(path.read_bytes(), original)
 
     def test_kbh_selection_is_read_only_and_ordered(self):
         with tempfile.TemporaryDirectory() as root:

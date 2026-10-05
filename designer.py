@@ -342,7 +342,13 @@ def filename(name):
 
 def kbh_database(path):
     p = Path(path).expanduser().resolve(strict=True)
-    connection = sqlite3.connect(p.as_uri() + "?mode=ro", uri=True, timeout=2)
+    uri = p.as_uri()
+    parts = parse.urlsplit(uri)
+    if parts.netloc:
+        # SQLite rejects non-local URI authorities. Keep the UNC server in
+        # the path instead, with an empty authority and both leading slashes.
+        uri = "file:////" + parts.netloc + parts.path
+    connection = sqlite3.connect(uri + "?mode=ro", uri=True, timeout=2)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA query_only=ON")
     return connection

@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "2.0.0",
-  "released_at": "2026-10-02",
-  "notes": "Rezept Planer mit Dock, Entw\u00fcrfen und Multidevice-Konfiguration; verbesserter Explorer und bis zu 20 Ger\u00e4teprofile.",
+  "version": "2.0.1",
+  "released_at": "",
+  "notes": "Korrigiert den schreibgesch\u00fctzten kBh-Datenbankzugriff \u00fcber UNC-Pfade (NAS).",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.0.0/Brautomat32ServiceTool-win.zip",
-    "sha256": "b998ef55b4861d0f2bcce058d5e2fb99ac9d3fb02a228c79b971995f5edab3c4"
+    "url": "",
+    "sha256": ""
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.0.0/Brautomat32ServiceTool-linux.zip",
-    "sha256": "239d81e681afff3705ef2b18cc4ba228f802c85ac8c371193f3fe6ff1ac2f4e5"
+    "url": "",
+    "sha256": ""
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.0.0/Brautomat32ServiceTool-macos.zip",
-    "sha256": "1c220a77c594b29b0e683e26a7abc44e529fb17419f98e460c6b752bc6722e18"
+    "url": "",
+    "sha256": ""
   }
 }

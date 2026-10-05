@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1 - Unveröffentlicht
+
+- Korrigiert den Zugriff auf kBh-Datenbanken über UNC-Pfade (NAS).
+  Sonderzeichen in Dateipfaden und der schreibgeschützte Zugriff bleiben erhalten.
+
 ## 2.0.0 - Unveröffentlicht
 
 - Neuer Rezept Planer mit Schnellstart, Drag-and-drop, Mehrfachauswahl,
