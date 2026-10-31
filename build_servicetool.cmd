@@ -26,6 +26,7 @@ if exist "dist" rmdir /s /q "dist"
   --collect-all ifaddr ^
   --collect-all serial ^
   --collect-all certifi ^
+  --collect-all cryptography ^
   --add-data "static;static" ^
   app.py
 

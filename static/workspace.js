@@ -12,7 +12,8 @@ const workspaceGroups = {
 };
 function workspaceText(de, en) { return currentLang === "de" ? de : en; }
 function workspaceProfiles() {
-  return appConfig.device_profiles?.length ? appConfig.device_profiles : [{id:"primary", url:appConfig.device_url, port:appConfig.serial_port}];
+  return appConfig.device_profiles?.length ? appConfig.device_profiles : [{id:"primary", url:appConfig.device_url, port:appConfig.serial_port,
+    name:appConfig.serial_port ? "" : workspaceText("Standardverbindung", "Default connection")}];
 }
 function deviceProfileName(index, count, profile = {}) { return profile.name?.trim() || (count === 1 ? "Brautomat" : index === 0 ? "Master" : `worker${index}`); }
 function refreshWorkspaceProfiles() {
@@ -41,8 +42,10 @@ function refreshWorkspaceProfiles() {
   const editorSelect=document.getElementById("settingsProfileSelect");
   const editing=editorSelect.value;
   editorSelect.replaceChildren();
-  profiles.forEach((p,index)=>editorSelect.add(new Option(deviceProfileName(index,profiles.length,p)+" · "+p.port+" · "+p.url,p.id)));
-  editorSelect.value=profiles.some(p=>p.id===editing)?editing:active;
+  const savedProfiles=appConfig.device_profiles?.length ? profiles : appConfig.serial_port ? profiles : [];
+  savedProfiles.forEach((p,index)=>editorSelect.add(new Option(deviceProfileName(index,savedProfiles.length,p)+" · "+p.port+" · "+p.url,p.id)));
+  if(!savedProfiles.length)editorSelect.add(new Option(workspaceText("Keine gespeicherten Profile", "No saved profiles"), ""));
+  editorSelect.value=savedProfiles.length ? (savedProfiles.some(p=>p.id===editing)?editing:active) : "";
   document.getElementById("editDeviceProfile").disabled = !editorSelect.value;
   // Saved profiles are optional; USB selection remains available for test devices.
   for (const id of ["portSelect", "serialPortSelect"]) document.getElementById(id).disabled = false;
@@ -169,7 +172,7 @@ async function openDeviceProfile(mode) {
   document.getElementById("profileName").placeholder = mode === "add" ? workspaceText("z. B. Singledevice", "e.g. Single device") : deviceProfileName(profiles.indexOf(current), profiles.length);
   document.getElementById("profileUrl").value = mode === "add" ? "" : current.url;
   document.getElementById("deviceProfileTitle").textContent = mode === "add" ? workspaceText("Gerät hinzufügen", "Add device") : workspaceText("Geräteprofil bearbeiten", "Edit device profile");
-  document.getElementById("profileRemove").hidden = mode === "add" || current.id === profiles[0].id;
+  document.getElementById("profileRemove").hidden = mode === "add";
   dialog.showModal();
   try {
     const data = await api("/api/ports");

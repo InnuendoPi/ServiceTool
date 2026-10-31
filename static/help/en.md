@@ -57,7 +57,8 @@ Continue with [Devices & WiFi](#devices--wifi).
 
 1. Select the device and its serial port under **Device**.
 2. Click the scan arrow in the WiFi area and wait for completion.
-3. Select a network or enter its SSID. Enter the password.
+3. Select a network or enter its SSID. Enter the password. Use the eye beside
+   the field to show or hide it.
 4. Click the save icon. The device saves the credentials and restarts.
 5. Wait for the restart, then check the connection again. Verify the URL if only
    serial access is detected.
@@ -67,8 +68,8 @@ Continue with [Devices & WiFi](#devices--wifi).
 ### Switch devices
 
 **Active device** switches the saved serial-port and URL pair. A single profile
-is called **Brautomat**; multiple profiles are named **Master**, **worker1**,
-**worker2** and **worker3**.
+can have a custom name. Without a custom name, one profile is called
+**Brautomat**; multiple profiles use **Master**, **worker1**, **worker2**, etc.
 
 Add profiles under [Settings → Devices](#settings). Wait for running device
 operations before switching profiles.
@@ -82,36 +83,57 @@ Saving a URL in ServiceTool does not change the Brautomat's network name. The
 address must match the actual device configuration. Use distinct addresses for
 multiple devices.
 
-:::details Technical background
-
-HTTP detection and process status use separate requests. A device can therefore
-be online while its process state is unknown. With multiple profiles, a missing
-saved serial port is not replaced automatically with another detected port.
-
-:::
+With multiple saved devices, a missing serial port is not replaced with another
+detected port. Check the device profile in that case.
 
 ## Firmware
 
 ### Select a package
 
 1. Open **Firmware** and check the active device and its reported version.
-2. Choose **Latest Release**, **Latest Development**, **Special Version** or
-   **Open directory**.
-3. For **Special Version**, select a specific version. For **Open directory**,
-   select the local package folder.
-4. Check the displayed source and available actions. Resolve missing package
-   files before installation.
+2. Choose the target: **1.66 Release**, **1.66 Development** or
+   **1.70 Development**. Development packages are development versions.
+3. For **Special Version**, choose an offered version. Check the version shown
+   when several entries refer to the same release or revision. Use
+   **Open directory** to select a local package folder.
+4. Wait for package verification to finish. A displayed address alone does not
+   mean the package is complete and ready to install.
+
+The package URL/folder field shows the download base for online packages.
+Opening that address in a browser without a filename may return a 404 error.
+Use the package verification result in ServiceTool; you do not need to edit
+this address yourself.
 
 ### Install via USB
 
-1. Select the correct port under **Device**, then return to **Firmware**.
-2. Select the flash baud rate. Review **Erase Flash** and **Flash LittleFS**:
-   these affect device storage and its filesystem.
-3. Click **Install selected package over USB** and watch progress and status.
-   Keep USB and power connected until writing has finished.
+1. Finish running mash and fermentation processes. Select the correct port
+   under **Device**, then return to **Firmware**.
+2. Back up settings and plans you need under
+   [Data → Backup & Restore](#data).
+3. Select the target package and flash baud rate. Review both options:
+   **Erase Flash** clears all device storage, including settings and files.
+   **Flash LittleFS** writes the filesystem from the package, replacing the
+   files stored there.
+4. Click **Install selected package over USB**. Keep USB and power connected
+   until writing has finished.
+5. Check the device connection, reported firmware version and Brautomat browser
+   interface afterwards.
 
-Use [Migration](#migration) when moving from the old partition layout to the
-ServiceApp layout.
+USB installation allows moving from 1.66 to 1.70 and back to 1.66. It does not
+create an automatic backup or restore the previous state if writing fails.
+A successful transfer message does not replace the subsequent device check.
+
+The two checkboxes are independent. With **Erase Flash** enabled and
+**Flash LittleFS** disabled, the filesystem is erased and not rewritten. With
+both disabled, supported packages preserve settings and files. Their contents
+must still be compatible with the target firmware.
+
+Use [Service → Migration](#migration) for the guided move from 1.66 to 1.70 with
+backup and data restoration. That workflow does not support returning to 1.66.
+
+If the button says **Repair main firmware**, the ServiceApp is active. This
+repairs the main firmware over WiFi; it is not a USB change to another firmware
+generation. See [Maintenance](#service).
 
 ### Update over WiFi
 
@@ -132,8 +154,9 @@ read the error instead of mixing files from different versions.
 
 ### Update web files
 
-Select the desired firmware package, then use the web-files update action. The
-device must be reachable over WiFi. This updates browser resources and language
+Select a package matching the installed firmware generation, then use the
+web-files update action. The device must be reachable over WiFi. This updates
+browser resources and language
 files, not the main firmware.
 
 Select a repository package source for this. The separate web-files update and
@@ -145,15 +168,8 @@ Select an available language and use **Change language**. Files come from the
 selected package source. If the list is unavailable, check the package version,
 connection and error message.
 
+Choose a package source matching the installed firmware generation here too.
 The language of ServiceTool itself is changed under **Settings**.
-
-:::details Package generations
-
-Firmware through 1.66.x uses the build directory; 1.67 and later use Updates.
-ServiceApp packages also need the matching ServiceApp image. Local packages must
-contain the corresponding files.
-
-:::
 
 ## Recipe Planner
 
@@ -170,10 +186,7 @@ Properties, review and comparison also use blue. Disabled buttons are
 light grey; deletion is red.
 
 1. Load a source or choose **New plan**.
-2. Enter a name. The target generation **up to 1.66** or **from 1.70** is
-   selected from the loaded configuration. Without a configuration it defaults
-   to **from 1.70**. It affects compatibility findings in the plan review,
-   not the export format or upload destination.
+2. Enter a name.
 3. Drag steps, actors or profiles from the left to the required position.
    Clicking adds it after the selected step, or at the end if none is selected.
    Selecting a Dock step makes the Dock the insertion target.
@@ -201,7 +214,8 @@ Quick start, plan table, properties and Dock at a glance.
 **Steps** offers **Rest**, **Boil**, **Hop addition** and **Ingredients**.
 In a rest's properties, **Template** provides presets for mash-in, maltose
 rest, single infusion, saccharification, mash-out and post-boil
-isomerization. This requires **0 °C and a duration greater than 0 min**.
+isomerization. Post-boil isomerization requires **0 °C and a duration
+greater than 0 min**.
 The template uses the post-boil duration from Mash plan properties, or 1 min
 if that setting is 0. Other rests allow editing name, temperature and duration.
 
@@ -228,8 +242,10 @@ Selection is limited to either the plan or the Dock at a time.
 - **Drafts:** local working copies, including Dock and configuration snapshot.
 - **Brewfather:** recipes or batches from your account. Search filters entries
   already loaded; **Load more** fetches additional entries.
-- **kleinerBrauhelfer2:** recipes from the configured SQLite database, accessed read-only.
-- **File import:** opens the file picker directly. Supported JSON exports include
+- **kleinerBrauhelfer2:** recipes from the configured SQLite database, accessed
+  read-only.
+- **File import:** opens the file picker directly. Supported JSON exports
+  include
   Brautomat, MaischeMalzundMehr, Brewfather, kleinerBrauhelfer2 and ServiceTool
   drafts. The format is detected automatically. Other JSON files, such as
   configurations, are not recipe files.
@@ -238,12 +254,14 @@ Selection is limited to either the plan or the Dock at a time.
   alone does not mean the device is connected.
 
 Under **Settings → Recipe sources**, enter your Brewfather User ID and API Key
-and the KBH2 database path. The key is stored locally and then shown masked.
-The delete button beside the key removes it. **Save** is at the top, beside
-the language and debug controls.
+and the KBH2 database path. Click the save icon at the top beside the language
+and debug controls. A stored key is marked **Saved**. The eye beside the field
+shows or hides it; the trash button removes it. Saving hides the key again.
 
 **Import defaults** set boil, mash-out, first-wort and whirlpool temperatures.
-Defaults affect imports, not existing drafts.
+Without custom values, the defaults are 100 °C for boil, 78 °C for mash out,
+75 °C for first-wort hopping and 80 °C for whirlpool. These affect imports,
+not existing drafts.
 
 ### Select batches from kleinerBrauhelfer2
 
@@ -302,7 +320,8 @@ also offer **Power after boil transition**. Quick start generates
 `MAISCHETHRESOUT`, `SUDTHRESOUT` or `HLTTHRESOUT`. A value of 0–100 %
 sets the fixed boiling power after the configured transition to boiling,
 independently of the general output limit. For example, heat at 100 % and
-then boil with `MAISCHETHRESOUT:80`. This changes and saves device configuration.
+then boil with `MAISCHETHRESOUT:80`. This changes and saves device
+configuration.
 This requires the firmware extension for the corresponding kettle. Existing
 aliases such as `IDSTHRESOUT` and `<KettleName>THRESOUT` are recognised and
 retained when editing power. Selecting the function sets duration to 0 min
@@ -375,7 +394,8 @@ Other variants are retained.
 
 Single files and drafts are shown directly. Only multiple versions form an
 expandable group. The arrow reveals all versions, newest first; **Latest** marks
-the latest version. Click the name to open a version; Explorer shows its preview.
+the latest version. Click the name to open a version; Explorer shows its
+preview.
 **Created** and **Updated** show available timestamps. Unknown creation dates
 are displayed as **—**.
 Opening an inventory plan creates a new working copy. The inventory file stays
@@ -409,7 +429,8 @@ left; the comparison plan is on the right. Differences are highlighted by row
 position. A special command appearing next on only one side gets its own row
 without comparison. When both next steps are special commands, they are
 compared. Regular rests are still compared in sequence; additional rests can
-shift their alignment. The **left arrow** between the table halves adds a right-hand
+shift their alignment. The **left arrow** between the table halves adds a
+right-hand
 step to the end of the current plan on the left. The red X in the toolbar
 (**Close comparison**) returns to editing.
 You can then drag it to the required position.
@@ -425,9 +446,9 @@ resources for the active device profile. The snapshot is stored locally for
 offline use. **Import config** reads a local configuration file; separate
 profiles and current remote information may therefore be unavailable.
 
-**Review plan** reports missing resources, old snapshots, values, target
-generation and manual transitions. Click a step-specific note to select that
-step. Review does not modify the plan or block saving or transfer. It does
+**Review plan** checks step names, values and available device functions.
+Click a step-specific note to select that step.
+Review does not modify the plan or block saving or transfer. It does
 not replace a functional test on the target device.
 
 Enable **Check autonext** to include manual transitions in the findings;
@@ -466,7 +487,12 @@ button toggles the preview. Hover or focus a command button for its tooltip.
 
 - **Copy contents** copies text to the clipboard.
 - **Download file** saves it to your PC. **Upload file** opens the PC file
-  picker.
+  picker. Mash plans, fermentation plans, profiles and configurations must
+  match the Brautomat file format before upload. For a Brewfather export,
+  open **Recipe Planner → File Import** first. Adopt the recipe as a mash plan,
+  then edit and review it there. Transfer it from Recipe Planner or save it
+  in the inventory. An unchanged Brewfather export cannot be transferred
+  directly as a mash plan. Transfers from the inventory also check the format.
 - **Save to local inventory** or **Transfer to device** asks for the destination
   path and confirmation before replacing an existing file.
 - **Edit file** enables supported text files. Saving validates JSON and rejects
@@ -529,7 +555,7 @@ Transferring a plan does not start the mash process.
 
 - A **configuration backup** contains settings provided by the device backup
   feature.
-- **Firmware Backup** reads the active app partition via USB.
+- **Firmware Backup** saves the currently running firmware via USB.
 - A **migration backup** contains the API settings backup and migration report.
 
 These are not interchangeable. See [Migration](#migration) for an interrupted
@@ -546,8 +572,10 @@ firmware image is not a complete backup of settings and the filesystem.
 2. Check the port and baud rate, then start the monitor.
 3. Use the output for diagnosis and copy relevant error messages.
 
-Flashing and firmware backup also need the serial port. ServiceTool handles the
-port handover; check the resulting state after the operation.
+Flashing and firmware backup also need the serial port. ServiceTool releases it
+temporarily; you do not need to stop the monitor manually first. If the monitor
+was active, ServiceTool schedules its restart after the operation. Check the
+resulting status.
 
 ### Telegraf
 
@@ -587,18 +615,11 @@ use it as a general replacement for the offered repair.
 This area is available only with the required local development environment.
 Normal maintenance does not require it.
 
-:::details Test Runner requirements
-
-Detection requires the test-automation documents, the Test Runner project, at
-least one valid suite configuration and Node.js. Without those prerequisites the
-entry stays hidden. Explicit hiding through hide_test remains effective.
-
-:::
-
 ## Migration
 
-Migration changes an older device's partition layout to the ServiceApp layout.
-It is more than a normal firmware update.
+Use **Service → Migration** for the guided move from older firmware to 1.70.
+ServiceTool backs up device settings first. This workflow does not support
+returning to 1.66.
 
 ### Requirements
 
@@ -617,8 +638,8 @@ device before writing.
 4. Start migration. Keep power and USB connected until completion.
 5. Read the final result; starting an operation does not mean it succeeded.
 
-The API backup is saved first. New images are then installed. NVS and LittleFS
-are retained; web files are updated.
+The device backup is saved first. Only then is the new firmware installed.
+Settings and stored files are retained; web files are updated.
 
 ### Recover after an interruption
 
@@ -628,21 +649,45 @@ settings to the installed firmware. The device must be reachable at its URL.
 After an interrupted flash operation, resume migration first.
 Other serial actions may remain blocked until recovery.
 
-:::details Backup and verification
+### What does the migration backup contain?
 
-Migration backups are stored under `backups/migrations` and contain
-`backup.json` and `report.json`. The entire API backup is kept unchanged:
-configuration, WiFi credentials, mash and fermenter plans, profiles and
-logging settings. Firmware is not included.
-There is no flash read operation; esptool verifies written images.
-Older full flash backups can still be restored over USB. Only those backups
-replace firmware and use full read-back verification.
+The device backup and operation report are stored under `backups/migrations`.
+The backup includes the settings provided by the device, WiFi credentials,
+mash and fermenter plans, profiles and logging settings. It does not include
+the previous firmware. **Restore Backup** therefore does not return the device
+to its previous firmware version.
 
-:::
+Older full flash backups can still be restored over USB. Those backups also
+replace the firmware.
 
 ## Settings
 
 Open **Three-dot menu → Settings**.
+
+### Saved settings and credentials
+
+ServiceTool remembers device profiles, recipe sources and other settings in
+`config.json`. Older recipe-source settings are imported automatically on the
+first start after the update. Afterwards, check **Recipe sources** for your
+User ID, saved API key and database path.
+
+The Brewfather key and saved Telegraf credentials are stored encrypted. You do
+not need to enter a password for this. The encryption uses a fixed public
+password: it avoids plaintext storage but does not protect against someone
+with access to the file. Treat these files as confidential.
+Telegraf's save-passwords option continues to control whether
+its credentials are retained.
+
+Recipes and drafts are separate files. Copying `config.json` alone is therefore
+not a complete backup of your ServiceTool data. The external kleinerBrauhelfer2
+database remains in its original location; ServiceTool stores only its path.
+
+### Appearance
+
+Under **Appearance**, choose **System**, **Light** or **Dark**. The selection
+is applied immediately and saved automatically. **System** follows the
+preference reported by your browser, including changes during use. Without
+a saved choice, the appearance remains light.
 
 ### Language and debug output
 
@@ -653,7 +698,8 @@ diagnosis.
 ### Add another device
 
 1. Under **Devices**, choose **Add device**.
-2. Select its serial port and enter its unique URL.
+2. Select its serial port and enter its unique device URL. You can also give
+   the profile a custom name.
 3. Save the profile. The interface reloads with that device selected.
 4. Configure WiFi under **Device** if needed.
 
@@ -664,10 +710,12 @@ devices start with an empty URL field.
 ### Edit or remove a profile
 
 Select the device at the top. **Settings → Devices** shows the selection. **Edit
-profile** opens its port and URL.
+profile** opens its name, port and URL.
 
-Additional devices can be removed in the profile dialog. The first profile is
-retained. Removing a profile does not delete data on the Brautomat.
+Any profile can be removed in the profile dialog, including the last one.
+Without a saved profile, ServiceTool uses the default connection
+`http://brautomat` with no serial port selected. Other settings are preserved.
+Removing a profile does not delete data on the Brautomat.
 
 ### Update ServiceTool
 
@@ -718,6 +766,16 @@ recovery](#migration).
 Check the selected source. **Special Version** requires a specific version.
 Online packages require access to their source; local folders must contain the
 matching files.
+
+### GitHub reports a request limit
+
+If **GitHub API limit** appears, wait until the stated time. Clicking again or
+restarting ServiceTool does not remove the limit. Previously cached package
+information may still be available.
+
+During the current session, ServiceTool reuses GitHub responses for 15 minutes.
+Information about fixed package revisions is retained longer. New releases may
+therefore take a little time to appear in the selection.
 
 ### Report a problem
 

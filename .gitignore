@@ -28,14 +28,41 @@ telegraf/
 /designer/
 
 # ServiceTool runtime data
+/config/
 backups/
 cache/
+Fermenter/
 inventar/
 logs/
+Profile/
+Rezepte/
 updates/
 artifact_downloads/
 _pkginspect/
 config.json
+config.json.*
+config.txt
+config.txt.*
+/mashplans/
+/fermenterplans/
+/profiles/
+/telegraf.conf
+/telegraf.d/
+
+# Local database copies, credentials and private key containers
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.key
+*.pem
+*.p12
+*.pfx
+/secrets/
+/credentials.json
+/credentials.json.*
 
 # Local environment and credentials
 .env

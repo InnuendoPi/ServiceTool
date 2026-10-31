@@ -10,7 +10,7 @@ require('./designer_ui_regressions.js');
 const source = fs.readFileSync('static/app.js', 'utf8');
 const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
 
-// HTTP startup detection must not depend on an already-online badge or a COM port.
+// Navigation must not probe the device, including after an empty or failed WiFi scan.
 {
   let url='http://brautomat.local',serial=false,scanning=false;
   const checks=[];
@@ -22,11 +22,11 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
   });
   vm.runInContext(source.slice(source.indexOf('function activateTab('),source.indexOf('function attachEvents(')),ctx);
   vm.runInContext('activateTab("firmware")',ctx);
-  assert.equal(checks.length,1);assert.equal(checks[0].preferSerial,false);assert.equal(checks[0].refreshPorts,false);
-  url='';vm.runInContext('activateTab("firmware")',ctx);assert.equal(checks.length,1);
-  serial=true;vm.runInContext('activateTab("firmware")',ctx);assert.equal(checks.length,2);
-  scanning=true;vm.runInContext('activateTab("firmware")',ctx);assert.equal(checks.length,2);
-  console.log('Startup detection: configured URL triggers HTTP check without selected COM port');
+  assert.equal(checks.length,0);
+  url='';vm.runInContext('activateTab("firmware")',ctx);assert.equal(checks.length,0);
+  serial=true;vm.runInContext('activateTab("firmware")',ctx);assert.equal(checks.length,0);
+  scanning=true;vm.runInContext('activateTab("firmware")',ctx);assert.equal(checks.length,0);
+  console.log('Navigation: no device checks for configured URL, serial port or empty WiFi list');
 }
 
 // Firmware 1.66.x remains on the legacy layout, including later patch releases.
@@ -113,6 +113,13 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
   assert.ok(!classes.has('process-active'));
   vm.runInContext('updateActiveProcessState(null); updateDeviceConnectionState("offline")',ctx);
   assert.equal(badge.textContent,'Kein Gerät');
+  button.value = 'COM3';
+  vm.runInContext('updateDeviceConnectionState("offline")',ctx);
+  assert.equal(badge.textContent,'COM3 · Keine Firmwareantwort');
+  vm.runInContext('currentLang="en"; updateDeviceConnectionState("offline")',ctx);
+  assert.equal(badge.textContent,'COM3 · No firmware response');
+  button.value = '';
+
   vm.runInContext('currentLang="en"; updateDeviceConnectionState("online")',ctx);
   assert.equal(badge.textContent,'Online · Process status unknown');
   assert.equal(badge.dataset.state,'online');
@@ -237,7 +244,7 @@ console.log('Maintenance boot-blocker regression checks passed');
   languageNode('packageVersion').value = '';
   let requested = '';
   const ctx = vm.createContext({
-    $: languageNode, currentLang:'de', packageGeneration:()=> 'Updates', appConfig:{package_ref:'v1.65.5'},
+    $: languageNode, currentLang:'de', packageGeneration:()=> 'Updates', selectedPackageRef:()=>languageNode('packageVersion').value, selectedPackageRoot:()=> 'Updates', appConfig:{package_ref:'v1.65.5'},
     document:{createElement:()=>({})}, encodeURIComponent,
     setInlineStatus(){},
     api:async url=>{requested=url; return {languages:[{filename:'deutsch.json',language:'deutsch',path:'data/language/deutsch.json'}]};}
@@ -282,7 +289,7 @@ console.log('Maintenance boot-blocker regression checks passed');
   assert.match(status,/kein vollständiges Paket/);
   get('packageSource').value='special';
   await vm.runInContext('loadPackages()',ctx);
-  assert.equal(get('packageVersion').value,'commit');
+  assert.equal(get('packageVersion').value,'https://example/Updates/ESP32-IDF5dev');
   assert.match(get('packageDir').value,/Updates.*IDF5dev/);
   assert.equal(vm.runInContext('packageSelectionReady',ctx),true);
   get('packageSource').value='development_170';
@@ -307,7 +314,7 @@ console.log('Maintenance boot-blocker regression checks passed');
   let rejectOld;
   const oldRequest=new Promise((_resolve,reject)=>{rejectOld=reject;});
   let calls=0;
-  const ctx=vm.createContext({$:get,currentLang:'de',packageGeneration:()=> 'Updates',
+  const ctx=vm.createContext({$:get,currentLang:'de',packageGeneration:()=> 'Updates',selectedPackageRef:()=>'',selectedPackageRoot:()=> 'Updates',
     document:{createElement:()=>({})},encodeURIComponent,
     setInlineStatus:(id,value)=>{status[id]=value;},
     api:()=>++calls===1 ? oldRequest : Promise.resolve({languages:[{filename:'english.json',language:'english',path:'Updates/data/language/english.json'}]})});
@@ -352,21 +359,5 @@ console.log('Maintenance boot-blocker regression checks passed');
   console.log('Migration restore: API without COM port, explicit API/full-flash confirmation');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 
-// Unknown serial firmware must still schedule the existing host WLAN fallback.
-{
-  const source=fs.readFileSync('static/app.js','utf8');
-  const begin=source.indexOf('    if (pendingFirmwareTabWifiRefresh) {');
-  const block=source.slice(begin,source.indexOf('  } catch (_err) {',begin));
-  const calls=[];
-  const ctx=vm.createContext({data:{state:'serial',firmware:''},pendingFirmwareTabWifiRefresh:true,
-    document:{querySelector:()=>({dataset:{tab:'firmware'}})},
-    $:()=>({classList:{contains:()=>true}}),writeStartupTrace(){},finishGlobalSpinner(){},
-    globalSpinnerHandedOff:false,useGlobalSpinner:true,console,
-    window:{setTimeout:fn=>fn()},scanWifi:(...args)=>{calls.push(args);return Promise.resolve();}});
-  vm.runInContext(block,ctx);assert.equal(calls.length,1);assert.equal(calls[0][1],true);
-  ctx.pendingFirmwareTabWifiRefresh=true;ctx.data={state:'serial',mode:'service'};
-  vm.runInContext(block,ctx);assert.equal(calls.length,1);
-  ctx.pendingFirmwareTabWifiRefresh=true;ctx.data={state:'offline'};
-  vm.runInContext(block,ctx);assert.equal(calls.length,1);
-  console.log('WLAN startup: unknown firmware schedules fallback; maintenance and offline remain excluded');
-}
+require('./device_check_regressions.js');
+require('./startup_wifi_regressions.js');

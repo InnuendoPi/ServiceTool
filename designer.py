@@ -1,4 +1,5 @@
 """Recipe adapters and local draft storage. No device writes or SQLite migrations."""
+from config_store import load_config, write_config, LOCK as CONFIG_LOCK
 import base64
 import copy
 import hashlib
@@ -106,7 +107,7 @@ def import_recipe(content, options=None):
         return value
     if raw.get("schema") == 1 and "steps" in raw:
         return validate_draft(raw)
-    options = {"boil_temp": 100, "mash_out_temp": 78, "first_wort_temp": 78,
+    options = {"boil_temp": 100, "mash_out_temp": 78, "first_wort_temp": 75,
                "whirlpool_temp": 80, **(options or {})}
     boil_temp = number(options.get("boil_temp"), 100)
     out = draft()
@@ -172,7 +173,7 @@ def import_recipe(content, options=None):
                 additions.append((label,
                                   duration if typ == 2 else 0 if typ == 4 else item.get("Zeit"), item))
             elif typ == 1:
-                steps.append(step("VWH " + label, options.get("first_wort_temp", 78), 0, False, item))
+                steps.append(step("VWH " + label, options.get("first_wort_temp", 75), 0, False, item))
             elif typ == 5:
                 post_boil.append(step("WPH " + label, options.get("whirlpool_temp", 80), 0, False, item))
             else:
@@ -217,7 +218,7 @@ def import_recipe(content, options=None):
                 additions.append((f'{item.get("Sorte", "Hopfen")} {number(item.get("Menge"))} g',
                                   item.get("Zeit"), item))
             elif item.get("Typ") in ("Vorderwuerze", "Vorderwürze"):
-                steps.append(step("VWH " + item.get("Sorte", "Hopfen"), options.get("first_wort_temp", 78), 0, False, item))
+                steps.append(step("VWH " + item.get("Sorte", "Hopfen"), options.get("first_wort_temp", 75), 0, False, item))
             elif item.get("Typ") == "Whirlpool":
                 post_boil.append(step("WPH " + item.get("Sorte", "Hopfen"), options.get("whirlpool_temp", 80), 0, False, item))
             else:
@@ -245,7 +246,10 @@ def import_recipe(content, options=None):
                      recipe.get("whirlpoolTime"), recipe.get("hopStandMinutes"))
                      if value not in (None, "")), 0)
         for item in recipe["mash"]["steps"]:
-            steps.append(step(item.get("name", "Rast"), item.get("stepTemp"), item.get("stepTime"),
+            name = item.get("name")
+            if name is None or not str(name).strip():
+                name = "Rast"
+            steps.append(step(name, item.get("stepTemp"), item.get("stepTime"),
                               item.get("type") != "Decoction", item))
             if item.get("type") == "Decoction":
                 out["notices"].append("decoction_review")
@@ -254,7 +258,7 @@ def import_recipe(content, options=None):
                  if not item.get("waterAdjustment") and item.get("type") != "Water Agent"]
         for item in recipe.get("hops", []) + miscs:
             if item.get("use") in ("Boil", "First Wort"):
-                additions.append((f'{item.get("name", "Zugabe")} {number(item.get("amount"))} {item.get("unit", "g")}',
+                additions.append((f'{item.get("name", "Zugabe")} {number(item.get("amount")):.1f} {item.get("unit", "g")}',
                                   duration if item.get("use") == "First Wort" else item.get("time"), item))
             elif item.get("use") == "Aroma":
                 label = f'WPH {item.get("name", "Hopfen")} {number(item.get("amount")):.1f} {item.get("unit", "g")}'
@@ -460,8 +464,9 @@ def preserve_worker_resources(current, previous):
 
 
 class DesignerStore:
-    def __init__(self, root):
+    def __init__(self, root, config_path=None):
         self.root = Path(root)
+        self.config_path = Path(config_path) if config_path is not None else self.root / "config.json"
 
     def read(self, name, default):
         path = self.root / name
@@ -616,8 +621,9 @@ class DesignerStore:
             return result
 
     def settings(self, payload=None):
-        with LOCK:
-            cfg = self.read("settings.json", {})
+        with LOCK, CONFIG_LOCK:
+            config = load_config(self.config_path, self.root / "settings.json")
+            cfg = config["recipe_sources"]
             if payload is not None:
                 for key in ("brewfather_user", "kbh_path"):
                     if key in payload:
@@ -626,18 +632,21 @@ class DesignerStore:
                     opts = payload["import_options"]
                     cfg["import_options"] = {"boil_temp": number(opts.get("boil_temp"), 100),
                                              "mash_out_temp": number(opts.get("mash_out_temp"), 78),
-                                             "first_wort_temp": number(opts.get("first_wort_temp"), 78),
+                                             "first_wort_temp": number(opts.get("first_wort_temp"), 75),
                                              "whirlpool_temp": number(opts.get("whirlpool_temp"), 80)}
                 if payload.get("clear_key"):
-                    cfg.pop("brewfather_key", None)
+                    cfg["brewfather_key"] = ""
                 elif payload.get("brewfather_key"):
                     cfg["brewfather_key"] = str(payload["brewfather_key"]).strip()
-                self.write("settings.json", cfg)
-            return {k: v for k, v in cfg.items() if k != "brewfather_key"} | {"key_saved": bool(cfg.get("brewfather_key"))}
+                write_config(self.config_path, config)
+            return {k: v for k, v in cfg.items() if k != "brewfather_key" and not k.startswith("_")} | {"key_saved": bool(cfg.get("brewfather_key"))}
 
     def handle(self, action, data):
         if action == "settings":
             return self.settings(data.get("settings"))
+        if action == "reveal-key":
+            cfg = load_config(self.config_path, self.root / "settings.json")["recipe_sources"]
+            return {"brewfather_key": cfg.get("brewfather_key", "")}
         if action == "import":
             return import_recipe(data["recipe"], data.get("options"))
         if action == "export":
@@ -702,7 +711,8 @@ class DesignerStore:
                         self.write(filename_, value)
                     return {"deleted": data["id"]}
                 return validate_draft(self.read(name, {}))
-        cfg = self.read("settings.json", {})
+        if action in ("kbh-list", "kbh-import", "bf-list", "bf-import"):
+            cfg = load_config(self.config_path, self.root / "settings.json")["recipe_sources"]
         if action == "kbh-list":
             return kbh_read(cfg.get("kbh_path", ""))
         if action == "kbh-import":
@@ -721,6 +731,19 @@ class DesignerStore:
                     self.write("snapshots.json", values)
                 return values.get(profile)
         raise ValueError("Unknown designer action")
+
+
+def requires_master_validation(plan):
+    """Only explicit device addressing binds an upload to a saved master.
+
+    Unqualified actor, kettle and profile commands use the target device's
+    configuration. Cached planner resources must not impose another identity.
+    """
+    for step in plan.get("mash", []):
+        name = str(step.get("Rast", "")).strip()
+        if ":" in name and "/" in name.split(":", 1)[0]:
+            return True
+    return False
 
 
 def validate_master_target(snap, profile, status):

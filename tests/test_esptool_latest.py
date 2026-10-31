@@ -13,11 +13,11 @@ class PinnedEsptoolTests(unittest.TestCase):
             bundled = root / "bundled"
             cached.touch()
             bundled.touch()
-            release = {"tag_name": "v5.3.1", "assets": [{"name": app.esptool_platform_asset("5.3.1")[0]}]}
+            release = {"tag_name": "v5.6.0", "assets": [{"name": app.esptool_platform_asset("5.6.0")[0]}]}
             with (patch.object(app, "json_request", return_value=release) as query,
                   patch.object(app, "cached_esptool_path", return_value=cached),
                   patch.object(app, "bundled_esptool_path", return_value=bundled),
-                  patch.object(app, "esptool_binary_version", return_value="5.3.1"),
+                  patch.object(app, "esptool_binary_version", return_value="5.6.0"),
                   patch.object(app, "download_to_file") as download):
                 self.assertEqual(app.ensure_esptool_available(), cached)
                 download.assert_not_called()
@@ -30,17 +30,37 @@ class PinnedEsptoolTests(unittest.TestCase):
             with (patch.object(app, "json_request", side_effect=OSError("offline")),
                   patch.object(app, "TOOLS_CACHE_DIR", Path(directory)),
                   patch.object(app, "bundled_esptool_path", return_value=bundled),
-                  patch.object(app, "esptool_binary_version", return_value="5.3.1")):
+                  patch.object(app, "esptool_binary_version", return_value="5.6.0")):
                 self.assertEqual(app.ensure_esptool_available(), bundled)
 
     def test_missing_asset_and_prerelease_are_rejected(self):
-        for release in ({"tag_name": "v5.3.1", "assets": []},
+        for release in ({"tag_name": "v5.6.0", "assets": []},
                         {"tag_name": "v5.5.0", "prerelease": True}):
             with (patch.object(app, "json_request", return_value=release),
                   patch.object(app, "cached_esptool_path", return_value=Path("missing-test-esptool")),
                   patch.object(app, "bundled_esptool_path", return_value=None)):
                 with self.assertRaises(RuntimeError):
                     app.ensure_esptool_available()
+
+    def test_old_binary_is_rejected_offline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bundled = Path(directory) / "esptool"
+            bundled.touch()
+            with (patch.object(app, "json_request", side_effect=OSError("offline")),
+                  patch.object(app, "TOOLS_CACHE_DIR", Path(directory)),
+                  patch.object(app, "bundled_esptool_path", return_value=bundled),
+                  patch.object(app, "esptool_binary_version", return_value="5.3.1")):
+                with self.assertRaisesRegex(RuntimeError, "no verified local esptool 5.6.0"):
+                    app.ensure_esptool_available()
+
+    def test_only_pinned_release_is_requested(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(app, "TOOLS_CACHE_DIR", Path(directory)),
+                  patch.object(app, "bundled_esptool_path", return_value=None),
+                  patch.object(app, "json_request", return_value={"tag_name": "v5.3.1"}) as query):
+                with self.assertRaisesRegex(RuntimeError, "required version is 5.6.0"):
+                    app.ensure_esptool_available()
+                query.assert_called_once_with("https://api.github.com/repos/espressif/esptool/releases/tags/v5.6.0", timeout=15)
 
     def test_all_platforms_use_selected_release(self):
         for system, arch, suffix in [("Windows", "AMD64", "windows-amd64.zip"),
@@ -50,4 +70,4 @@ class PinnedEsptoolTests(unittest.TestCase):
                 ("Darwin", "arm64", "macos-arm64.tar.gz"),
                 ("Darwin", "x86_64", "macos-amd64.tar.gz")]:
             with patch.object(app.platform, "system", return_value=system), patch.object(app.platform, "machine", return_value=arch):
-                self.assertEqual(app.esptool_platform_asset("5.3.1")[0], "esptool-v5.3.1-" + suffix)
+                self.assertEqual(app.esptool_platform_asset()[0], "esptool-v5.6.0-" + suffix)

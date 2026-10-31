@@ -2,6 +2,8 @@
 import base64
 import hashlib
 import json
+import math
+import re
 import os
 from pathlib import Path, PurePosixPath
 from datetime import datetime
@@ -41,6 +43,85 @@ def renamed_path(path, name):
     if not name or "/" in name or "\\" in name:
         raise ValueError("Enter a filename, not a path")
     return clean_path(str(PurePosixPath(path).parent / name))
+
+
+def validate_upload_format(path, data, view="all"):
+    """Check native file structure before a categorized upload, never convert recipes."""
+    parts = PurePosixPath(path).parts
+    name = PurePosixPath(path).name
+    category = next((kind for folder, kind in (("Rezepte", "mash"), ("Fermenter", "ferm"),
+                     ("Profile", "profile"), ("config", "config")) if folder in parts[:-1]), None)
+    if category is None and re.fullmatch(r"(?:config(?:_\d+)?\.txt|log_cfg(?:_\d+)?\.json)", name):
+        category = "config"
+    if category is None and view == "config":
+        category = "config"
+    if category is None:
+        return
+    labels = {"mash": "Maischeplan", "ferm": "Fermenterplan", "profile": "Profil", "config": "Konfiguration"}
+    def reject(detail):
+        if category == "mash":
+            detail = "Brewfather-, MMuM- und KBH-Rezepte zuerst im Rezept Planer importieren und als Maischeplan übernehmen"
+        raise ValueError(f"Ungültiges Format für {labels[category]}: {detail}. Datei wurde nicht übertragen.")
+
+    try:
+        value = json.loads(data)
+    except (ValueError, UnicodeDecodeError):
+        reject("gültiges JSON erwartet")
+    if not isinstance(value, dict):
+        reject("Brautomat-JSON-Objekt erwartet")
+
+    def objects(key, nonempty=False):
+        rows = value.get(key)
+        if not isinstance(rows, list) or (nonempty and not rows) or any(not isinstance(row, dict) for row in rows):
+            reject(f"{key} muss eine Liste von Objekten sein")
+        return rows
+
+    def text(row, key):
+        if not isinstance(row.get(key), str):
+            reject(f"Textfeld {key} fehlt oder ist ungültig")
+
+    def numeric(row, key):
+        number = row.get(key)
+        try:
+            valid = not isinstance(number, bool) and math.isfinite(float(number))
+        except (TypeError, ValueError, OverflowError):
+            valid = False
+        if not valid:
+            reject(f"Zahlenfeld {key} fehlt oder ist ungültig")
+
+    if category in ("mash", "ferm"):
+        for row in objects("misc", True):
+            text(row, "Sudname" if category == "mash" else "Fername")
+        for row in objects(category):
+            text(row, "Rast" if category == "mash" else "step")
+            for key in (("Temperatur", "Dauer") if category == "mash" else ("startTemp", "endTemp")):
+                numeric(row, key)
+            if category == "ferm":
+                if "duration" in row:
+                    numeric(row, "duration")
+                elif any(key in row for key in ("durationD", "durationH", "durationM")):
+                    for key in ("durationD", "durationH", "durationM"):
+                        if key in row:
+                            numeric(row, key)
+                else:
+                    reject("Dauer des Fermenterschritts fehlt")
+    elif category == "profile":
+        for row in objects("profile", True):
+            text(row, "pname")
+            numeric(row, "enabled")
+    else:
+        log_keys = {"CFG", "SEN", "ACT", "IND", "SUD", "HLT", "SYS", "MAS", "FER", "DIS", "PID"}
+        is_log_name = bool(re.fullmatch(r"log_cfg(?:_\d+)?\.json", name))
+        is_config_name = bool(re.fullmatch(r"config(?:_\d+)?\.txt", name))
+        if is_log_name or (not is_config_name and value and set(value) <= log_keys):
+            if not value or not set(value) <= log_keys:
+                reject("Brautomat-Logging-Konfiguration erwartet")
+            for key in value:
+                numeric(value, key)
+        else:
+            objects("misc", True)
+            for key in ("actors", "sensors", "kettles"):
+                objects(key)
 
 
 class FileExplorer:
@@ -154,6 +235,7 @@ class FileExplorer:
             raise ValueError("Select a file")
         if side == "device":
             device_file_path(path)
+            validate_upload_format(path, data)
         if not overwrite and self.exists(side, path):
             raise FileExistsError("Destination already exists: " + path)
         if side == "local":
@@ -164,6 +246,20 @@ class FileExplorer:
             with target.open("wb" if overwrite else "xb") as stream:
                 stream.write(data)
         else:
+            # An inventory version can have another filename than its embedded path.
+            # Firmware uses misc.File again after loading, so bind it to this target.
+            if PurePosixPath(path).parent in (PurePosixPath("/Rezepte"), PurePosixPath("/Fermenter")) and path.lower().endswith(".json"):
+                try:
+                    plan = json.loads(data)
+                except (ValueError, UnicodeDecodeError):
+                    plan = None
+                if isinstance(plan, dict) and any(isinstance(plan.get(key), list) for key in ("mash", "ferm")):
+                    meta = plan.get("misc")
+                    if isinstance(meta, list) and meta and all(isinstance(item, dict) for item in meta):
+                        if any(item.get("File") != path for item in meta):
+                            for item in meta:
+                                item["File"] = path
+                            data = json.dumps(plan, ensure_ascii=False, indent=2).encode("utf-8")
             self.device_write(path, data)
 
     def action(self, data):
@@ -183,6 +279,8 @@ class FileExplorer:
             self.write(side, path, text.encode("utf-8"), overwrite=True)
         elif action in ("upload", "new-file"):
             content = base64.b64decode(data.get("content", ""), validate=True) if action == "upload" else (b"{}\n" if path.endswith(".json") else b"")
+            if action == "upload":
+                validate_upload_format(path, content, data.get("view", "all"))
             self.write(side, path, content, bool(data.get("overwrite")))
         elif action == "mkdir":
             if side == "device":

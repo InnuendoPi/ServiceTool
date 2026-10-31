@@ -22,8 +22,64 @@ class MigrationRequestTests(unittest.TestCase):
             first["value"] = 2
             self.assertEqual(app.json_request(url), {"value": 1})
         self.assertEqual(self.open.call_count, 1)
-        with patch.object(app.time, "time", return_value=161):
+        with patch.object(app.time, "time", return_value=100 + app.GITHUB_JSON_TTL + 1):
             app.json_request(url)
+        self.assertEqual(self.open.call_count, 2)
+
+    def test_raw_manifests_are_cached_without_caching_device_json(self):
+        url = "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/main/version.json"
+        with patch.object(app.time, "time", return_value=100):
+            app.json_request(url)
+        with patch.object(app.time, "time", return_value=170):
+            app.json_request(url)
+        self.assertEqual(self.open.call_count, 1)
+
+    def test_commit_content_has_longer_cache_lifetime(self):
+        sha = "a" * 40
+        for url in (f"https://raw.githubusercontent.com/owner/repo/{sha}/version.json",
+                    f"https://api.github.com/repos/owner/repo/contents/build?ref={sha}"):
+            with self.subTest(url=url):
+                self.open.reset_mock()
+                with patch.object(app.time, "time", return_value=100):
+                    app.json_request(url)
+                with patch.object(app.time, "time", return_value=100 + app.GITHUB_JSON_TTL + 1):
+                    app.json_request(url)
+                self.assertEqual(self.open.call_count, 1)
+                with patch.object(app.time, "time", return_value=100 + app.GITHUB_COMMIT_JSON_TTL + 1):
+                    app.json_request(url)
+                self.assertEqual(self.open.call_count, 2)
+
+    def test_parallel_clicks_share_one_request(self):
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(lambda _: app.json_request(
+                "https://api.github.com/repos/test/contents/build"), range(16)))
+        self.assertEqual(self.open.call_count, 1)
+        self.assertEqual(results, [{"value": 1}] * 16)
+        results[0]["value"] = 2
+        self.assertEqual(results[1], {"value": 1})
+
+    def test_valid_cache_remains_available_during_api_limit(self):
+        cached_url = "https://api.github.com/repos/test/contents/build"
+        missing_url = "https://api.github.com/repos/test/contents/Updates"
+        with patch.object(app.time, "time", return_value=100):
+            app.json_request(cached_url)
+            app.GITHUB_RETRY_AT = 500
+            self.assertEqual(app.json_request(cached_url), {"value": 1})
+            with self.assertRaises(HTTPError):
+                app.json_request(missing_url)
+            self.assertEqual(self.open.call_count, 1)
+            # The REST API quota must not block raw manifests.
+            app.json_request("https://raw.githubusercontent.com/owner/repo/main/version.json")
+            self.assertEqual(self.open.call_count, 2)
+
+    def test_errors_are_not_retained_as_successful_results(self):
+        url = "https://api.github.com/repos/test/missing"
+        self.open.side_effect = HTTPError(url, 404, "missing", {}, None)
+        with self.assertRaises(HTTPError):
+            app.json_request(url)
+        self.open.side_effect = lambda *a, **k: io.BytesIO(b'{"recovered":true}')
+        self.assertEqual(app.json_request(url), {"recovered": True})
         self.assertEqual(self.open.call_count, 2)
 
     def test_device_requests_never_cached(self):

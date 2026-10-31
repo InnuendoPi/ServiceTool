@@ -21,11 +21,12 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
   let accept=true,legacyKbh=false,persistedDock=[];
   const ctx=vm.createContext({document:{body,createElement:tag=>new Element(tag),getElementById:id=>nodes[id]||null,
     querySelector:q=>q==='main.layout'?main:settings},window:{addEventListener(name,handler){windowEvents[name]=handler;}},console,
-    Event:class {constructor(type){this.type=type;}},currentLang:'de',appConfig:{active_device_id:'master'},managementDeviceUrl:()=> 'http://device',
+    Event:class {constructor(type){this.type=type;}},currentLang:'de',appConfig:{active_device_id:'master',device_url:'http://saved'},selectedConnectionPort:'COM3',managementDeviceUrl:()=> 'http://device',
     confirm:()=>accept,prompt:()=>null,TextEncoder,btoa:s=>Buffer.from(s,'binary').toString('base64'),URLSearchParams,
     api:async(url,options)=>{calls.push({url,...options});const action=url.split('/').at(-1);
       if(action==='dock-load')return {dock:JSON.parse(JSON.stringify(persistedDock))};
       if(action==='dock-save'){persistedDock=JSON.parse(JSON.stringify(options.body.dock));return {dock:persistedDock};}
+      if(action==='reveal-key')return {brewfather_key:'stored-test-key'};
       if(action==='settings')return {brewfather_user:'User',key_saved:true,import_options:{boil_temp:98}};
       if(action==='save'){
         const value=JSON.parse(JSON.stringify(options.body.draft));value.group_id=value.group_id||value.id;value.version=value.version||1;
@@ -56,6 +57,20 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
   vm.runInContext(fs.readFileSync('static/designer.js','utf8'),ctx);
   vm.runInContext('initializeDesigner()',ctx);await Promise.resolve();
   assert.ok(nodes.designerPanel);assert.equal(nodes.designerBfKey.type,'password');assert.equal(nodes.designerBfKey.value,'');
+  const reveal=nodes.designerBfKeyReveal,keyInput=nodes.designerBfKey;
+  assert.equal(calls.filter(c=>c.url.endsWith('/reveal-key')).length,0);
+  await reveal.events.click({});
+  assert.equal(keyInput.type,'text');assert.equal(keyInput.value,'stored-test-key');
+  assert.equal(reveal.attributes['aria-pressed'],'true');
+  await reveal.events.click({});assert.equal(keyInput.type,'password');
+  keyInput.value='new-test-key';await reveal.events.click({});
+  assert.equal(keyInput.value,'new-test-key');assert.equal(keyInput.type,'text');
+  assert.equal(calls.filter(c=>c.url.endsWith('/reveal-key')).length,1);
+  await elements.find(n=>n.tag==='button'&&n.title==='Speichern'&&n.className==='success icon-button').events.click({});
+  assert.equal(keyInput.type,'password');assert.equal(keyInput.value,'');
+  await reveal.events.click({});
+  await elements.find(n=>n.tag==='button'&&n.title==='API-Schlüssel entfernen').events.click({});
+  assert.equal(keyInput.type,'password');assert.equal(keyInput.value,'');assert.equal(keyInput.placeholder,'');
   assert.equal(nodes.designerBoilTemp.value,98);
   vm.runInContext('pdInsert({label:"Rast",temp:63,duration:30})',ctx);
   assert.equal(nodes.designerSteps.children.length,1);
@@ -83,10 +98,22 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
   const upload=calls.find(c=>c.url==='/api/explorer/action');
   assert.equal(upload.body.path,'/Rezepte/test.json');assert.equal(upload.body.action,'upload');
   assert.equal(upload.body.designer_context.profile,'master');
+  assert.equal(upload.body.designer_context.profile_url,'http://saved');
+  assert.equal(upload.body.designer_context.target_url,'http://device');
   assert.equal(nodes.designerDialog.open,true);
   assert.match(nodes.designerDialog.children[1].children[0].textContent,/erfolgreich übertragen.*Rezepte/);
   assert.match(nodes.designerStatus.textContent,/erfolgreich übertragen/);
   assert.ok(calls.some(call=>call.url==='/api/designer/export'));
+  const beforeSwitch=ctx.api;
+  for(const change of [()=>{ctx.selectedConnectionPort='COM4';},()=>{ctx.appConfig.active_device_id='other';},()=>{ctx.managementDeviceUrl=()=> 'http://other';}]){
+    const count=calls.filter(c=>c.url==='/api/explorer/action').length;
+    ctx.api=async(url,options)=>{const result=await beforeSwitch(url,options);if(url==='/api/designer/export')change();return result;};
+    await nodes.designerTransfer.click();
+    assert.equal(calls.filter(c=>c.url==='/api/explorer/action').length,count);
+    assert.match(nodes.designerStatus.textContent,/Gerät wurde gewechselt/);
+    ctx.selectedConnectionPort='COM3';ctx.appConfig.active_device_id='master';ctx.managementDeviceUrl=()=> 'http://device';
+  }
+  ctx.api=beforeSwitch;
   const apiBeforeFailure=ctx.api;
   ctx.api=async(url,options)=>{if(url==='/api/explorer/action')throw new Error('Test upload failed');return apiBeforeFailure(url,options);};
   await nodes.designerTransfer.click();
@@ -371,7 +398,7 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
   assert.equal(vm.runInContext('pd.draft.steps[1].Temperatur',ctx),98);
   assert.equal(propertyInput('Vorlage').value,'boil');
   propertyInput('Vorlage').value='first_wort';propertyInput('Vorlage').events.change();
-  assert.equal(vm.runInContext('pd.draft.steps[1].Temperatur',ctx),78);
+  assert.equal(vm.runInContext('pd.draft.steps[1].Temperatur',ctx),75);
   propertyInput('Vorlage').value='whirlpool';propertyInput('Vorlage').events.change();
   assert.equal(vm.runInContext('pd.draft.steps[1].Temperatur',ctx),80);
   propertyInput('Vorlage').value='boil';propertyInput('Vorlage').events.change();

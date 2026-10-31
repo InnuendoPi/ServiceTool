@@ -353,7 +353,7 @@ async function exAction(action,fields={}) {
   if(ex.busy)return false;
   const context=exContext();ex.busy=true;exButtons();
   try {
-    const body={side:ex.side,path:ex.selected?.path || ex.path,base_url:managementDeviceUrl(),maintenance:managementServiceActive(),local_folder:ex.side === "local" ? ex.localFolder : "",action,...fields};
+    const body={side:ex.side,view:ex.view,path:ex.selected?.path || ex.path,base_url:managementDeviceUrl(),maintenance:managementServiceActive(),local_folder:ex.side === "local" ? ex.localFolder : "",action,...fields};
     let result=await api("/api/explorer/action",{method:"POST",body});
     if(result.conflict) {
       const conflict=await exChooseInventoryVersion(result.target);

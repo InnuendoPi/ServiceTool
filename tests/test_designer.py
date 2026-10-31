@@ -9,6 +9,17 @@ from designer import validate_master_target, DesignerStore, brewfather, export_p
 
 
 class DesignerTests(unittest.TestCase):
+    def setUp(self):
+        # Route tests must never read or migrate the developer's real settings.
+        import app
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        for name, value in (("DATA_ROOT", Path(temp.name)),
+                            ("CONFIG_FILE", Path(temp.name) / "config.json")):
+            patcher = patch.object(app, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_local_command_annotation_survives_export_and_dock_save(self):
         value = import_recipe({"mash": [{"Rast": "Ruehrwerk : OFF :Läuterpause: Hinweis!"}]})
         expected = "Ruehrwerk:OFF:Läuterpause: Hinweis!"
@@ -211,7 +222,7 @@ class DesignerTests(unittest.TestCase):
         context = {"profile": "master", "snapshot": {"profile_id": "master", "multidevice": {"mode": 1},
                    "remote": {"master_id": "abc", "kettleRoles": [{"role": 2, "id": "worker", "kettle": 2, "assignment": "assigned"}]}}}
         data = {"designer_context": context, "base_url": "http://master", "action": "upload", "side": "device",
-                "path": "/Rezepte/Test.json", "content": base64.b64encode(b'{"mash":[]}').decode()}
+                "path": "/Rezepte/Test.json", "content": base64.b64encode(b'{"mash":[{"Rast":"worker/Valve:ON"}]}').decode()}
         with patch.object(app, "load_app_config", return_value={"active_device_id": "master", "device_url": "http://master"}), \
                 patch.object(app, "json_request") as remote, patch.object(app, "file_explorer") as explorer:
             handler = object.__new__(app.AppHandler)
@@ -226,6 +237,78 @@ class DesignerTests(unittest.TestCase):
                                    "kettleRoles": context["snapshot"]["remote"]["kettleRoles"]}
             handler.do_POST()
             explorer.return_value.action.assert_called_once_with(data)
+
+    def test_local_plan_upload_ignores_stale_worker_snapshot(self):
+        import app
+        import base64
+        from urllib.error import HTTPError
+        stale = {"firmware": "1.70.4", "profile_id": "primary",
+                 "multidevice": {"mode": 1},
+                 "remote": {"master_id": "old-master", "workers": [{"id": "worker"}],
+                            "kettleRoles": [{"role": 1, "id": "worker", "kettle": 1}]}}
+        plan = {"misc": [{"File": "/Rezepte/Test.json"}], "mash": [
+            {"Rast": "Ruehrwerk:ON"}, {"Rast": "Maltoserast", "Temperatur": 64},
+            {"Rast": "Wuerzekochen", "Temperatur": 98}, {"Rast": "Ruehrwerk:OFF"},
+            {"Rast": "SUD:ON"}, {"Rast": "MAISCHEPROFIL:Test"}, {"Rast": "HLT:OFF"}]}
+        data = {"designer_context": {"profile": "primary", "snapshot": stale},
+                "base_url": "http://legacy", "action": "upload", "side": "device",
+                "path": "/Rezepte/Test.json", "overwrite": True,
+                "content": base64.b64encode(json.dumps(plan).encode()).decode()}
+        with patch.object(app, "load_app_config", return_value={
+                "active_device_id": "primary", "device_url": "http://legacy"}), \
+                patch.object(app, "json_request", side_effect=HTTPError(
+                    "http://legacy/api/multidevice/status", 404, "Not Found", {}, None)) as remote, \
+                patch.object(app, "file_explorer") as explorer:
+            handler = object.__new__(app.AppHandler)
+            handler.path = "/api/explorer/action"
+            handler.headers = {}
+            handler._read_json = Mock(return_value=data)
+            handler._send_json = Mock()
+            handler.do_POST()
+            remote.assert_not_called()
+            explorer.return_value.action.assert_called_once_with(data)
+            self.assertEqual(json.loads(base64.b64decode(data["content"])), plan)
+
+    def test_master_guard_only_for_explicit_device_commands(self):
+        from designer import requires_master_validation
+        for name in ("Ruehrwerk:ON", "Ruehrwerk:OFF:Pause / laeutern!", "Kochen", "Rast 63 C",
+                     "SUD:ON", "MLT:OFF", "MAISCHE:50", "HLTPROFIL:Test",
+                     "SUDTHRESOUT:50", "Wuerze:OFF"):
+            self.assertFalse(requires_master_validation({"mash": [{"Rast": name}]}), name)
+        for name in ("worker/Valve:ON", "master/Ruehrwerk:ON", "worker/HLTPROFIL:Test"):
+            self.assertTrue(requires_master_validation({"mash": [{"Rast": name}]}), name)
+
+    def test_upload_session_target_and_profile_changes(self):
+        import app
+        import base64
+        config = {"active_device_id": "primary", "device_url": "http://saved"}
+        context = {"profile": "primary", "profile_url": "http://saved", "target_url": "http://192.168.1.42"}
+        data = {"designer_context": context, "base_url": context["target_url"], "action": "upload", "side": "device",
+                "path": "/Rezepte/Test.json", "content": base64.b64encode(b'{"mash":[]}').decode()}
+        cases = [
+            ("session address", context, [config, config], True),
+            ("profile changed", dict(context, profile="other"), [config], False),
+            ("profile URL changed", dict(context, profile_url="http://old"), [config], False),
+            ("target changed", dict(context, target_url="http://other"), [config], False),
+            ("profile changed during validation", context, [config, dict(config, active_device_id="other")], False),
+            ("URL changed during validation", context, [config, dict(config, device_url="http://other")], False),
+            ("legacy client rejects other address", {"profile": "primary"}, [config], False),
+        ]
+        for label, capture, configs, allowed in cases:
+            with self.subTest(label=label), patch.object(app, "load_app_config", side_effect=configs), \
+                    patch.object(app, "file_explorer") as explorer:
+                handler = object.__new__(app.AppHandler)
+                handler.path = "/api/explorer/action"
+                handler.headers = {}
+                handler._read_json = Mock(return_value=dict(data, designer_context=capture))
+                handler._send_json = Mock()
+                handler.do_POST()
+                if allowed:
+                    explorer.assert_called_once_with(context["target_url"], "")
+                    explorer.return_value.action.assert_called_once()
+                else:
+                    explorer.assert_not_called()
+                    self.assertIn("Gerät wurde gewechselt", handler._send_json.call_args.args[0]["error"])
 
     def test_enzyme_range_roundtrip(self):
         raw = {"misc": [{"Sudname": "Test", "minh": 50.5, "maxh": 75}], "mash": []}

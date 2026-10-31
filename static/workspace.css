@@ -15,7 +15,7 @@ body { font-size:14px; }
 .workspace-device label { display:flex; align-items:center; gap:10px; margin:0; }
 .workspace-device label span { font-size:12px; color:var(--muted); }
 .workspace-device select { min-width:120px; width:auto; }
-.workspace-device>button:hover:not(:disabled) { border-color:#aab8cb; background:var(--bg); }
+.workspace-device>button:hover:not(:disabled) { border-color:var(--hover-border, #aab8cb); background:var(--bg); }
 #profileFeedback { font-size:12px; color:var(--danger); }
 .workspace-device-details { color:var(--muted); font-size:12px; font-weight:400; overflow-wrap:anywhere; }
 .workspace-device-details .firmware-version { color:inherit; font:inherit; white-space:normal; }
@@ -26,12 +26,12 @@ body { font-size:14px; }
 .workspace-sections { display:flex; flex-wrap:wrap; gap:6px; padding:12px 24px 0; }
 .workspace-sections:empty { display:none; }
 .workspace-sections button { background:transparent; color:var(--muted); border:0; padding:7px 12px; font-size:13px; }
-.workspace-sections button[aria-current=page] { background:#e7efff; color:var(--primary); }
+.workspace-sections button[aria-current=page] { background:var(--selection-bg, #e7efff); color:var(--primary); }
 .layout { max-width:none; margin:0; padding:16px 24px 24px; gap:16px; }
 .tabs-row .tabs { display:none; }
 .tabs-row { display:none; }
 .workspace-device>.connection-state { margin-left:auto; min-width:0; max-width:100%; padding:3px 7px; font-size:12px; font-weight:400; border-radius:4px; white-space:normal; text-align:left; line-height:1.35; }
-.connection-state.online.process-unknown,.connection-state.online.process-active { color:#865600; border-color:#e6c56e; background:#fff8e3; }
+.connection-state.online.process-unknown,.connection-state.online.process-active { color:var(--warning-text, #865600); border-color:var(--warning-border, #e6c56e); background:var(--warning-bg, #fff8e3); }
 .card { border-radius:10px; padding:20px; box-shadow:none; }
 h2 { font-size:1.12rem; margin-bottom:16px; }
 .tab-panel.firmware-panel.active { grid-template-columns:minmax(0,1fr); }
@@ -80,7 +80,7 @@ body[data-workspace-view=maintenance] .workspace-maintenance { display:block; }
 #guideSearchStatus { font-size:12px; margin:8px 0; }
 #guideChapters { display:grid; gap:4px; }
 #guideChapters button { text-align:left; white-space:normal; color:var(--text); border-color:transparent; }
-#guideChapters button[aria-current=page] { background:#e7efff; color:var(--primary); }
+#guideChapters button[aria-current=page] { background:var(--selection-bg, #e7efff); color:var(--primary); }
 .guide-reading { padding:24px 30px; overflow:auto; min-width:0; }
 #guideContent { max-width:70ch; line-height:1.65; overflow-wrap:anywhere; }
 #guideContent h2 { margin:24px 0 12px; }
@@ -146,7 +146,7 @@ body[data-workspace-view=maintenance] .workspace-maintenance { display:block; }
 }
 :root body textarea:not([hidden]) { min-height:6rem; }
 :root body button.ghost { border-color:var(--line); }
-:root body button.ghost:hover:not(:disabled) { border-color:#aab8cb; }
+:root body button.ghost:hover:not(:disabled) { border-color:var(--hover-border, #aab8cb); }
 :root body :is(input,select,textarea,button):focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 :root body :is(input[type="checkbox"],input[type="radio"]) {
  width:14px; height:14px; min-height:0; padding:0; flex-shrink:0;
@@ -179,7 +179,7 @@ body[data-workspace-view=maintenance] .workspace-maintenance { display:block; }
   #explorerStatus { flex: 0 0 auto; max-height: 3.5em; overflow-y: auto; }
 }
 
-.connection-state.installing { color:#125c99; border-color:#b6d4fe; background:#e7f1ff; }
+.connection-state.installing { color:var(--info-text, #125c99); border-color:var(--info-border, #b6d4fe); background:var(--info-bg, #e7f1ff); }
 
 /* Shared table header typography and height, including the non-sortable designer. */
 :root body .table-sort,

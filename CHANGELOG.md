@@ -1,5 +1,49 @@
 # Changelog
 
+## 2.0.2 - Unveröffentlicht
+
+- Ergänzt unter Einstellungen die Darstellung System, Hell und Dunkel.
+  Die Auswahl wird zentral gespeichert; System folgt der Browserpräferenz.
+- Führt die ServiceTool-Einstellungen in `config.json` zusammen und übernimmt
+  optionale Rezeptquellen-Einstellungen aus der bisherigen `settings.json`.
+- Speichert Brewfather- und gespeicherte Telegraf-Zugangsdaten verschlüsselt.
+  Die benötigte Bibliothek wird in Windows-, Linux- und macOS-Paketen gebündelt.
+- Ergänzt Auge-Buttons zum Anzeigen und Verbergen des Brewfather-API-Keys
+  und des WLAN-Passworts.
+- Erlaubt das Löschen jedes Geräteprofils, einschließlich des letzten.
+  Ohne Profil wird die Standardverbindung verwendet.
+- Korrigiert Mengenangaben und fehlende Schrittnamen beim Brewfather-Import.
+- Prüft im Explorer vor dem Upload die Formate von Maischeplänen,
+  Fermenterplänen, Profilen und Konfigurationen. Fremdrezepte müssen zuerst
+  im Rezept Planer übernommen werden.
+- Korrigiert den im Maischeplan gespeicherten Dateipfad beim Geräte-Upload.
+- Behebt falsche Abbrüche bei der Planübertragung durch temporäre
+  Geräteverbindungen und alte Master-Zuordnungen. Explizite Gerätebefehle
+  und tatsächliche Gerätewechsel bleiben geprüft.
+- Entfernt die Alterswarnung für gespeicherte Gerätekonfigurationen sowie
+  die Zielgeneration-Dropdown und ihren Remote-Kompatibilitätshinweis.
+- Ermöglicht die USB-Paketwahl für Wechsel zwischen 1.66 und 1.70,
+  einschließlich spezieller Versionen. Beim Rückwechsel von 1.7x auf 1.66
+  wird die Firmware in beide Anwendungspartitionen geschrieben.
+  Flash löschen und Flash LittleFS bleiben unabhängig wählbar.
+- Aktualisiert esptool für Windows, Linux und macOS auf 5.6.0 und prüft
+  die verwendete Version.
+- Speichert GitHub-Paketabfragen zwischen, bündelt parallele Abfragen und
+  berücksichtigt API-Sperrfristen. Geräteabfragen bleiben ungecacht.
+- Verwendet bereits geladene GitHub-Dateien über Neustarts hinweg erneut.
+  Dateien fester Commits werden lokal geprüft; Branch-Dateien werden nach
+  Ablauf des Cache-Zeitraums auf Änderungen geprüft.
+- Verhindert wiederholte Geräteprüfungen und WLAN-Scans beim Seitenwechsel.
+  WLAN-Fehler starten keine erneute Geräteprüfung. Start und manuelle
+  Geräteprüfung zeigen einen Spinner; ausbleibende Statusantworten werden
+  nach 30 Sekunden mit einem Fehler beendet.
+- Entfernt bei neuen Migrationen vor dem Flashen alte WebUpdate-Marker und
+  Versuchszähler. Funde und Entfernung werden protokolliert; bei Fehlern
+  startet kein Flash. Download und Gerätesicherung erfolgen vorher.
+- Aktualisiert die deutsche und englische Hilfe für die aktuellen Bedienabläufe.
+- Erweitert die Git-Ausschlüsse für lokale Konfigurationen, deren Kopien,
+  Nutzdaten, Datenbanken und private Schlüssel.
+
 ## 2.0.1 - Unveröffentlicht
 
 - Korrigiert den Zugriff auf kBh-Datenbanken über UNC-Pfade (NAS).

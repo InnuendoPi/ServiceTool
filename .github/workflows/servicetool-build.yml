@@ -135,15 +135,14 @@ jobs:
           chmod +x appimagetool.AppImage
           ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 \
             ./appimagetool.AppImage AppDir artifact/package/Brautomat32ServiceTool.AppImage
-          cp README.md artifact/package/README.md
-          cp MIGRATION.md artifact/package/MIGRATION.md
+          python tools/package_docs.py artifact/package
           cp docker-compose.yml artifact/package/docker-compose.yml
           cp -r docker artifact/package/docker
           cp -r examples artifact/package/examples
           mkdir -p artifact/package/tools
           cp tools/mock_server.py artifact/package/tools/mock_server.py
           cd artifact/package
-          zip -r ../../Brautomat32ServiceTool-linux.zip Brautomat32ServiceTool.AppImage README.md MIGRATION.md docker-compose.yml docker examples tools
+          zip -r ../../Brautomat32ServiceTool-linux.zip Brautomat32ServiceTool.AppImage README.md MIGRATION.md CHANGELOG.md LICENSE img static docker-compose.yml docker examples tools
 
       - name: Upload Linux package
         uses: actions/upload-artifact@v6
@@ -189,6 +188,7 @@ jobs:
             --collect-all ifaddr \
             --collect-all serial \
             --collect-all certifi \
+            --collect-all cryptography \
             --add-data "static:static" \
             app.py
 
@@ -202,14 +202,14 @@ jobs:
           mkdir -p artifact/package
           ditto -c -k --sequesterRsrc --keepParent \
             dist/Brautomat32ServiceTool.app Brautomat32ServiceTool-macos.zip
-          cp MIGRATION.md artifact/package/MIGRATION.md
+          python tools/package_docs.py artifact/package
           cp docker-compose.yml artifact/package/docker-compose.yml
           cp -r docker artifact/package/docker
           cp -r examples artifact/package/examples
           mkdir -p artifact/package/tools
           cp tools/mock_server.py artifact/package/tools/mock_server.py
           cd artifact/package
-          zip -r ../../Brautomat32ServiceTool-macos.zip MIGRATION.md docker-compose.yml docker examples tools
+          zip -r ../../Brautomat32ServiceTool-macos.zip README.md MIGRATION.md CHANGELOG.md LICENSE img static docker-compose.yml docker examples tools
 
       - name: Upload macOS package
         uses: actions/upload-artifact@v6

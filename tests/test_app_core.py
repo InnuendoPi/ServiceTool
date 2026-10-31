@@ -115,6 +115,7 @@ class SerialHandoverTests(unittest.TestCase):
             restart = Mock()
             with (
                 patch.object(app, "resolve_package", return_value=package),
+                patch.object(app, "usb_flash_plan", return_value=[("firmware.bin", 8, 0x10000)]),
                 patch.object(app, "ensure_esptool_available", return_value=package / "esptool"),
                 patch.object(
                     app,

@@ -13,11 +13,11 @@
 .designer-steps { padding:10px; min-height:120px; flex:1; }
 .designer-step { display:grid; grid-template-columns:24px minmax(100px,1fr) 90px 70px 65px; align-items:center; gap:8px; padding:12px 8px; border-bottom:1px solid var(--line); cursor:grab; }
 .designer-steps > .designer-step:nth-child(even):not([aria-selected=true]):not(.designer-drop):not(.designer-drop-after) { background:var(--bg); }
-.designer-step[aria-selected=true] { background:#e7efff; }
+.designer-step[aria-selected=true] { background:var(--selection-bg, #e7efff); }
 .designer-step:focus-visible { outline:2px solid var(--primary); }
 .designer-step-number { color:var(--muted); }
 .designer-step-name { overflow-wrap:anywhere; }
-.designer-drop { box-shadow:inset 0 3px var(--primary); background:#f2f6ff; }
+.designer-drop { box-shadow:inset 0 3px var(--primary); background:var(--drop-bg, #f2f6ff); }
 .designer-right { padding:12px; border-left:1px solid var(--line); min-height:0; display:flex; flex-direction:column; }
 .designer-right h3 { margin:4px 0 8px; font-size:15px; }
 .designer-properties { flex:1 0 auto; overflow:visible; min-height:0; }
@@ -35,12 +35,12 @@
 .designer-comparison { padding:10px; border-top:1px solid var(--line); }
 .designer-compare-shell { border:1px solid var(--line); border-radius:8px; overflow:auto; }
 .designer-compare-table { min-width:900px; }
-.designer-compare-table thead th { position:static; padding:6px 8px; background:#d8e1ec; color:#0d6efd; font-size:12px; font-weight:400; border-bottom:3px solid #0d6efd; }
+.designer-compare-table thead th { position:static; padding:6px 8px; background:var(--table-heading-bg, #d8e1ec); color:var(--table-heading-color, #0d6efd); font-size:12px; font-weight:400; border-bottom:3px solid var(--table-heading-color, #0d6efd); }
 .designer-compare-table .designer-compare-title { color:var(--text); border-bottom:1px solid var(--line); }
 .designer-compare-title strong,.designer-compare-title span { display:block; }
 .designer-compare-title span { margin-top:4px; overflow-wrap:anywhere; }
 .designer-compare-table td { font-size:12px; vertical-align:middle; }
-.designer-compare-table tr.changed { background:#fff8e3; }
+.designer-compare-table tr.changed { background:var(--warning-bg, #fff8e3); }
 .designer-compare-table .designer-compare-transfer { width:40px; text-align:center; background:var(--surface); border-left:1px solid var(--line); border-right:1px solid var(--line); }
 .designer-compare-transfer button { white-space:nowrap; }
 .designer-compare-empty { color:var(--muted); }
@@ -69,13 +69,13 @@
 .designer-settings-actions button { display:flex; align-items:center; gap:8px; }
 @media(max-width:760px) { .designer-settings-grid { grid-template-columns:1fr; } .designer-settings-group:last-child { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 
-.designer-columns { display:grid; grid-template-columns:24px minmax(100px,1fr) 90px 70px 65px; gap:8px; align-items:center; margin:10px 10px 0; padding:0 8px; background:#d8e1ec; color:#0d6efd; border-bottom:3px solid #0d6efd; border-radius:8px 8px 0 0; position:sticky; top:0; z-index:1; }
+.designer-columns { display:grid; grid-template-columns:24px minmax(100px,1fr) 90px 70px 65px; gap:8px; align-items:center; margin:10px 10px 0; padding:0 8px; background:var(--table-heading-bg, #d8e1ec); color:var(--table-heading-color, #0d6efd); border-bottom:3px solid var(--table-heading-color, #0d6efd); border-radius:8px 8px 0 0; position:sticky; top:0; z-index:1; }
 .designer-columns[hidden] { display:none; }
 .designer-columns span:last-child { white-space:nowrap; }
 .designer-steps { padding-top:0; }
 
 .designer-drafts { height:auto; max-height:55dvh; min-height:100px; }
-.designer-drafts .file-table thead th { padding:0; background:#d8e1ec; border-bottom:3px solid #0d6efd; }
+.designer-drafts .file-table thead th { padding:0; background:var(--table-heading-bg, #d8e1ec); border-bottom:3px solid var(--table-heading-color, #0d6efd); }
 
 .designer-inventory { height:auto; max-height:55dvh; min-height:100px; }
 
@@ -131,7 +131,7 @@
 .designer-dock .designer-dock-saved { grid-template-columns:0 minmax(60px,1fr) 44px 44px 16px 28px; }
 .designer-dock-saved .explorer-icon { width:26px; height:26px; padding:3px; }
 
-.designer-drop-after { box-shadow:inset 0 -3px var(--primary); background:#f2f6ff; }
+.designer-drop-after { box-shadow:inset 0 -3px var(--primary); background:var(--drop-bg, #f2f6ff); }
 
 .designer-save-dialog { width:min(520px, calc(100vw - 32px)); box-sizing:border-box; }
 .designer-save-dialog h2 { padding-right:32px; }

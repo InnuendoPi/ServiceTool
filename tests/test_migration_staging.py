@@ -7,7 +7,7 @@ import app
 
 
 class MigrationStagingTests(unittest.TestCase):
-    def check_staging(self, fail_download):
+    def check_staging(self, fail_download, fail_cleanup=False):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
             root = Path(directory)
             expected = list(app.migration_engine.IMAGES) + [
@@ -30,6 +30,7 @@ class MigrationStagingTests(unittest.TestCase):
                 return {"version": version}
 
             def handover(*args):
+                cleanup.assert_called_once()
                 packages = list(root.glob("migration-*"))
                 self.assertEqual(len(packages), 1)
                 validate(packages[0], "1.70.0")
@@ -58,6 +59,14 @@ class MigrationStagingTests(unittest.TestCase):
             session = MagicMock()
             session.report = {"id": "test"}
             create = stack.enter_context(patch.object(app.migration_engine.ApiSession, "create", return_value=session))
+            def clear_markers(*args):
+                self.assertEqual(len(downloads), len(expected))
+                session.capture_api.assert_called_once()
+                serial.assert_not_called()
+                if fail_cleanup:
+                    raise RuntimeError("marker cleanup failed")
+                return ["/updateSys.txt"]
+            cleanup = stack.enter_context(patch.object(app, "clear_migration_webupdate_markers", side_effect=clear_markers))
             device = stack.enter_context(patch.object(app.migration_engine, "Esptool"))
             args = (app.Job(id="test", type="migration", title="Test"),
                     "http://device", False, "COM3", 921600, "development_170", "", "", False, True)
@@ -68,6 +77,12 @@ class MigrationStagingTests(unittest.TestCase):
                 create.assert_not_called()
                 device.assert_not_called()
                 validation.assert_not_called()
+            elif fail_cleanup:
+                with self.assertRaisesRegex(RuntimeError, "marker cleanup failed"):
+                    app.migration_job(*args)
+                serial.assert_not_called()
+                device.assert_not_called()
+                session.install.assert_not_called()
             else:
                 self.assertEqual(app.migration_job(*args), {"ok": True})
                 serial.assert_called_once()
@@ -80,3 +95,6 @@ class MigrationStagingTests(unittest.TestCase):
 
     def test_last_download_failure_prevents_esptool_and_backup(self):
         self.check_staging(True)
+
+    def test_marker_failure_prevents_serial_handover_and_flash(self):
+        self.check_staging(False, fail_cleanup=True)

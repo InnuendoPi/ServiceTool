@@ -31,23 +31,42 @@ try {
     New-Item -ItemType Directory -Force -Path $esptoolPackageDir | Out-Null
 
     Copy-Item $exePath (Join-Path $packageDir "Brautomat32ServiceTool.exe")
-    Copy-Item $readmePath (Join-Path $packageDir "README.md")
-    Copy-Item (Join-Path $scriptDir "MIGRATION.md") (Join-Path $packageDir "MIGRATION.md")
+    $docsPython = if ($env:SERVICE_TOOL_BUILD_PYTHON) { $env:SERVICE_TOOL_BUILD_PYTHON }
+        elseif (Test-Path ".venv/Scripts/python.exe") { ".venv/Scripts/python.exe" }
+        else { "python" }
+    & $docsPython tools/package_docs.py $packageDir
+    if ($LASTEXITCODE -ne 0) { throw "Documentation packaging failed" }
     Copy-Item (Join-Path $scriptDir "docker-compose.yml") (Join-Path $packageDir "docker-compose.yml")
     Copy-Item -Recurse (Join-Path $scriptDir "docker") (Join-Path $packageDir "docker")
     Copy-Item -Recurse (Join-Path $scriptDir "examples") (Join-Path $packageDir "examples")
     New-Item -ItemType Directory -Force -Path (Join-Path $packageDir "tools") | Out-Null
     Copy-Item (Join-Path $scriptDir "tools\mock_server.py") (Join-Path $packageDir "tools\mock_server.py")
 
+    $esptoolVersion = "5.6.0"
+    function Test-EsptoolVersion([string]$Path) {
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+        try {
+            $output = & $Path version 2>&1
+            $exitCode = $LASTEXITCODE
+            $versionPattern = '(?m)^\s*(?:esptool\s+v?)?' + [regex]::Escape($esptoolVersion) + '\s*$'
+            return ($exitCode -eq 0 -and (($output -join "`n") -match $versionPattern))
+        } catch {
+            return $false
+        }
+    }
     $localEsptool = Join-Path $scriptDir "esptool\esptool.exe"
-    if (Test-Path $localEsptool) {
+    if (Test-EsptoolVersion $localEsptool) {
         Copy-Item $localEsptool (Join-Path $esptoolPackageDir "esptool.exe")
     } else {
         $esptoolZip = Join-Path $artifactDir "esptool.zip"
-        $esptoolUrl = "https://github.com/espressif/esptool/releases/download/v5.3.1/esptool-v5.3.1-windows-amd64.zip"
+        $esptoolUrl = "https://github.com/espressif/esptool/releases/download/v$esptoolVersion/esptool-v$esptoolVersion-windows-amd64.zip"
         Invoke-WebRequest -Uri $esptoolUrl -OutFile $esptoolZip
         Expand-Archive -LiteralPath $esptoolZip -DestinationPath $artifactDir -Force
         Copy-Item (Join-Path $artifactDir "esptool-windows-amd64\esptool.exe") (Join-Path $esptoolPackageDir "esptool.exe")
+    }
+
+    if (-not (Test-EsptoolVersion (Join-Path $esptoolPackageDir "esptool.exe"))) {
+        throw "Packaged esptool must report version $esptoolVersion"
     }
 
     Remove-Item -Force $zipPath -ErrorAction SilentlyContinue

@@ -79,6 +79,44 @@ class DeviceProfilesTests(unittest.TestCase):
         self.assertEqual(len(config["device_profiles"]), 1)
         self.assertEqual(config["serial_port"], "COM4")
 
+    def test_remove_first_and_last_profile_restores_defaults(self):
+        added = app.change_device_profile({"action": "add", "port": "COM5", "url": "http://worker"})
+        worker = added["active_device_id"]
+        original = app.load_app_config()
+        remaining = app.change_device_profile({"action": "remove", "id": "primary"})
+        self.assertEqual([p["id"] for p in remaining["device_profiles"]], [worker])
+        self.assertEqual(remaining["device_url"], "http://worker")
+        empty = app.change_device_profile({"action": "remove", "id": worker})
+        self.assertEqual(empty["device_profiles"], [])
+        self.assertEqual(empty["active_device_id"], "")
+        for key in ("device_url", "serial_port"):
+            self.assertEqual(empty[key], app.default_config()[key])
+        for key in ("inventory_root", "telegraf", "baud_rate"):
+            self.assertEqual(empty[key], original[key])
+        self.assertEqual(app.load_app_config(), empty)
+        added = app.change_device_profile({"action": "add", "port": "COM9", "url": "http://new"})
+        self.assertEqual(len(added["device_profiles"]), 1)
+        self.assertEqual(added["device_profiles"][0]["id"], added["active_device_id"])
+        self.assertEqual(added["serial_port"], "COM9")
+
+    def test_remove_active_first_selects_remaining_profile(self):
+        added = app.change_device_profile({"action": "add", "port": "COM5", "url": "http://worker"})
+        app.change_device_profile({"action": "select", "id": "primary"})
+        remaining = app.change_device_profile({"action": "remove", "id": "primary"})
+        self.assertEqual(remaining["active_device_id"], added["active_device_id"])
+        self.assertEqual((remaining["device_url"], remaining["serial_port"]), ("http://worker", "COM5"))
+        before = self.path.read_bytes()
+        with self.assertRaises(ValueError):
+            app.change_device_profile({"action": "remove", "id": "unknown"})
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_remove_legacy_connection_and_add_first_profile(self):
+        empty = app.change_device_profile({"action": "remove", "id": "primary"})
+        self.assertEqual(empty["device_profiles"], [])
+        self.assertEqual(empty["serial_port"], "")
+        created = app.change_device_profile({"action": "add", "port": "COM7", "url": "http://first"})
+        self.assertEqual(len(created["device_profiles"]), 1)
+
     def test_busy_job_and_sessions_block_profile_change_without_stopping(self):
         before = self.path.read_bytes()
         job = app.STATE.jobs.create("flash", "Flash")

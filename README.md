@@ -1,6 +1,15 @@
 # Brautomat32 ServiceTool
 
 Brautomat32 ServiceTool is the desktop companion for Brautomat32 devices.
+It combines recipe planning, device management and maintenance in a local
+browser interface for Windows, Linux and macOS.
+
+This README describes the **2.0.2 source version**. Available release packages
+may differ; see [Releases](https://github.com/InnuendoPi/ServiceTool/releases)
+and [CHANGELOG.md](CHANGELOG.md).
+
+Detailed instructions are available in the application's **Help** menu and in
+[English](static/help/en.md) or [German](static/help/de.md).
 
 It provides:
 
@@ -22,10 +31,10 @@ It provides:
 Brautomat32 ServiceTool is distributed as a complete desktop application.
 
 The Windows package includes a bundled `esptool` copy. Linux and macOS packages
-do not bundle it. Before use, the tool checks the latest stable esptool release
-on GitHub and downloads the matching platform asset when needed. Downloads are
-cached by version. If GitHub is unreachable, a verified local copy is used and
-the fallback is reported in the log.
+do not bundle it. ServiceTool uses **esptool 5.6.0** and verifies the version
+of bundled, cached or downloaded copies. It downloads the matching platform
+asset when needed and caches it locally. If GitHub is unreachable, a verified
+local copy of that version can be used.
 
 The ServiceTool checks its own repository manifest at
 `https://raw.githubusercontent.com/InnuendoPi/ServiceTool/main/version.json`
@@ -39,13 +48,13 @@ the old ServiceTool version manually.
 ### Windows
 
 1. Create any directory for the ServiceTool.
-2. Copy `Brautomat32ServiceTool.exe` into that directory.
+2. Extract the complete Windows release ZIP into that directory.
 3. Start the executable.
 
 ### Linux
 
 1. Create any directory for the ServiceTool.
-2. Copy `Brautomat32ServiceTool.AppImage` into that directory.
+2. Extract the Linux release ZIP into that directory.
 3. Make it executable:
 
 ```bash
@@ -101,7 +110,8 @@ version inside the validated main firmware image. Web assets can be provided in
 Only the allowed web assets and language files are read from LittleFS, using
 [littlefs-python](https://littlefs-python.readthedocs.io/en/latest/examples/index.html).
 The package stays unchanged, and configuration files from its filesystem image
-are not copied to the device. Corrupt or ambiguous packages are rejected before flashing.
+are not copied to the device. Corrupt or ambiguous packages are rejected before
+flashing.
 
 Firmware repair while the ServiceApp is running uploads only `firmware.bin`
 over HTTP and leaves the ServiceApp and filesystem intact. Device file rename
@@ -127,6 +137,7 @@ Runtime data includes:
 - `logs`
 - `cache`
 - `inventar`
+- `designer` (drafts, Dock and saved planning data)
 - `config.json`
 
 Runtime data location:
@@ -140,90 +151,166 @@ These runtime folders are intentionally excluded from git.
 
 ## Using the ServiceTool
 
-When the ServiceTool starts, it first checks the selected COM port and then the
-network connection to the Brautomat. The current connection state is shown
-directly in the status badge. The ServiceTool needs a few seconds at startup to
-detect the serial connection and WiFi availability.
+The screenshots show ServiceTool 2.0.2 with German interface labels.
+The migration image shows package selection, not a completed migration.
 
-The following status states show the current connection progress and indicate
-which ServiceTool functions are already available.
+The interface has four main areas. The active device, serial port, URL,
+firmware version and connection/process status appear in the header.
 
-- `No device`: No Brautomat has been detected yet. Check the USB cable, the
-  selected COM port, or the local network connection.
+| Area | Functions |
+| --- | --- |
+| Device | Connection check, COM port, device URL and WiFi setup |
+| Firmware | USB, published firmware updates, web files and language |
+| Data | Recipe Planner, Explorer, Backup & restore |
+| Service | Monitor, Telegraf, Maintenance, Migration, optional Test runner |
 
-![no device](img/no_device.jpg)
+The three-dot menu opens **Settings**, **Check for updates** and **Help**.
+Settings include language, appearance, device profiles and recipe sources.
+Up to 20 device profiles can store separate names, ports and URLs. Select the
+intended device before any upload, restore or firmware operation.
 
-- `Checking`: The ServiceTool is currently checking serial and network access.
-  This status appears during startup and after manual device checks.
+### Connect a device and configure WiFi
 
-![checking device](img/checking.jpg)
+1. Connect the Brautomat over USB and select its COM port under **Device**.
+2. Enter its network URL and run the connection check.
+3. If WiFi is not configured, scan for networks, select the SSID, enter the
+   password and save. The device restarts with the new credentials.
+4. Check the connection again after restart.
 
-- `Serial`: A Brautomat was found on the selected COM port. Basic serial
-  communication is available, but network functions may still be checked
-  afterwards. If no Brautomat firmware has been flashed yet, the status
-  remains `Serial`.
+**Serial connected** confirms USB detection, not network availability.
+**Online** confirms API access; the process status separately indicates whether
+brewing or fermentation is active. An unknown process status is not confirmation
+that the device is idle. Network functions also depend on firmware support.
+Local recipe planning remains available without a connected device.
 
-![serial device](img/serial.jpg)
+### Recipe Planner
 
-- `Online`: The Brautomat is reachable over the network API. This status can
-  only be reached with Brautomat firmware `1.62` or newer. With `Online`
-  status, all ServiceTool functions are available.
+![Recipe Planner with a mash plan and step properties](img/planner-2.0.2.png)
 
-![device online](img/online.jpg)
+Open **Data → Recipe Planner**. Sources and building blocks are on the left,
+the executable mash plan is in the centre, and step properties and the **Dock**
+are on the right.
+
+1. Create a new plan or load a recipe from inventory, a draft, a file or a
+   connected device.
+2. Add rests, boil steps, hop additions and ingredients. Drag kettles, actors
+   and profiles into the plan to include device commands.
+3. Select a step to edit its name, temperature, duration and automatic
+   continuation. Use drag-and-drop to reorder steps; Shift/Ctrl supports
+   multiple selection. Undo and Redo apply to edits in the working plan.
+4. Use **Review plan** to inspect warnings and resource assignments. Use
+   **Compare mash plan** to compare a second draft or file alongside the plan.
+5. Save a draft while working. Choose **Move to inventory** when ready, or
+   transfer the executable plan to the selected device after reviewing it.
+
+Supported recipe sources:
+
+| Source | How to use it |
+| --- | --- |
+| Brautomat JSON | Import a file or open a device/inventory plan |
+| MaischeMalzundMehr | Import a recipe JSON export |
+| kleinerBrauhelfer2 | Import JSON or read recipes from its SQLite database |
+| Brewfather | Import JSON or load recipes/batches through the account API |
+| ServiceTool drafts | Reopen local working copies with their planning data |
+
+Set the Brewfather User ID/API key and KBH2 database path under
+**Settings → Recipe sources**. KBH2 database access is read-only.
+Import defaults control temperatures for imported steps. Review imported
+quantities, timing and device commands before transferring a plan.
+
+The **Dock** holds reusable steps across plans and restarts. Dragging steps
+from the plan into the Dock moves them; dragging them back into a plan copies
+them. Dock steps are not executed or uploaded to the device.
+
+Drafts support updating the current version, saving a new version and creating
+an independent variant. Moving a draft to inventory offers a destination folder
+and version/replacement options. After a successful move, that draft and its
+intermediate versions are removed; other variants remain. Opening an inventory
+plan creates a working copy. Only the executable plan is exported to the device;
+Dock contents and supporting planning data stay local.
 
 ### Firmware
 
-![Firmware](img/firmware.jpg)
+![Firmware installation and web-file updates](img/firmware-2.0.2.png)
 
-- Select the correct COM port before flashing.
-- Use `Latest Release` for normal updates when a compatible package is available.
-- Package paths follow the detected firmware generation: through 1.66.x uses
-  `build/`; 1.67 and newer uses `Updates/`. Before device detection, the newer
-  generation is selected. Missing modern packages never fall back to old binaries.
-- `Special Version` lists available tags/commits for that generation. The displayed
-  directory and the downloaded directory match; all binary files are pinned to one
-  commit. Historical packages missing required files are omitted.
-- Language and webfile updates use the same generation. Local directories remain
-  available through `Open directory`.
-- Use `Latest Development` only for test devices or current development builds.
-- Keep `Flash erase` enabled only when a clean flash is really required.
-- Keep `Web files` enabled when firmware and WebUI should match.
-- After a serial-only device check, WiFi scan starts automatically.
-- WiFi credentials can be entered here and transferred directly to the
-  Brautomat.
+Select **1.66 Release**, **1.66 Development** or **1.70 Development**, or choose
+an offered **Special Version**. **Open directory** selects an extracted local
+package. Wait for package validation before installing.
 
-### Management
+| Firmware generation | Release package | Development package |
+| --- | --- | --- |
+| 1.66.x | `main/build/ESP32-IDF5` | `development/build/ESP32-IDF5dev` |
+| 1.70 | Not defined | `development/Updates/ESP32-IDF5dev` |
 
-![Management](img/management.jpg)
+A missing package is not replaced with one from a different generation.
+Special versions use the selected ref consistently for version information and
+package files. The actual images and layout must also be compatible.
 
-- Manage mash plans, fermenter plans, profiles, and configuration files.
-- Copy files between device and local inventory.
-- Rename and delete files directly in the table actions.
-- Device actions require an online connection.
+For USB installation, select the target package and flash baud rate, then check
+**Erase flash** and **Flash LittleFS** independently. Erasing removes settings
+and files; writing LittleFS replaces the filesystem with the package contents.
+If erase is enabled but LittleFS flashing is disabled, the filesystem is erased
+without being populated again. Back up required data before using either option.
 
-### Backup & Restore
+Direct USB installation supports switching between 1.66 and 1.70, including
+returning to 1.66. It does not create an automatic backup or automatically
+recover the previous state. For a guided move from 1.66 to 1.70, use
+[Service → Migration](#migration-from-166-to-170).
 
-![Backup Restore](img/backup_restore.jpg)
+**Check for firmware update** looks for published firmware separately from the
+selected USB package. Network updates require an online device with a confirmed
+idle process state and do not perform the old-to-ServiceApp layout migration.
 
-- Create a backup before firmware changes, erase flash, or filesystem updates.
-- Restore expects a valid Brautomat32 backup JSON.
-- Keep backups with clear names so the correct device state can be restored
-  later.
+Web-file and device-language updates use the selected repository package and
+must match the installed firmware generation. These separate actions are not
+available for **Open directory**. ServiceTool's own interface language is set
+in **Settings**.
 
-### Serial Monitor
+### Explorer
 
-![Serial Monitor](img/serial_monitor.jpg)
+![Explorer with inventory versions and file preview](img/explorer-2.0.2.png)
 
-- Use the Serial Monitor for live device logs on the selected COM port.
-- Stop the log before using the same COM port for other exclusive serial
-  actions if required.
-- Reboot sends a device restart command over the current serial connection.
-- `?hide_test=1&debug=1` opens the UI with hidden test tab and visible debug
-  output.
+Open **Data → Explorer** to manage device files and the local inventory.
+Choose a location and use the shortcuts for recipes, fermenter plans, profiles,
+configuration and logs. Search, sorting and text preview help locate files.
+
+- Copy files between the connected device and inventory.
+- Create folders, rename files and delete selected entries after confirmation.
+- Edit text files from the preview; JSON is validated before saving.
+- Inspect inventory versions and open recipes in the Recipe Planner.
+
+Device operations require network access. Local inventory remains available
+offline. Check the destination before replacing files; a local folder name does
+not change the selected target device.
+
+### Backup & restore
+
+![Configuration backup, restore and firmware backup](img/backup-2.0.2.png)
+
+Open **Data → Backup & restore** to create and manage configuration backups.
+Backups can be named, annotated, inspected and restored from the local list or
+a selected JSON file. Restore validates the JSON and waits for the device to
+respond again.
+
+**Firmware Backup** reads the running application image over USB. It is not a
+complete backup of settings or the filesystem. Migration backups have their own
+recovery workflow described below.
+
+### Serial monitor
+
+![Serial monitor with port selection and controls](img/serial-2.0.2.png)
+
+Open **Service → Serial monitor**, select the port and baud rate (normally
+115200), and start logging. Output can be cleared or copied; autoscroll can be
+switched off for inspection.
+
+For flashing and firmware backup, ServiceTool temporarily releases the serial
+port and schedules the monitor's restart afterwards if it was active. Check the
+resulting status. Reboot prefers HTTP when available, with serial fallback.
 
 ### Telegraf
 
-The Telegraf tab configures a separate Telegraf process. Telegraf reads the
+**Service → Telegraf** configures a separate Telegraf process. Telegraf reads the
 Brautomat endpoint `<device-url>/telemetry` and forwards the current metrics to
 each enabled destination. The ServiceTool only generates the temporary Telegraf
 configuration, starts/stops the process, and shows its output.
@@ -245,16 +332,46 @@ The ServiceTool does not save destination passwords by default. Enable the
 explicit checkbox in the Telegraf tab only when storing them in the local
 `config.json` is intended.
 
-### Migration
+### Migration from 1.66 to 1.70
 
-Migrate firmware 1.62.0 through 1.66.x to a compatible package from 1.67.0
-with an API settings backup, preserved WiFi settings and user files.
-Restore Backup restores settings without replacing the installed firmware.
-See [MIGRATION.md](MIGRATION.md) for instructions and package requirements.
+![Migration with the 1.70 Development target selected](img/migration-2.0.2.png)
+
+Use **Service → Migration** for the guided transition from the old partition
+layout to the ServiceApp layout. Supported sources are **1.62.0 through 1.66.x**;
+no intermediate firmware update is required. The target must have a verified
+compatible ServiceApp layout (1.67.0 or newer). The current development target
+is **1.70 Development**. Supported devices use ESP32 with 4 MiB flash and the
+old symmetric layout.
+
+1. Finish all mash and fermentation processes. Connect the device over USB
+   and make sure it is also reachable at its network URL.
+2. Check the active device, COM port and source firmware version.
+3. Open **Service → Migration** and select **1.70 Development**, a compatible
+   special version or a complete extracted local package. Firmware and migration
+   share the package selection.
+4. Start migration and keep power, USB and network connectivity available.
+5. Read the final result, verify the target version and check the device's
+   browser interface and saved configuration.
+
+ServiceTool validates the package and web files, saves the device's complete
+API backup, and then installs boot files, main firmware and ServiceApp.
+NVS settings and LittleFS user files are retained; matching web files are
+updated. Migration does not perform a full flash erase or create a full flash
+image backup. Its backup and report are stored under `backups/migrations/`.
+
+If installation is interrupted, follow the displayed recovery session and use
+**Resume migration** while its installation files remain cached. After a failed
+write check, ServiceTool does not automatically reboot. Other serial actions
+may remain blocked until recovery.
+
+**Restore Backup** restores saved settings over the device API to the installed
+firmware. It requires network access and does not return the device to 1.66.
+Older full-flash backups retain their separate USB restore workflow.
+See [MIGRATION.md](MIGRATION.md) for package contents and recovery details.
 
 ### Maintenance mode
 
-Use the maintenance controls in the Firmware tab to start the ServiceApp over
+Use **Service → Maintenance** to start the ServiceApp over
 USB and return to the main firmware. Maintenance requires a compatible ServiceApp;
 firmware through 1.66.x needs migration first.
 
@@ -262,11 +379,12 @@ While maintenance mode is active:
 
 - Repair the main firmware from the Firmware tab. Only the main application is
   uploaded; flash erase and LittleFS flashing are disabled.
-- Use Management to read, replace and delete configuration files, mash/fermenter
-  plans and profiles over the network.
+- Use **Data → Explorer** to read, replace and delete configuration files,
+  mash/fermenter plans and profiles over the network.
 - Reset the saved brewing state when it prevents normal operation.
-- Save WiFi credentials over USB. Saving does not by itself confirm a successful
-  WiFi connection. WiFi reading, scanning and reset are not supported by the ServiceApp.
+- Save WiFi credentials under **Device** over USB. Saving does not by itself
+  confirm a successful WiFi connection. WiFi reading, scanning and reset are
+  not supported by the ServiceApp.
 
 The operating mode and any restriction on returning to the main firmware are
 updated automatically. Network repairs use the ServiceApp address; an explicitly
@@ -274,9 +392,10 @@ entered device IP is retained. The main firmware starts only after the ServiceAp
 allows the switch.
 
 If an interrupted update prevents startup, ServiceTool displays a repair message
-and a **Repair main firmware** button. Select the desired firmware package above,
-then confirm the repair. The ServiceApp must be reachable over WiFi; WiFi settings
-can be saved over USB first. ServiceTool uploads and verifies the main firmware,
+and a **Repair main firmware** button. Select the desired package under
+**Firmware**, then return to **Service → Maintenance** and confirm the repair.
+The ServiceApp must be reachable over WiFi; WiFi settings can be saved over USB
+first. ServiceTool uploads and verifies the main firmware,
 checks that the incomplete-update flag was cleared, and starts the main firmware
 only if no other boot restriction remains. Configuration and filesystem are kept.
 A regular USB firmware upload alone does not clear this persistent repair flag.
@@ -318,7 +437,9 @@ database, InfluxDB, or MQTT credentials.
 The optional Test Runner integration is not part of this repository. Its tab
 is only shown when a complete local Brautomat32 development checkout is
 configured through `BRAUTOMAT32_SOURCE_ROOT`. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for the required files and setup.
+[CONTRIBUTING.md][contributing] for the required files and setup.
+
+[contributing]: https://github.com/InnuendoPi/ServiceTool/blob/main/CONTRIBUTING.md
 
 ### Testing without hardware
 
@@ -380,12 +501,15 @@ commits `version.json` with the matching release URLs and SHA256 values.
 ## Repository Layout
 
 - `app.py`: local HTTP backend, device communication, and tool orchestration
-- `telegraf.py`: Telegraf config generation, process management, and binary download
+- `designer.py`: recipe imports, drafts and planning data
+- `explorer.py`: device files and local inventory
+- `migration.py`, `maintenance.py`: layout migration and ServiceApp maintenance
+- `telegraf.py`: Telegraf configuration, process management and binary download
 - `static/`: browser UI
 - `tools/mock_server.py`: local `/telemetry` mock device for Telegraf testing
 - `docker-compose.yml`, `docker/`: local Telegraf backend test services
 - `examples/grafana/`: portable Grafana dashboard examples
-- `img/`: README screenshots
+- `static/help/`: German and English user guides
 - `Brautomat32ServiceTool.spec`: PyInstaller configuration
 - `build_servicetool_windows_release.ps1`: local Windows release build
 - `.github/workflows/servicetool-build.yml`: manual cross-platform builds

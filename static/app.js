@@ -502,8 +502,9 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "2.0.1",
+  service_tool_version: "2.0.2",
   language: "en",
+  appearance: "light",
   debug_output: false,
   device_url: "http://brautomat",
   package_source: "release",
@@ -523,7 +524,6 @@ let lastDeviceStatus = {
 };
 let firmwareUpdateState = null;
 let lastFirmwareUpdatePromptKey = "";
-let pendingFirmwareTabWifiRefresh = false;
 let checkDeviceInFlight = null;
 let pendingOnlineUpgradeCheck = null;
 let activeProcessPollInFlight = false;
@@ -563,7 +563,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "2.0.1"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "2.0.2"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -753,14 +753,26 @@ async function api(path, options = {}) {
     }
   }
   options = connectionRequestOptions(path, options);
-  const res = await fetch(path, {
-    method: options.method || "GET",
-    headers: { "Content-Type": "application/json" },
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || JSON.stringify(json));
-  return json;
+  const controller = options.timeoutMs ? new AbortController() : null;
+  const timer = controller ? window.setTimeout(() => controller.abort(), options.timeoutMs) : null;
+  try {
+    const res = await fetch(path, {
+      method: options.method || "GET",
+      headers: { "Content-Type": "application/json" },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: controller?.signal
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || JSON.stringify(json));
+    return json;
+  } catch (err) {
+    if (controller?.signal.aborted) {
+      throw new Error(currentLang === "de" ? "Zeitüberschreitung bei der Geräteprüfung." : "Device check timed out.");
+    }
+    throw err;
+  } finally {
+    if (timer !== null) window.clearTimeout(timer);
+  }
 }
 
 async function saveConfig(partial = {}) {
@@ -774,7 +786,19 @@ async function saveConfig(partial = {}) {
   return appConfig;
 }
 
+function updateWifiPasswordVisibility() {
+  const visible = $("wifiPassword").type === "text";
+  const button = $("wifiPasswordReveal");
+  button.title = currentLang === "de"
+    ? (visible ? "Passwort verbergen" : "Passwort anzeigen")
+    : (visible ? "Hide password" : "Show password");
+  button.setAttribute("aria-label", button.title);
+  button.setAttribute("aria-pressed", String(visible));
+}
+
 function applyLanguage() {
+  if (typeof ServiceToolTheme !== "undefined") ServiceToolTheme.translate(currentLang);
+  updateWifiPasswordVisibility();
   if (typeof translateExplorer === "function") translateExplorer();
   if (typeof translateWorkspace === "function") translateWorkspace();
   document.documentElement.lang = currentLang;
@@ -1206,9 +1230,10 @@ async function loadOverview() {
   currentLang = appConfig.language || "en";
   $("language").value = currentLang;
   $("debugOutput").checked = !!appConfig.debug_output;
+  if (typeof ServiceToolTheme !== "undefined") ServiceToolTheme.apply(appConfig.appearance);
   $("deviceUrl").value = appConfig.device_url || "http://brautomat";
   $("packageSource").value = appConfig.package_source || "release";
-  $("packageVersion").value = appConfig.package_ref || "";
+  $("packageVersion").value = appConfig.package_dir || "";
   $("packageDir").value = $("packageSource").value === "open"
     ? openPackageDirValue()
     : (appConfig.package_dir || "");
@@ -1225,7 +1250,9 @@ let packageLoadEpoch = 0;
 let packageSelectionReady = false;
 let loadedPackageGeneration = "";
 let migrationPackageSelection = false;
-function packageSelectionGeneration() { return migrationPackageSelection ? "Updates" : packageGeneration(); }
+function packageSelectionGeneration() { return migrationPackageSelection ? "Updates" : "all"; }
+function selectedPackageRef() { return $("packageVersion").selectedOptions[0]?.dataset.ref || ""; }
+function selectedPackageRoot() { return $("packageDir").value.includes('/Updates/') ? 'Updates' : 'build'; }
 function packageGeneration() {
   const version = parseDeviceFirmwareVersion(lastDeviceStatus?.firmware || "");
   return version && compareVersionTuple(version, [1, 67, 0]) < 0 ? "build" : "Updates";
@@ -1259,15 +1286,16 @@ async function loadPackages() {
     versionSelect.innerHTML = "";
     for (const item of versions) {
       const option = document.createElement("option");
-      option.value = item.ref; option.textContent = item.label;
+      option.value = item.base_url; option.textContent = item.label;
+      option.dataset.ref = item.ref;
       option.dataset.baseUrl = item.base_url;
       versionSelect.appendChild(option);
     }
     let selected;
     if (source === "special") {
-      selected = versions.find(item => item.ref === appConfig.package_ref) || versions[0];
-      versionSelect.value = selected?.ref || "";
-      appConfig.package_ref = versionSelect.value;
+      selected = versions.find(item => item.ref === appConfig.package_ref && item.base_url === appConfig.package_dir) || versions.find(item => item.ref === appConfig.package_ref) || versions[0];
+      versionSelect.value = selected?.base_url || "";
+      appConfig.package_ref = selected?.ref || "";
       versionSelect.disabled = !selected;
     } else selected = (data.packages || []).find(item => item.key === source);
     $("packageDir").value = selected?.base_url || selected?.path || "";
@@ -1292,10 +1320,10 @@ async function loadRepoLanguages() {
   const requestId = (loadRepoLanguages.requestId || 0) + 1;
   loadRepoLanguages.requestId = requestId;
   const source = $("packageSource").value;
-  const ref = $("packageVersion").value || "";
+  const ref = selectedPackageRef();
   const generation = packageGeneration();
   const isCurrent = () => loadRepoLanguages.requestId === requestId &&
-    $("packageSource").value === source && ($("packageVersion").value || "") === ref && packageGeneration() === generation;
+    $("packageSource").value === source && (selectedPackageRef()) === ref && packageGeneration() === generation;
   const select = $("webfilesLanguage");
   const installBtn = $("installLanguageBtn");
   select.innerHTML = "";
@@ -1310,6 +1338,13 @@ async function loadRepoLanguages() {
     select.appendChild(option);
     select.disabled = true;
     installBtn.disabled = true;
+    return;
+  }
+
+  if (source !== "open" && $("packageDir").value && selectedPackageRoot() !== generation) {
+    setInlineStatus("languageListStatus", currentLang === "de"
+      ? "Generationswechsel nur über USB oder Migration. Sprachinstallation ist für diese Auswahl gesperrt."
+      : "Generation changes require USB or migration. Language installation is disabled for this selection.");
     return;
   }
 
@@ -3074,9 +3109,9 @@ async function applySelectedSerialPort(port, persist = true) {
   if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
 }
 
-async function loadPorts() {
+async function loadPorts(options = {}) {
   writeStartupTrace("loadPorts start");
-  const data = await api("/api/ports");
+  const data = await api("/api/ports", options);
   const ports = Array.isArray(data.ports) ? data.ports : [];
   const available = new Set(ports.map(port => String(port.port || "").trim()).filter(Boolean));
   const currentFirmwarePort = String(($("portSelect")?.value || "").trim());
@@ -3145,7 +3180,7 @@ function syncFirmwareActions() {
   const source = $("packageSource").value;
   const packageDir = $("packageDir");
   const versionGroup = $("packageVersionGroup");
-  $("updateWebfilesBtn").disabled = source === "open";
+  $("updateWebfilesBtn").disabled = source === "open" || selectedPackageRoot() !== packageGeneration();
   if (source === "open") {
     packageDir.readOnly = false;
     packageDir.placeholder = "C:\\Brautomat32\\build\\ESP32-IDF5";
@@ -3170,12 +3205,7 @@ function syncFlashOptionDependencies() {
   const erase = $("eraseFlashSelect");
   const littlefs = $("littlefsSelect");
   if (!erase || !littlefs) return;
-  if (erase.checked) {
-    littlefs.checked = true;
-    littlefs.disabled = true;
-  } else {
-    littlefs.disabled = false;
-  }
+  littlefs.disabled = false;
 }
 
 function updateFlashBackupWarning() {
@@ -3183,7 +3213,9 @@ function updateFlashBackupWarning() {
   const warning = $("flashBackupWarning");
   if (!warning) return;
   const active = !!($("eraseFlashSelect")?.checked || $("littlefsSelect")?.checked);
-  warning.textContent = text("flashBackupWarning");
+  const erasedWithoutFs = $("eraseFlashSelect")?.checked && !$("littlefsSelect")?.checked;
+  warning.textContent = text("flashBackupWarning") + (erasedWithoutFs
+    ? (currentLang === "de" ? " — LittleFS wird gelöscht und nicht neu geschrieben." : " — LittleFS will be erased and not rewritten.") : "");
   warning.classList.toggle("hidden-panel", !active);
 }
 
@@ -3274,7 +3306,10 @@ function renderDeviceStatusBadge() {
     return;
   }
   if (normalized === "offline") {
-    node.textContent = text("checkDeviceNone");
+    const port = $("portSelect")?.value || $("serialPortSelect")?.value || "";
+    node.textContent = port
+      ? `${port} · ${currentLang === "de" ? "Keine Firmwareantwort" : "No firmware response"}`
+      : text("checkDeviceNone");
     return;
   }
   if (normalized === "checking") {
@@ -3398,7 +3433,6 @@ async function checkDevice(options = {}) {
     return checkDeviceInFlight;
   }
   const useGlobalSpinner = options.globalSpinner !== false;
-  let globalSpinnerHandedOff = false;
   let globalSpinnerDone = false;
   const finishGlobalSpinner = () => {
     if (!useGlobalSpinner || globalSpinnerDone) return;
@@ -3421,11 +3455,12 @@ async function checkDevice(options = {}) {
   setButtonsDisabled(["checkDevice"], true);
   try {
     if (refreshPorts) {
-      await loadPorts();
+      await loadPorts({ timeoutMs: 10000 });
     }
     const checkedPort = selectedConnectionPort;
     const data = await api("/api/device/status", {
       method: "POST",
+      timeoutMs: 30000,
       body: {
         base_url: $("deviceUrl").value,
         serial_port: $("portSelect").value || $("serialPortSelect").value || "",
@@ -3439,11 +3474,15 @@ async function checkDevice(options = {}) {
       $("deviceUrl").value = data.base_url;
       if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
     }
+    const previousGeneration = packageGeneration();
     lastDeviceStatus = { ...lastDeviceStatus, ...data, mode: data?.mode || null };
     if (loadedPackageGeneration !== packageSelectionGeneration()) {
       loadPackages().then(loadRepoLanguages).catch(console.error);
+    } else if (previousGeneration !== packageGeneration()) {
+      syncFirmwareActions();
+      loadRepoLanguages().catch(console.error);
     }
-    updateDeviceConnectionState(data?.state || (serialDeviceAvailable() ? "serial" : "offline"));
+    updateDeviceConnectionState(data?.state || ("offline"));
     updateDeviceVersionMeta(data);
     if(data.serial_error)writeStartupTrace(`device serial detection failed: ${data.serial_error}`);
     if(!data.firmware&&data.http_error)writeStartupTrace(`device HTTP detection failed: ${data.http_error}`);
@@ -3459,7 +3498,7 @@ async function checkDevice(options = {}) {
       checkFirmwareUpdate(false).catch(console.error);
     }
     writeStartupTrace(`checkDevice done: state=${data?.state || "-"} transport=${data?.transport || "-"} firmware=${String(data?.firmware || "").trim() || "-"}`);
-    if (data?.state === "serial" && data?.mode !== "service" && !pendingOnlineUpgradeCheck) {
+    if (data?.state === "serial" && data?.firmware && data?.mode !== "service" && !pendingOnlineUpgradeCheck) {
       writeStartupTrace("checkDevice schedules online upgrade check");
       pendingOnlineUpgradeCheck = window.setTimeout(async () => {
         pendingOnlineUpgradeCheck = null;
@@ -3468,6 +3507,7 @@ async function checkDevice(options = {}) {
           try {
             const onlineData = await api("/api/device/status", {
               method: "POST",
+              timeoutMs: 30000,
               body: {
                 base_url: $("deviceUrl").value,
                 serial_port: "",
@@ -3500,38 +3540,18 @@ async function checkDevice(options = {}) {
         }
       }, 2500);
     }
-    if (pendingFirmwareTabWifiRefresh) {
-      pendingFirmwareTabWifiRefresh = false;
-      const firmwareTabActive = document.querySelector('.tab.active')?.dataset?.tab === "firmware";
-      const spinner = $("wifiSpinner");
-      const isScanning = spinner && !spinner.classList.contains("hidden-spinner");
-      if (data?.mode === "service") {
-        writeStartupTrace("checkDevice skips auto wifi scan: ServiceApp maintenance mode");
-        finishGlobalSpinner();
-      } else if (firmwareTabActive && !isScanning && ["serial", "online"].includes(String(data?.state || "").trim())) {
-        writeStartupTrace("checkDevice schedules wifi scan");
-        globalSpinnerHandedOff = true;
-        window.setTimeout(() => {
-          scanWifi(true, true, { globalSpinner: useGlobalSpinner }).catch(console.error);
-        }, 250);
-      } else if (firmwareTabActive && !["serial", "online"].includes(String(data?.state || "").trim())) {
-        writeStartupTrace(`checkDevice skips auto wifi scan: state=${data?.state || "-"}`);
-        finishGlobalSpinner();
-      }
-    } else {
-      finishGlobalSpinner();
-    }
-  } catch (_err) {
+  } catch (err) {
     lastDeviceStatus = {
-      state: serialDeviceAvailable() ? "serial" : "offline",
+      state: "offline",
       firmware: "",
       transport: "",
       version_source: ""
     };
-    updateDeviceConnectionState(serialDeviceAvailable() ? "serial" : "offline");
+    updateDeviceConnectionState("offline");
     updateDeviceVersionMeta(null);
     updateActiveProcessState(null);
-    writeStartupTrace(`checkDevice failed: fallback-state=${serialDeviceAvailable() ? "serial" : "offline"}`);
+    writeStartupTrace(`checkDevice failed: ${String(err)}; fallback-state=${"offline"}`);
+    if (!silent) appendStatus("firmwareStatus", text("checkDevice"), String(err));
   } finally {
     setButtonsDisabled(["checkDevice"], false);
   }
@@ -3540,9 +3560,7 @@ async function checkDevice(options = {}) {
     return await checkDeviceInFlight;
   } finally {
     checkDeviceInFlight = null;
-    if (!globalSpinnerHandedOff) {
-      finishGlobalSpinner();
-    }
+    finishGlobalSpinner();
   }
 }
 
@@ -3604,14 +3622,7 @@ async function refreshAfterFirmwareUpdate() {
   } catch (err) {
     console.error(err);
   }
-  try {
-    const canProbe = deviceIsOnline() || serialDeviceAvailable();
-    if (canProbe) {
-      await scanWifi(true, false);
-    }
-  } catch (err) {
-    console.error(err);
-  }
+
 }
 
 function scheduleRefreshAfterFirmwareUpdate(delay = 2200) {
@@ -3752,15 +3763,10 @@ async function resetWifi() {
   }
 }
 
-async function scanWifi(forceRefresh = true, allowHostFallback = true, options = {}) {
+async function scanWifi(forceRefresh = true, allowHostFallback = true) {
   if (managementServiceActive()) {
     setInlineStatus("wifiInlineStatus", currentLang === "de" ? "WLAN-Einstellungen in der ServiceApp noch nicht unterstützt." : "WiFi settings are not yet supported by the ServiceApp.");
     return;
-  }
-  const useGlobalSpinner = options.globalSpinner === true;
-  if (useGlobalSpinner) {
-    if ($("appLoadingText")) $("appLoadingText").textContent = currentLang === "de" ? "WLAN wird geprüft ..." : "Checking WiFi ...";
-    $("appLoadingOverlay")?.classList.remove("hidden-panel");
   }
   writeStartupTrace(`scanWifi start: refresh=${forceRefresh} hostFallback=${allowHostFallback}`);
   setButtonsDisabled(["wifiResetBtn", "wifiScanBtn", "wifiSaveBtn"], true);
@@ -3805,34 +3811,13 @@ async function scanWifi(forceRefresh = true, allowHostFallback = true, options =
       if (!transport.serial_port || !/No serial response/i.test(message)) {
         throw err;
       }
-      await sleep(1200);
-      data = await requestScan().catch(async retryErr => {
-        const retryMessage = String(retryErr || "");
-        if (!/No serial response/i.test(retryMessage)) {
-          throw retryErr;
-        }
-        await sleep(1200);
-        return requestScan();
-      }).catch(async retryErr => {
-        const retryMessage = String(retryErr || "");
-        if (!/No serial response/i.test(retryMessage)) {
-          throw retryErr;
-        }
-        try {
-          await checkDevice();
-        } catch (_ignored) {}
-        const refreshedState = $("deviceConnectionState")?.dataset?.state || "";
-        if (initialState !== "online" && refreshedState !== "online") {
-          throw new Error(currentLang === "de"
-            ? "Keine serielle Antwort. COM-Port und Firmware prüfen."
-            : "No serial response. Check COM port and firmware.");
-        }
-        transport = { serial_port: "", serial_baud: Number($("serialBaudSelect").value || 115200) };
-        return api("/api/wifi/scan", {
-          method: "POST",
-          body: { base_url: effectiveDeviceBaseUrl(), refresh: forceRefresh, ...transport }
-        });
-      });
+      if (initialState !== "online") {
+        throw new Error(currentLang === "de"
+          ? "Keine serielle Antwort. COM-Port und Firmware prüfen."
+          : "No serial response. Check COM port and firmware.");
+      }
+      transport = { serial_port: "", serial_baud: Number($("serialBaudSelect").value || 115200) };
+      data = await requestScan();
     }
 
     if (data.status === "running") {
@@ -3886,7 +3871,6 @@ async function scanWifi(forceRefresh = true, allowHostFallback = true, options =
   } finally {
     setSpinner("wifiSpinner", false);
     setButtonsDisabled(["wifiResetBtn", "wifiScanBtn", "wifiSaveBtn"], false);
-    if (useGlobalSpinner) appStartupTaskDone();
   }
 }
 
@@ -3942,7 +3926,7 @@ async function saveWifi() {
       scheduleDeviceCheckUntilOnline(2500, 6, 2500);
     } catch (err) {
       appendStatus("firmwareStatus", text("wifiTitle"), String(err));
-      setInlineStatus("wifiInlineStatus", `Error: ${String(err)}`);
+      setInlineStatus("wifiInlineStatus", `Error: ${err?.message || String(err)}`);
   } finally {
     setSpinner("wifiSpinner", false);
     setButtonsDisabled(["wifiResetBtn", "wifiScanBtn", "wifiSaveBtn"], false);
@@ -3968,7 +3952,8 @@ async function startFlash() {
         base_url: managementDeviceUrl(),
         baud: Number($("baudSelect").value),
         package_source: $("packageSource").value,
-        package_ref: $("packageVersion").value || "",
+        source_firmware: lastDeviceStatus?.firmware || "",
+        package_ref: selectedPackageRef(),
         package_dir: $("packageDir").value,
         erase_flash: $("eraseFlashSelect").checked,
         include_littlefs: $("littlefsSelect").checked
@@ -4042,7 +4027,7 @@ async function updateWebfiles() {
         base_url: $("deviceUrl").value,
         package_source: source,
         package_root: packageGeneration(),
-        package_ref: $("packageVersion").value || ""
+        package_ref: selectedPackageRef()
       }
     });
     setStatus("firmwareStatus", "");
@@ -4100,7 +4085,7 @@ async function installLanguage() {
         base_url: $("deviceUrl").value,
         package_source: source,
         package_root: packageGeneration(),
-        package_ref: $("packageVersion").value || "",
+        package_ref: selectedPackageRef(),
         filename
       }
     });
@@ -4164,7 +4149,7 @@ async function startMigration() {
         baud: Number($("baudSelect").value),
         package_source: $("packageSource").value,
         package_dir: $("packageDir").value,
-        package_ref: $("packageVersion").value || "",
+        package_ref: selectedPackageRef(),
         include_littlefs: false,
         create_backup: true
       }
@@ -4835,20 +4820,6 @@ function activateTab(name) {
   if (name === "firmware") {
     refreshMaintenance();
     writeStartupTrace("activateTab firmware");
-    const spinner = $("wifiSpinner");
-    const select = $("wifiNetworks");
-    const isScanning = spinner && !spinner.classList.contains("hidden-spinner");
-    const hasNetworks = !!(select && select.options && select.options.length && select.options[0].value);
-    const canProbe = !!$("deviceUrl").value.trim() || deviceIsOnline() || serialDeviceAvailable();
-    if (!isScanning && !hasNetworks && canProbe) {
-      writeStartupTrace("activateTab firmware requests device check");
-      pendingFirmwareTabWifiRefresh = true;
-      checkDevice({
-        refreshPorts: false,
-        serialTimeout: 5,
-        preferSerial: false
-      }).catch(console.error);
-    }
   }
   if (name === "management") {
     loadExplorer({automatic:true}).catch(console.error);
@@ -4871,6 +4842,9 @@ function activateTab(name) {
 }
 
 function attachEvents() {
+  if (typeof ServiceToolTheme !== "undefined") {
+    ServiceToolTheme.bind(value => saveConfig({ appearance: value }));
+  }
   for (const id of ["wifiSettingsForm", "telegrafSettingsForm"]) {
     $(id)?.addEventListener("submit", event => event.preventDefault());
   }
@@ -4950,6 +4924,11 @@ function attachEvents() {
   $("restoreBtn").addEventListener("click", runRestore);
   $("wifiResetBtn").addEventListener("click", resetWifi);
   $("wifiScanBtn").addEventListener("click", () => scanWifi(true, true));
+  $("wifiPasswordReveal").addEventListener("click", () => {
+    const input = $("wifiPassword");
+    input.type = input.type === "password" ? "text" : "password";
+    updateWifiPasswordVisibility();
+  });
   $("wifiSaveBtn").addEventListener("click", saveWifi);
   $("wifiNetworks").addEventListener("change", () => {
     $("wifiSsid").value = $("wifiNetworks").value;
@@ -4980,7 +4959,7 @@ function attachEvents() {
     setProgressState("firmwareProgressPanel", "firmwareProgressBar", "firmwareProgressText", 0, false);
   });
   $("packageVersion").addEventListener("change", async () => {
-    const selectedRef = $("packageVersion").value || "";
+    const selectedRef = selectedPackageRef();
     const selectedOption = $("packageVersion").selectedOptions[0];
     const baseUrl = selectedOption?.dataset?.baseUrl || "";
     appConfig.package_ref = selectedRef;
@@ -5071,6 +5050,17 @@ function attachEvents() {
 
 }
 
+async function checkStartupDevice() {
+  const selection = maintenanceSelectionKey();
+  await checkDevice({ refreshPorts: false, serialTimeout: 5, globalSpinner: true });
+  if (selection !== maintenanceSelectionKey() || firmwareInstallationActive()) return;
+  const status = lastDeviceStatus;
+  if (status?.mode === "service" || !["online", "serial"].includes(status?.state)) return;
+  if (status.state === "serial" && !status.firmware) return;
+  if (!$("wifiSpinner")?.classList.contains("hidden-spinner")) return;
+  await scanWifi(true, false);
+}
+
 async function init() {
   writeStartupTrace("init start", { reset: true, force: true });
   try {
@@ -5093,6 +5083,9 @@ async function init() {
     await loadPorts();
     writeStartupTrace("initial loadPorts done");
     activateTab("firmware");
+    if ($("deviceUrl").value.trim() || serialDeviceAvailable()) {
+      checkStartupDevice().catch(console.error);
+    }
     setProgressState("firmwareProgressPanel", "firmwareProgressBar", "firmwareProgressText", 0, false);
     setProgressState("webfilesProgressPanel", "webfilesProgressBar", "webfilesProgressText", 0, false, "", "webfilesProgressFile", "webfilesProgressTitle");
     setInlineStatus("flashInlineStatus", "");

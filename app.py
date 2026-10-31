@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from config_store import load_config, write_config, recipe_defaults
 from explorer import FileExplorer
-from designer import DesignerStore, validate_master_target, snapshot as designer_snapshot
+from designer import DesignerStore, requires_master_validation, validate_master_target, snapshot as designer_snapshot
 import base64
 import hashlib
+import github_file_cache
 import http.client
 import json
 import mimetypes
@@ -18,6 +20,7 @@ import socket
 import ssl
 import subprocess
 import struct
+import zlib
 import sys
 import tarfile
 import tempfile
@@ -108,8 +111,8 @@ SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "2.0.1"
-ESPTOOL_VERSION = "5.3.1"  # Pin downloads and local selection to this version.
+SERVICE_TOOL_VERSION = "2.0.2"
+ESPTOOL_VERSION = "5.6.0"  # Pin downloads and local selection to this version.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
 ESPTOOL_SELECTED_VERSION = None
@@ -527,6 +530,7 @@ def default_config() -> dict[str, Any]:
     return {
         "service_tool_version": SERVICE_TOOL_VERSION,
         "language": "en",
+        "appearance": "light",
         "debug_output": False,
         "device_url": "http://brautomat",
         "package_source": "release",
@@ -541,25 +545,20 @@ def default_config() -> dict[str, Any]:
         "device_profiles": [],
         "active_device_id": "",
         "telegraf": default_telegraf_config(),
+        "recipe_sources": recipe_defaults(),
     }
 
 
 def load_app_config() -> dict[str, Any]:
     config = default_config()
-    if not CONFIG_FILE.exists():
-        save_app_config(config)
-        return config
-    try:
-        raw = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        if isinstance(raw, dict):
-            config.update({k: v for k, v in raw.items() if k in config})
-            legacy_package_dir = str(raw.get("package_dir", "")).strip()
-            if not config.get("open_package_dir") and legacy_package_dir and not legacy_package_dir.startswith(("http://", "https://")):
-                config["open_package_dir"] = legacy_package_dir
-    except Exception:
-        save_app_config(config)
-        return config
-    if config.get("service_tool_version") != SERVICE_TOOL_VERSION:
+    raw = load_config(CONFIG_FILE)
+    config.update({k: v for k, v in raw.items() if k in config})
+    if config.get("appearance") not in ("light", "dark", "system"):
+        config["appearance"] = "light"
+    legacy_package_dir = str(raw.get("package_dir", "")).strip()
+    if not config.get("open_package_dir") and legacy_package_dir and not legacy_package_dir.startswith(("http://", "https://")):
+        config["open_package_dir"] = legacy_package_dir
+    if config.get("service_tool_version") != SERVICE_TOOL_VERSION or any(k not in raw for k in config):
         config["service_tool_version"] = SERVICE_TOOL_VERSION
         save_app_config(config)
     return config
@@ -568,6 +567,10 @@ def load_app_config() -> dict[str, Any]:
 def save_app_config(config: dict[str, Any]) -> dict[str, Any]:
     merged = default_config()
     merged.update({k: v for k, v in config.items() if k in merged})
+    if merged.get("appearance") not in ("light", "dark", "system"):
+        merged["appearance"] = "light"
+    # Recipe sources have their own API; stale general settings must not replace them.
+    merged["recipe_sources"] = load_config(CONFIG_FILE)["recipe_sources"]
     # Existing controls still edit the active connection; keep its profile in sync.
     for profile in merged["device_profiles"]:
         if profile["id"] == merged["active_device_id"]:
@@ -586,8 +589,13 @@ def save_app_config(config: dict[str, Any]) -> dict[str, Any]:
         for target, field_name in (("influxdb", "token"), ("postgres", "password"), ("mysql", "password"), ("mqtt", "password")):
             telegraf[target][field_name] = ""
     merged["telegraf"] = telegraf
-    CONFIG_FILE.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_config(CONFIG_FILE, merged)
     return merged
+
+
+def public_app_config(config):
+    # Brewfather credentials are handled exclusively by the masked designer API.
+    return {key: value for key, value in config.items() if key != "recipe_sources"}
 
 
 def configured_device_profiles(config: dict[str, Any]) -> list[dict[str, str]]:
@@ -623,8 +631,8 @@ def change_device_profile(data: dict[str, Any]) -> dict[str, Any]:
         if action == "add":
             if len(profiles) >= 20:
                 raise ValueError("Maximal 20 Geräteprofile möglich.")
-            if not profiles[0]["port"] or not profiles[0]["url"]:
-                raise ValueError("Bitte zuerst COM-Port und URL des ersten Geräteprofils speichern.")
+            if not config.get("device_profiles") and not profiles[0]["port"]:
+                profiles = []
             identity = uuid.uuid4().hex
             profiles.append({"id": identity, "name": name, "port": port, "url": url})
         else:
@@ -639,9 +647,14 @@ def change_device_profile(data: dict[str, Any]) -> dict[str, Any]:
     elif action == "select":
         active = identity
     elif action == "remove":
-        if len(profiles) == 1 or identity == profiles[0]["id"]:
-            raise ValueError("Das erste Gerät kann nicht entfernt werden.")
+        if not any(p["id"] == identity for p in profiles):
+            raise ValueError("Unbekanntes Geräteprofil.")
         profiles = [p for p in profiles if p["id"] != identity]
+        if not profiles:
+            defaults = default_config()
+            config.update(device_profiles=[], active_device_id="",
+                          device_url=defaults["device_url"], serial_port=defaults["serial_port"])
+            return save_app_config(config)
         if active == identity:
             active = profiles[0]["id"]
     else:
@@ -914,6 +927,9 @@ def try_base_urls(base_url: str, action):
 GITHUB_JSON_LOCK = threading.Lock()
 GITHUB_JSON_CACHE: dict[str, tuple[float, bytes]] = {}
 GITHUB_RETRY_AT = 0.0
+GITHUB_JSON_TTL = 15 * 60
+GITHUB_COMMIT_JSON_TTL = 24 * 60 * 60
+GITHUB_JSON_CACHE_LIMIT = 512
 
 
 def github_limit_error(url: str) -> error.HTTPError:
@@ -931,15 +947,21 @@ def json_request(url: str, timeout: float = 12.0) -> Any:
         with request.urlopen(req, timeout=timeout, context=ssl_context()) as response:
             return response.read()
 
-    if parse.urlparse(url).hostname != "api.github.com":
+    location = parse.urlparse(url)
+    if location.hostname not in ("api.github.com", "raw.githubusercontent.com"):
         return json.loads(fetch().decode("utf-8", errors="replace"))
-    # Coalesce concurrent API loads; never cache device requests or failures.
+    api_request = location.hostname == "api.github.com"
+    ref = parse.parse_qs(location.query).get("ref", [""])[0]
+    pinned = bool(re.search(r"/[0-9a-f]{40}(?:/|$)", location.path) or re.fullmatch(r"[0-9a-f]{40}", ref))
+    ttl = GITHUB_COMMIT_JSON_TTL if pinned else GITHUB_JSON_TTL
+    # Coalesce concurrent GitHub loads, including raw manifests. Device requests
+    # and failed responses are never cached. Return a fresh object to each caller.
     with GITHUB_JSON_LOCK:
         now = time.time()
         cached = GITHUB_JSON_CACHE.get(url)
         if cached and cached[0] > now:
             return json.loads(cached[1])
-        if GITHUB_RETRY_AT > now:
+        if api_request and GITHUB_RETRY_AT > now:
             raise github_limit_error(url)
         try:
             data = fetch()
@@ -947,7 +969,7 @@ def json_request(url: str, timeout: float = 12.0) -> Any:
             headers = exc.headers or {}
             limited = exc.code == 429 or (exc.code == 403 and (
                 headers.get("X-RateLimit-Remaining") == "0" or headers.get("Retry-After")))
-            if not limited:
+            if not limited or not api_request:
                 raise
             try:
                 retry = float(headers.get("Retry-After", "0"))
@@ -961,9 +983,9 @@ def json_request(url: str, timeout: float = 12.0) -> Any:
         for key, value in list(GITHUB_JSON_CACHE.items()):
             if value[0] <= now:
                 del GITHUB_JSON_CACHE[key]
-        if len(GITHUB_JSON_CACHE) >= 128:
+        if len(GITHUB_JSON_CACHE) >= GITHUB_JSON_CACHE_LIMIT:
             GITHUB_JSON_CACHE.pop(next(iter(GITHUB_JSON_CACHE)))
-        GITHUB_JSON_CACHE[url] = (time.time() + 60, json.dumps(result).encode("utf-8"))
+        GITHUB_JSON_CACHE[url] = (time.time() + ttl, json.dumps(result).encode("utf-8"))
         return result
 
 
@@ -1050,9 +1072,11 @@ def put_form(url: str, payload: dict[str, Any], timeout: float = 20.0) -> str:
 
 
 def download_bytes(url: str, timeout: float = 20.0) -> bytes:
-    req = request.Request(url, method="GET")
-    with request.urlopen(req, timeout=timeout, context=ssl_context()) as response:
-        return response.read()
+    def fetch(headers):
+        req = request.Request(url, method="GET", headers=headers)
+        with request.urlopen(req, timeout=timeout, context=ssl_context()) as response:
+            return response.read(), response.headers
+    return github_file_cache.download(url, CACHE_DIR / "github-files", fetch)
 
 
 def build_multipart_payload(
@@ -1559,7 +1583,8 @@ def download_service_tool_update(open_target: bool = True) -> dict[str, Any]:
     version = sanitize_version_for_filename(str(status.get("version") or "unknown"))
     filename = str(status.get("filename") or f"Brautomat32ServiceTool-{status['platform']}.zip")
     target = UPDATE_DIR / version / filename
-    download_to_file(str(status["url"]), target, timeout=600.0)
+    if not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != expected:
+        download_to_file(str(status["url"]), target, timeout=600.0)
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
     expected = str(status.get("sha256") or "").strip().lower()
     if expected and digest.lower() != expected:
@@ -1816,7 +1841,7 @@ def ensure_esptool_available(job: Job | None = None) -> pathlib.Path:
             raise RuntimeError(f"GitHub is unavailable and no verified local esptool {ESPTOOL_VERSION} exists") from exc
         tag = str(release.get("tag_name", ""))
         if release.get("draft") or release.get("prerelease") or tag != f"v{ESPTOOL_VERSION}":
-            raise RuntimeError("Unexpected esptool release; required version is 5.3.1")
+            raise RuntimeError(f"Unexpected esptool release; required version is {ESPTOOL_VERSION}")
         version = tag[1:]
         asset_name, _, _ = esptool_platform_asset(version)
         assets = [item for item in release.get("assets", []) if item.get("name") == asset_name]
@@ -1923,19 +1948,21 @@ def package_location(source: str, ref: str, root: str, revision: str = "") -> di
 def package_catalog(firmware: str = "", include_special: bool = False, purpose: str = "firmware") -> dict[str, Any]:
     if purpose not in ("firmware", "migration"):
         raise ValueError("Invalid package selection purpose")
-    root = "Updates" if purpose == "migration" else package_root_for_firmware(firmware)
+    root = "Updates" if purpose == "migration" else None
     packages = []
     for key in ("release", "development", "development_170"):
         item = {"key": key, "label": REMOTE_PACKAGES[key]["label"], "path": "", "available": False}
+        target_root = root or ("Updates" if key == "development_170" else "build")
+        item["root"] = target_root
         try:
-            package_branch(key, root)
+            package_branch(key, target_root)
             item["path"] = REMOTE_PACKAGES[key]["base_url"]
-            location = package_location(key, "", root)
+            location = package_location(key, "", target_root)
             item.update(path=location["base_url"], available=True, version=location["version"])
         except (OSError, ValueError) as exc:
             item["error"] = str(exc)
         packages.append(item)
-    return {"packages": packages, "package_root": root,
+    return {"packages": packages, "package_root": root or "all",
             "special_versions": list_special_versions(root) if include_special else []}
 
 
@@ -1990,17 +2017,17 @@ def download_package_file(job: Job, source_key: str, package_dir: pathlib.Path, 
     package_dir.mkdir(parents=True, exist_ok=True)
     target = package_dir / filename
     url = remote_file_url(source_key, filename)
-    job.log(f"Download: {url}")
+    job.log(f"Source file: {url}")
     data = download_bytes(url, timeout=60.0)
     target.write_bytes(data)
     job.log(f"Saved: {target} ({len(data)} bytes)")
     return target
 
 
-def list_special_versions(root: str = "Updates") -> list[dict[str, str]]:
+def list_special_versions(root: str | None = "Updates") -> list[dict[str, str]]:
     candidates = []
     for url, kind in (("https://api.github.com/repos/InnuendoPi/Brautomat32/releases?per_page=20", "release"),
-                      (f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits?sha={package_branch('development_170' if root == 'Updates' else 'development', root)}&per_page=12", "commit")):
+                      (f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits?sha={REMOTE_PACKAGES['development']['branch']}&per_page=12", "commit")):
         try:
             rows = json_request(url, timeout=10)
         except (OSError, ValueError):
@@ -2015,23 +2042,27 @@ def list_special_versions(root: str = "Updates") -> list[dict[str, str]]:
             candidates.append((ref, kind, message[0] if message else ref))
     def inspect(candidate):
         ref, kind, message = candidate
-        try:
-            location = package_location("special", ref, root)
-            return {"ref": ref, "kind": kind, "version": location["version"],
-                    "base_url": location["base_url"],
-                    "label": f"{message} · {ref[:8]} · {location['type']}"}
-        except (OSError, ValueError):
-            return None
-    # A missing historical manifest must not discard the remaining versions.
+        found = []
+        for target_root in ((root,) if root else ("build", "Updates")):
+            try:
+                location = package_location("special", ref, target_root)
+                found.append({"ref": ref, "kind": kind, "version": location["version"],
+                              "root": target_root, "base_url": location["base_url"],
+                              "label": f"{message} · {ref[:8]} · {location['version']} · {target_root} · {location['type']}"})
+            except (OSError, ValueError):
+                continue
+        return found
+    # One ref can contain both layouts; keep both as distinct package choices.
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=4) as executor:
-        return [row for row in executor.map(inspect, candidates) if row is not None]
+        return [row for found in executor.map(inspect, candidates) for row in found]
+
 
 
 def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True, firmware_only: bool = False, selected_url: str = "") -> pathlib.Path:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError(f"Unknown package source: {source_key}")
-    root = "Updates" if not selected_url or "/Updates/" in selected_url else "build"
+    root = ("Updates" if "/Updates/" in selected_url else "build") if selected_url else ("build" if source_key in ("release", "development") else "Updates")
     ref = package_ref.strip() if source_key == "special" else package_branch(source_key, root)
     if not ref:
         raise ValueError("Special Version requires a version ref")
@@ -2055,7 +2086,7 @@ def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, pa
         files.append("Littlefs.bin")
     for filename in files:
         job.set_current_file(filename)
-        job.log("Download: " + filename)
+        job.log("Package file: " + filename)
         try:
             content = download_bytes(f"{base}/{filename}", timeout=60.0)
         except error.HTTPError as exc:
@@ -2065,7 +2096,7 @@ def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, pa
         (package_dir / filename).write_bytes(content)
     if package_uses_serviceapp(package_dir):
         job.set_current_file("serviceapp.bin")
-        job.log("Download: serviceapp.bin")
+        job.log("Package file: serviceapp.bin")
         (package_dir / "serviceapp.bin").write_bytes(download_bytes(f"{base}/serviceapp.bin", timeout=60.0))
     if not firmware_only:
         validate_package_partitions(package_dir, include_littlefs, require_partitions=require_base_files or include_littlefs)
@@ -2234,7 +2265,7 @@ def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: s
     for relative_path in WEBUPDATE_TOOL_FILES:
         job.set_current_file(relative_path)
         url = f"{tools_base}{relative_path}"
-        job.log(f"Download: {url}")
+        job.log(f"Source file: {url}")
         content = download_bytes(url, timeout=60.0)
         try:
             response = post_file_to_fs(base, f"/{relative_path}", content, timeout=120.0)
@@ -2249,7 +2280,7 @@ def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: s
     for relative_path in extra_languages:
         job.set_current_file(relative_path)
         url = f"{language_base}{'data/' if package_root == 'Updates' else ''}{relative_path}"
-        job.log(f"Download: {url}")
+        job.log(f"Source file: {url}")
         content = download_bytes(url, timeout=60.0)
         try:
             response = post_file_to_fs(base, f"/{relative_path}", content, timeout=120.0)
@@ -2316,7 +2347,7 @@ def install_language_job(job: Job, base_url: str, source_key: str, filename: str
     source_url = f"{github_raw_language_base(revision)}{source_path}"
 
     job.set_current_file(clean_name)
-    job.log(f"Download language: {source_url}")
+    job.log(f"Language file: {source_url}")
     content = download_bytes(source_url, timeout=60.0)
     language_data = json.loads(content)
     if not isinstance(language_data, dict) or not language_data:
@@ -2979,11 +3010,12 @@ def update_flash_progress(
     write_end = int(state.get("write_end", 99))
 
     started_file = None
-    writing_match = re.search(r"Writing\s+'([^']+)'\s+at\s+0x[0-9a-fA-F]+", line)
+    writing_match = re.search(r"Writing\s+'([^']+)'\s+at\s+0x([0-9a-fA-F]+)", line)
     if writing_match:
         started_file = pathlib.PurePath(writing_match.group(1)).name
-        for idx, (filename, _, _) in enumerate(files):
-            if filename == started_file:
+        started_offset = int(writing_match.group(2), 16)
+        for idx, (filename, _, offset) in enumerate(files):
+            if filename == started_file and offset == started_offset:
                 for completed_idx in range(idx):
                     per_file_progress[completed_idx] = 1.0
                 current_index = idx
@@ -3358,8 +3390,8 @@ def combined_device_status(
             }
         except Exception as exc:  # noqa: BLE001
             return {
-                "state": "serial",
-                "transport": "serial",
+                "state": "offline",
+                "transport": "offline",
                 "base_url": "",
                 "hostname": "",
                 "resolved_ip": None,
@@ -4584,6 +4616,36 @@ def validate_flash_serviceapp(path: pathlib.Path) -> bool:
     return True
 
 
+def usb_flash_plan(path: pathlib.Path, include_littlefs: bool, source_firmware: str = "") -> list[tuple[str, int, int]]:
+    """Validate a complete target package before any serial handover or erase."""
+    validate_package_dir(str(path), include_littlefs, require_base_files=True)
+    service_layout = validate_flash_serviceapp(path)
+    layout = migration_engine.NEW_LAYOUT if service_layout else migration_engine.OLD_LAYOUT
+    migration_engine.check_layout((path / "partitions.bin").read_bytes(), layout)
+    bootloader = (path / "bootloader.bin").read_bytes()
+    if len(bootloader) > 0x7000:
+        raise ValueError("Bootloader exceeds its reserved region")
+    migration_engine.check_image(bootloader)
+    ota = (path / "boot_app0.bin").read_bytes()
+    first = struct.pack("<I", 1) + b"\xff" * 24 + struct.pack("<I", zlib.crc32(struct.pack("<I", 1), 0xFFFFFFFF))
+    standard = first + b"\xff" * (4096 - 32) + b"\0" * 4 + b"\xff" * (4096 - 4)
+    if ota not in (b"\xff" * 0x2000, standard):
+        raise ValueError("Boot selection must be the known blank 8 KiB OTA0 initializer")
+    source_version = parse_version_tuple(source_firmware)
+    downgrade = not service_layout and source_version is not None and source_version >= migration_engine.SERVICEAPP_MIN_VERSION
+    entries = [("bootloader.bin", 0x1000), ("partitions.bin", 0x8000), ("boot_app0.bin", 0xE000)]
+    for label, kind, subtype, offset, size in layout:
+        if kind != 0 or (label == "app1" and not service_layout and not downgrade):
+            continue
+        filename = "serviceapp.bin" if service_layout and label == "app1" else "firmware.bin"
+        if (path / filename).stat().st_size > size:
+            raise ValueError(f"{filename} exceeds {label} partition size")
+        entries.append((filename, offset))
+    if include_littlefs:
+        entries.append(("Littlefs.bin", int(filesystem_partition_info(path)["offset"])))
+    return [(name, (path / name).stat().st_size, offset) for name, offset in entries]
+
+
 def validate_package_partitions(path: pathlib.Path, include_littlefs: bool = False, require_partitions: bool = True) -> None:
     partitions_bin = path / "partitions.bin"
     if not partitions_bin.exists():
@@ -4946,7 +5008,7 @@ def file_explorer(base_url: str, local_folder: str = "") -> FileExplorer:
                 except (OSError, ValueError):
                     content = None
                 if isinstance(content, dict) and isinstance(content.get("mash"), list):
-                    DesignerStore(DATA_ROOT / "designer").inventory("inventory-delete", {"path": path},
+                    DesignerStore(DATA_ROOT / "designer", CONFIG_FILE).inventory("inventory-delete", {"path": path},
                         inventory_local_dir("mashplans"), inventory_root=root)
                     return True
         parts = pathlib.PurePosixPath(path).parts
@@ -5150,7 +5212,7 @@ def delete_local_inventory(kind: str, filename: str) -> dict[str, Any]:
     if not target.exists():
         raise FileNotFoundError(f"Local path not found: {target}")
     if kind == "mashplans" and target.is_file() and target.suffix.lower() == ".json":
-        result = DesignerStore(DATA_ROOT / "designer").inventory("inventory-delete", {"path": filename}, inventory_local_dir(kind))
+        result = DesignerStore(DATA_ROOT / "designer", CONFIG_FILE).inventory("inventory-delete", {"path": filename}, inventory_local_dir(kind))
         return {**result, "type": "file"}
     values = load_inventory_info(kind)
     rel_path = inventory_rel_from_path(kind, target)
@@ -5310,30 +5372,12 @@ def flash_job(
     include_littlefs: bool,
     restart_monitor_after: bool = True,
     handover_state: dict[str, Any] | None = None,
+    source_firmware: str = "",
 ) -> dict[str, Any]:
-    require_base_files = bool(erase_flash)
-    package = resolve_package(job, package_source, package_dir, include_littlefs, package_ref, require_base_files=require_base_files)
-    service_layout = validate_flash_serviceapp(package)
+    package = resolve_package(job, package_source, package_dir, include_littlefs, package_ref, require_base_files=True)
+    flash_files = usb_flash_plan(package, include_littlefs, source_firmware)
     esptool_path = ensure_esptool_available(job)
     job.set_progress(1)
-    flash_files: list[tuple[str, int, int]] = []
-    for filename, offset in [
-        ("bootloader.bin", 0x1000),
-        ("partitions.bin", 0x8000),
-        ("boot_app0.bin", 0xE000),
-        ("firmware.bin", 0x10000),
-    ]:
-        target = package / filename
-        if target.exists():
-            flash_files.append((filename, target.stat().st_size, offset))
-        elif filename in BASE_FLASH_FILES:
-            if require_base_files:
-                raise FileNotFoundError(f"{filename} missing in package: {package}")
-            job.log(f"Optional flash file missing, skip: {filename}")
-    if not any(name == "firmware.bin" for name, _, _ in flash_files):
-        raise FileNotFoundError(f"firmware.bin missing in package: {package}")
-    if service_layout:
-        flash_files.append(("serviceapp.bin", (package / "serviceapp.bin").stat().st_size, 0x220000))
     handover = prepare_esptool_serial_handover(port, baud, "Firmware flash")
     if handover_state is not None:
         handover_state.clear()
@@ -5392,14 +5436,6 @@ def flash_job(
         ]
         for filename, _, offset in flash_files:
             args.extend([hex(offset), str(package / filename)])
-        if include_littlefs:
-            littlefs = package / "Littlefs.bin"
-            if not littlefs.exists():
-                raise FileNotFoundError(f"Littlefs.bin missing in package: {package}")
-            fs_partition = filesystem_partition_info(package)
-            fs_offset = int(fs_partition["offset"])
-            flash_files.append(("Littlefs.bin", littlefs.stat().st_size, fs_offset))
-            args.extend([hex(fs_offset), str(littlefs)])
         job.log(f"Flash package: {package}")
         job.log(f"Package source: {package_source}")
         job.log(f"Port: {port} Baud: {baud}")
@@ -5929,6 +5965,38 @@ def finish_migration(job: Job, session: migration_engine.Session, base_url: str)
             "service_runtime_tested": False}
 
 
+MIGRATION_WEBUPDATE_MARKERS = (
+    "/updateService.txt", "/updateSys.txt", "/updateTools.txt",
+    "/updateService.log", "/updateSys.log", "/updateTools.log",
+    "/serviceUpdate.tmp",
+)
+
+
+def clear_migration_webupdate_markers(job: Job, base_url: str) -> list[str]:
+    """Cancel stale file-based WebUpdate phases before a new USB migration."""
+    def present():
+        rows = json_request(f"{normalize_base_url(base_url)}/list?dir=/", timeout=20.0)
+        if not isinstance(rows, list) or any(
+                not isinstance(row, dict) or row.get("type") not in ("file", "dir")
+                or not isinstance(row.get("name"), str) for row in rows):
+            raise RuntimeError("WebUpdate marker check failed: invalid device file list; flash not started")
+        names = {"/" + row["name"].lstrip("/") for row in rows}
+        return [name for name in MIGRATION_WEBUPDATE_MARKERS if name in names]
+
+    found = present()
+    for name in found:
+        job.log(f"Migration: stale WebUpdate marker found: {name}")
+    for name in found:
+        delete_fs_path(base_url, name)
+        job.log(f"Migration: WebUpdate marker deletion requested: {name}")
+    remaining = present()
+    if remaining:
+        raise RuntimeError("WebUpdate marker cleanup failed; flash not started: " + ", ".join(remaining))
+    for name in found:
+        job.log(f"Migration: WebUpdate marker removal verified: {name}")
+    return found
+
+
 def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: int,
                   package_source: str, package_dir: str, package_ref: str,
                   include_littlefs: bool, create_backup: bool) -> dict[str, Any]:
@@ -5961,6 +6029,8 @@ def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: i
         session.capture_api(backup_payload)
         job.log(f"Migration backup and report: {session.directory}")
         migration_require_idle(base)
+        removed_markers = clear_migration_webupdate_markers(job, base)
+        session.save(webupdate_markers_cleared=True, webupdate_markers_removed=removed_markers)
         handover = prepare_esptool_serial_handover(port, 115200, "Migration")
         with exclusive_serial_access(timeout=30):
             safe_restart = False
@@ -6014,6 +6084,13 @@ def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, acti
         if session.report["phase"] == "complete" and action == "resume":
             raise RuntimeError("Migration is already complete")
         session.save(port=port)
+        # A pre-flash retry must repeat cleanup. Once writing has begun, the
+        # recovery path must remain usable without a running HTTP firmware.
+        if api_backup and action == "resume" and session.report["phase"] == "backup-verified" and not session.report.get("write_started"):
+            base = normalize_base_url(session.report["base_url"])
+            migration_require_idle(base)
+            removed_markers = clear_migration_webupdate_markers(job, base)
+            session.save(webupdate_markers_cleared=True, webupdate_markers_removed=removed_markers)
         job.set_current_file("migrationStepTool")
         executable = ensure_esptool_available(job)
         handover = prepare_esptool_serial_handover(port, 115200, "Migration recovery")
@@ -6125,14 +6202,14 @@ class AppHandler(BaseHTTPRequestHandler):
                     "fallback_url": fallback_url(PORT),
                     "mdns_hostname": SERVICE_HOSTNAME,
                     "mdns_resolved": hostname_resolves(SERVICE_HOSTNAME),
-                    "config": config,
+                    "config": public_app_config(config),
                     "jobs": STATE.jobs.snapshot(),
                     "serial": STATE.serial_snapshot(),
                 }
             )
             return
         if path == "/api/config":
-            self._send_json(load_app_config())
+            self._send_json(public_app_config(load_app_config()))
             return
         if path == "/api/inventory/root":
             config = load_app_config()
@@ -6312,7 +6389,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                     raise ValueError("Designer request exceeds 8 MB")
                 data = self._read_json()
                 action = path.removeprefix("/api/designer/")
-                store = DesignerStore(DATA_ROOT / "designer")
+                store = DesignerStore(DATA_ROOT / "designer", CONFIG_FILE)
                 if action in ("inventory-load", "inventory-publish", "inventory-delete"):
                     with EXPLORER_WRITE_LOCK:
                         self._send_json(store.inventory(action, data, inventory_local_dir("mashplans"), inventory_root=inventory_root_dir()))
@@ -6431,10 +6508,10 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                 data["active_device_id"] = current["active_device_id"]
                 config = save_app_config(data)
                 ensure_runtime_dirs()
-                self._send_json(config)
+                self._send_json(public_app_config(config))
                 return
             if path == "/api/device-profiles":
-                self._send_json(change_device_profile(self._read_json()))
+                self._send_json(public_app_config(change_device_profile(self._read_json())))
                 return
             if path == "/api/telegraf/test-device":
                 data = self._read_json()
@@ -6568,6 +6645,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                     data.get("package_ref", ""),
                     bool(data.get("erase_flash", True)),
                     bool(data.get("include_littlefs", True)),
+                    source_firmware=str(data.get("source_firmware") or ""),
                 )
                 self._send_json({"job_id": job.id})
                 return
@@ -6625,17 +6703,21 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                     if data.get("designer_context") is not None:
                         context = data["designer_context"]
                         config = load_app_config()
-                        base = normalize_base_url(config["device_url"])
-                        if context.get("profile") != str(config.get("active_device_id") or "primary") or normalize_base_url(data.get("base_url", "")) != base:
+                        profile_base = normalize_base_url(config["device_url"])
+                        base = normalize_base_url(data.get("base_url", ""))
+                        # The selected session may target another USB device or the ServiceApp.
+                        # Compare saved profile state separately from the captured upload target.
+                        expected_profile = normalize_base_url(context.get("profile_url", base))
+                        expected_target = normalize_base_url(context.get("target_url", base))
+                        if context.get("profile") != str(config.get("active_device_id") or "primary") or expected_profile != profile_base or expected_target != base:
                             raise ValueError("Gerät wurde gewechselt. Upload abgebrochen.")
                         plan = json.loads(base64.b64decode(data.get("content", ""), validate=True))
                         snap = context.get("snapshot") or {}
-                        remote_plan = snap.get("multidevice", {}).get("mode") == 1 or bool(snap.get("remote", {}).get("workers")) or any("/" in str(step.get("Rast", "")).split(":")[0] and ":" in str(step.get("Rast", "")) for step in plan.get("mash", []))
-                        if remote_plan:
+                        if requires_master_validation(plan):
                             status = json_request(f"{base}/api/multidevice/status", timeout=10.0)
                             validate_master_target(snap, context["profile"], status)
                         latest = load_app_config()
-                        if latest.get("active_device_id", "primary") != context["profile"] or normalize_base_url(latest["device_url"]) != base:
+                        if str(latest.get("active_device_id") or "primary") != context["profile"] or normalize_base_url(latest["device_url"]) != profile_base:
                             raise ValueError("Gerät wurde gewechselt. Upload abgebrochen.")
                     self._send_json(file_explorer(data.get("base_url", ""), data.get("local_folder", "") if data.get("side") == "local" else "").action(data))
                 return

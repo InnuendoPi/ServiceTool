@@ -1,0 +1,49 @@
+/* Dark palette based on Bootstrap 5.3 color modes:
+   https://getbootstrap.com/docs/5.3/customize/color-modes/
+   Light mode retains the existing ServiceTool palette. */
+:root { color-scheme: light; }
+:root[data-bs-theme="dark"] {
+  color-scheme: dark;
+  --bs-body-bg: #212529;
+  --bs-body-color: #dee2e6;
+  --bs-border-color: #495057;
+  --bs-secondary: #adb5bd;
+  --bs-light: #343a40;
+  --bg: #212529;
+  --surface: #2b3035;
+  --text: #dee2e6;
+  --line: #495057;
+  --border: #495057;
+  --muted: #adb5bd;
+  --primary: #6ea8fe;
+  --secondary: #adb5bd;
+  --success: #75b798;
+  --danger: #ea868f;
+  --warning: #ffda6a;
+  --info: #6ea8fe;
+  --primary-soft: #031633;
+  --selection-bg: #052c65;
+  --drop-bg: #052c65;
+  --table-heading-bg: #343a40;
+  --table-heading-color: #6ea8fe;
+  --table-default-bg: #343a40;
+  --hover-border: #adb5bd;
+  --warning-bg: #332701;
+  --warning-text: #ffda6a;
+  --warning-border: #997404;
+  --info-bg: #031633;
+  --info-text: #6ea8fe;
+  --info-border: #084298;
+  --action-color: #6ea8fe;
+  --edit-bg: #332701;
+  --group-bg: #343a40;
+  --group-text: #adb5bd;
+  --progress-track: #495057;
+  --loading-bg: rgba(33, 37, 41, .86);
+}
+:root[data-bs-theme="dark"] :is(textarea, dialog) {
+  background: var(--surface);
+  color: var(--text);
+}
+:root[data-bs-theme="dark"] ::placeholder { color: var(--muted); opacity: 1; }
+.theme-setting { min-width: 10rem; }

@@ -69,6 +69,7 @@ Weiter mit [Geräte & WLAN](#geräte--wlan).
 1. Wähle oben das gewünschte Gerät und unter **Gerät** dessen COM-Port aus.
 2. Klicke im WLAN-Bereich auf den Scan-Pfeil. Warte auf das Ende des Scans.
 3. Wähle dein Netzwerk aus oder trage die SSID ein. Gib das Passwort ein.
+   Mit dem Auge neben dem Feld kannst du es anzeigen und wieder verbergen.
 4. Klicke auf das Speichersymbol. Das Gerät übernimmt die Zugangsdaten und
    startet neu.
 5. Warte den Neustart ab und prüfe die Verbindung erneut. Kontrolliere die URL,
@@ -80,8 +81,9 @@ als Ersatz für einen erneuten Scan.
 ### Zwischen Geräten wechseln
 
 Die Auswahl **Aktives Gerät** schaltet das gespeicherte Paar aus COM-Port und
-URL um. Ein einzelnes Profil heißt **Brautomat**. Bei mehreren Profilen heißen
-sie **Master**, **worker1**, **worker2** und **worker3**.
+URL um. Du kannst eigene Profilnamen vergeben. Ohne eigenen Namen heißt ein
+einzelnes Profil **Brautomat**; bei mehreren Profilen werden **Master** und
+**worker1**, **worker2** usw. verwendet.
 
 Neue Geräte richtest du unter [Einstellungen → Geräte](#einstellungen) ein.
 Während laufender Geräteaktionen kann ein Profilwechsel gesperrt sein. Warte den
@@ -97,41 +99,59 @@ Das Speichern einer URL im ServiceTool ändert nicht den Netzwerknamen des
 Brautomaten. Die eingetragene Adresse muss zur tatsächlichen Gerätekonfiguration
 passen. Verwende bei mehreren Geräten eindeutige Adressen.
 
-:::details Technischer Hintergrund
-
-Online-Erkennung und Prozessstatus stammen aus getrennten Geräteabfragen. Daher
-sind Erreichbarkeit und unbekannter Prozessstatus kombinierbar. Bei mehreren
-Profilen wird ein fehlender gespeicherter COM-Port nicht durch einen anderen
-erkannten Port ersetzt.
-
-:::
+Bei mehreren gespeicherten Geräten wird ein fehlender COM-Port nicht durch
+einen anderen erkannten Port ersetzt. Prüfe in diesem Fall das Geräteprofil.
 
 ## Firmware
 
 ### Ein Firmwarepaket auswählen
 
 1. Öffne **Firmware** und kontrolliere oben das aktive Gerät und dessen Version.
-2. Wähle eine Paketquelle: **Latest Release** für die veröffentlichte Fassung,
-   **Latest Development** für die Entwicklungsversion oder **Special Version**
-   für eine bestimmte angebotene Version.
-3. Bei **Special Version** wähle zusätzlich die Version. Bei **Open directory**
-   wähle das lokale Paketverzeichnis.
-4. Prüfe die angezeigte Paketquelle und die verfügbaren Aktionen. Fehlende
-   Paketbestandteile müssen vor der Installation geklärt werden.
+2. Wähle die gewünschte Zielversion: **1.66 Release**, **1.66 Development** oder
+   **1.70 Development**. Die Development-Pakete sind Entwicklungsversionen.
+3. Bei **Special Version** wähle zusätzlich einen der angebotenen Stände.
+   Achte auf die Versionsangabe, wenn mehrere Einträge zum selben Stand
+   erscheinen. Mit **Open directory** wählst du ein lokales Paketverzeichnis.
+4. Warte, bis die Paketprüfung abgeschlossen ist. Eine angezeigte Adresse allein
+   bedeutet noch nicht, dass das Paket vollständig und installierbar ist.
+
+Das Feld **Paketquelle URL / Verzeichnis** zeigt bei Onlinepaketen die
+Downloadbasis. Diese Adresse kann im Browser ohne Dateinamen einen Fehler 404
+liefern. Entscheidend ist die Paketprüfung im ServiceTool. Du musst die Adresse
+nicht von Hand umschreiben.
 
 ### Per USB installieren
 
-1. Stelle unter **Gerät** den richtigen COM-Port ein und gehe zurück zu
-   **Firmware**.
-2. Wähle die Flash-Baudrate. Prüfe die Optionen **Flash löschen** und **Flash
-   LittleFS** bewusst: Sie betreffen den Gerätespeicher beziehungsweise das
-   Dateisystem.
-3. Starte **Ausgewähltes Paket über USB installieren** und beobachte Fortschritt
-   und Statusmeldung. USB und Stromversorgung während des Schreibens verbunden
-   lassen.
+1. Beende laufende Brau- und Fermenterprozesse. Stelle unter **Gerät** den
+   richtigen COM-Port ein und gehe zurück zu **Firmware**.
+2. Sichere benötigte Einstellungen und Pläne unter
+   [Daten → Sichern & Wiederherstellen](#daten).
+3. Wähle das Zielpaket und die Flash-Baudrate. Prüfe die beiden Optionen:
+   **Flash löschen** löscht den gesamten Gerätespeicher einschließlich
+   Einstellungen und Dateien. **Flash LittleFS** schreibt das Dateisystem aus
+   dem Paket und ersetzt dadurch die dort gespeicherten Dateien.
+4. Starte **Ausgewähltes Paket über USB installieren**. Halte USB und
+   Stromversorgung bis zum Abschluss verbunden.
+5. Prüfe anschließend die Geräteverbindung, die angezeigte Firmwareversion und
+   die Browseroberfläche des Brautomaten.
 
-Für den Wechsel vom alten Partitionslayout auf das ServiceApp-Layout verwende
-[Migration](#migration).
+Die USB-Installation erlaubt den Wechsel von 1.66 auf 1.70 und zurück auf 1.66.
+Sie erstellt kein automatisches Backup und stellt bei einem Fehler nicht
+selbstständig den vorherigen Zustand wieder her. Die Erfolgsmeldung nach der
+Übertragung ersetzt deshalb nicht die anschließende Geräteprüfung.
+
+Die beiden Checkboxen sind unabhängig. Ist **Flash löschen** aktiviert und
+**Flash LittleFS** ausgeschaltet, wird das Dateisystem gelöscht und nicht neu
+geschrieben. Sind beide ausgeschaltet, bleiben Einstellungen und Dateien bei
+den unterstützten Paketen erhalten. Sie müssen aber zur Zielfirmware passen.
+
+Für den geführten Wechsel von 1.66 auf 1.70 mit Sicherung und Wiederherstellung
+verwende [Service → Migration](#migration). Dieser Ablauf ist nicht für den
+Rückwechsel auf 1.66 vorgesehen.
+
+Steht auf dem Button **Hauptfirmware reparieren**, ist die ServiceApp aktiv.
+Dann wird die Hauptfirmware über WLAN repariert; dies ist kein USB-Wechsel auf
+eine andere Firmwaregeneration. Lies dazu [Wartung](#service).
 
 ### Über WLAN aktualisieren
 
@@ -153,8 +173,9 @@ zu mischen.
 
 ### Webdateien aktualisieren
 
-Wähle zuerst das gewünschte Firmwarepaket. Klicke dann auf **Webdateien
-aktualisieren**. Der Brautomat muss über WLAN erreichbar sein. Diese Aktion
+Wähle ein Firmwarepaket, das zur installierten Firmwaregeneration passt.
+Klicke dann auf **Webdateien aktualisieren**. Der Brautomat muss über WLAN
+erreichbar sein. Diese Aktion
 aktualisiert die Browseroberfläche und Sprachdateien, nicht die Hauptfirmware.
 
 Wähle dafür eine Repository-Paketquelle. Bei **Open directory** sind das
@@ -167,17 +188,9 @@ Wähle unter **Brautomat Websprache** eine angebotene Sprache und klicke auf
 Paketquelle. Fehlt die Liste, prüfe Paketversion und Verbindung und beachte die
 Fehlermeldung.
 
-Die Sprache des ServiceTools selbst stellst du unter **Einstellungen** um.
-
-:::details Paketpfade und ältere Firmware
-
-Die Paketgeneration bestimmt die Verzeichnisse: bis einschließlich 1.66.x
-wird build verwendet, ab 1.67 Updates. ServiceApp-Pakete benötigen zusätzlich
-die passende
-ServiceApp. Eine lokale Paketquelle muss die zusammengehörigen Dateien
-enthalten.
-
-:::
+Wähle auch hier eine Paketquelle, die zur installierten Firmwaregeneration
+passt. Die Sprache des ServiceTools selbst stellst du unter **Einstellungen**
+um.
 
 ## Rezept Planer
 
@@ -186,7 +199,8 @@ in voller Größe in einem neuen Tab zu öffnen.
 
 ### Einen Plan bearbeiten
 
-Öffne **Daten → Rezept Planer**. Links stehen Quellen und Bausteine, in der Mitte
+Öffne **Daten → Rezept Planer**. Links stehen Quellen und Bausteine, in der
+Mitte
 liegt der ausführbare Plan. Rechts bearbeitest du den ausgewählten Schritt;
 darunter liegt das **Dock**. Die Symbolbuttons zeigen beim Darüberfahren
 ihre Funktion. Blau kennzeichnet Neu, Öffnen und Speichern; Grün die Übernahme
@@ -194,10 +208,7 @@ ins Inventar. Eigenschaften, Prüfen und Vergleichen verwenden ebenfalls Blau.
 Deaktivierte Buttons sind hellgrau, Löschen ist rot.
 
 1. Lade einen Plan aus einer Quelle oder beginne mit **Neuer Plan**.
-2. Gib oben einen Namen ein. Die Zielgeneration **bis 1.66** oder **ab 1.70**
-   wird aus der eingelesenen Konfiguration vorbelegt. Ohne Konfiguration gilt
-   **ab 1.70**. Die Auswahl beeinflusst die Kompatibilitätshinweise der
-   Planprüfung, nicht das Exportformat oder das Uploadziel.
+2. Gib oben einen Namen ein.
 3. Ziehe Bausteine, Aktoren oder Profile von links an die gewünschte Stelle.
    Ein Klick fügt ihn wie **Einf** hinter dem markierten Schritt ein; ohne
    Markierung am Ende. Bei einer Markierung im Dock wird dort eingefügt.
@@ -226,7 +237,8 @@ Schnellstart links, Plan in der Mitte, Eigenschaften und Dock rechts.
 Unter **Schritte** stehen **Rast**, **Kochen**, **Hopfengabe** und **Zutaten**.
 Eine Rast lässt sich in den Eigenschaften über **Vorlage** vorbelegen, etwa
 als Einmaischen, Maltoserast, Kombirast, Verzuckerung, Abmaischen oder
-Nachisomerisierung. Dafür gelten **0 °C und eine Dauer größer als 0 min**.
+Nachisomerisierung. Für Nachisomerisierung gelten **0 °C und eine Dauer
+größer als 0 min**.
 Die Vorlage übernimmt die Nachisomerisierungsdauer aus den Maischeplan
 Eigenschaften; ist diese 0, wird 1 min vorbelegt. Bei anderen Rasten bleiben
 Name, Temperatur und Dauer frei bearbeitbar.
@@ -258,7 +270,8 @@ Die Auswahl gilt jeweils innerhalb der Plantabelle oder des Docks.
   gespeicherter Gerätekonfiguration.
 - **Brewfather:** Rezepte oder Sude aus deinem Konto. Die Suche filtert die
   bereits geladenen Einträge; **Weitere laden** ruft weitere Einträge ab.
-- **kleinerBrauhelfer2:** Rezepte aus der eingestellten SQLite-Datenbank, ausschließlich
+- **kleinerBrauhelfer2:** Rezepte aus der eingestellten SQLite-Datenbank,
+  ausschließlich
   lesend.
 - **Datei Import:** Öffnet direkt die Dateiauswahl. Unterstützt werden JSON-
   Exporte von Brautomat, MaischeMalzundMehr, Brewfather, kleinerBrauhelfer2 und
@@ -269,13 +282,16 @@ Die Auswahl gilt jeweils innerhalb der Plantabelle oder des Docks.
   gespeicherte Konfiguration allein ist keine Geräteverbindung.
 
 Unter **Einstellungen → Rezeptquellen** hinterlegst du Brewfather User ID und
-API Key sowie den Pfad zur KBH2-Datenbank. Der Schlüssel wird lokal gespeichert
-und anschließend maskiert angezeigt. Der Löschen-Button am Schlüsselfeld
-entfernt ihn. Der Speichern-Button steht oben bei Sprache und Debug-Ausgabe.
+API Key sowie den Pfad zur KBH2-Datenbank. Klicke auf das Speichersymbol oben
+bei Sprache und Debug-Ausgabe. Ein gespeicherter Schlüssel wird mit
+**Gespeichert** gekennzeichnet. Das Auge neben dem Feld zeigt ihn an und
+verbirgt ihn wieder; der Papierkorb entfernt ihn. Nach dem Speichern bleibt
+der Schlüssel wieder verborgen.
 
 Die **Importvorgaben** legen Koch-, Abmaisch-, Vorderwürze- und
-Whirlpooltemperatur fest. Diese Vorgaben
-wirken beim Import, nicht nachträglich auf bereits geöffnete Entwürfe.
+Whirlpooltemperatur fest. Ohne eigene Vorgaben gelten 100 °C für Kochen,
+78 °C für Abmaischen, 75 °C für Vorderwürzenhopfung und 80 °C für Whirlpool.
+Die Vorgaben wirken beim Import, nicht nachträglich auf geöffnete Entwürfe.
 
 ### Sude aus kleinerBrauhelfer2 auswählen
 
@@ -311,7 +327,8 @@ zur Verfügung. Beispielsweise wird 37 % als `Ruehrwerk:37` gespeichert.
 Die Konfiguration bestimmt, welche Aktoren PWM unterstützen. Ohne vollständige
 Geräteinformationen müssen die Befehle gegen das Zielgerät geprüft werden.
 
-Über **Maischeplan Eigenschaften** in der Werkzeugleiste erreichst du Kochdauer und
+Über **Maischeplan Eigenschaften** in der Werkzeugleiste erreichst du Kochdauer
+und
 Nachisomerisierung. Diese Planangaben ersetzen keine Bearbeitung der einzelnen
 Schritte; ihre Änderung berechnet die Schrittfolge nicht automatisch neu.
 
@@ -472,8 +489,8 @@ Offlinearbeit gespeichert. **Config importieren** liest eine lokale
 Konfiguration ein; separate Profildateien und aktuelle Remote-Daten fehlen
 in diesem Fall gegebenenfalls.
 
-**Plan prüfen** gibt Hinweise, etwa zu fehlenden Ressourcen, veralteten
-Konfigurationsständen, Werten, Gerätegeneration und manuellen Übergängen.
+**Plan prüfen** kontrolliert unter anderem Schrittnamen, Werte und verfügbare
+Gerätefunktionen.
 Ein Klick auf einen schrittbezogenen Hinweis wählt den Schritt aus.
 Die Prüfung ändert nichts und blockiert weder Speichern noch Übertragen.
 Sie ersetzt keinen Funktionstest am Zielgerät.
@@ -509,14 +526,21 @@ Inventar. Schnellzugriffe führen zu Plänen, Profilen, Konfiguration und Logs.
 **Alle Dateien** zeigt das Dateisystem des gewählten Speicherorts. Der Pfad oben
 zeigt deinen aktuellen Ordner; ein aktiver Filter wird daneben angezeigt.
 
-Ein Klick wählt eine Datei und zeigt rechts die Textvorschau. Ein Klick auf den Ordnernamen
+Ein Klick wählt eine Datei und zeigt rechts die Textvorschau. Ein Klick auf den
+Ordnernamen
 öffnet den Ordner. Die Vorschau lässt sich über das Seitenbereich-Symbol
 **Vorschau** ein- und ausblenden.
 Die Symbole erklären ihre Funktion per Tooltip, auch bei Tastaturfokus.
 
 - **Inhalt kopieren** kopiert den Text in die Zwischenablage.
 - **Herunterladen** speichert die Datei auf dem PC; **Hochladen** öffnet die
-  Dateiauswahl des PCs.
+  Dateiauswahl des PCs. Für Maischepläne, Fermenterpläne, Profile und
+  Konfigurationen wird vor dem Upload das Brautomat-Dateiformat geprüft.
+  Für einen Brewfather-Export öffne zuerst **Rezept Planer → Datei Import**.
+  Übernimm das Rezept als Maischeplan, bearbeite und prüfe es dort. Übertrage
+  danach den Plan aus dem Rezept Planer oder speichere ihn im Inventar.
+  Ein unveränderter Brewfather-Export ist kein direkt übertragbarer Maischeplan.
+  Auch beim Übertragen aus dem Inventar wird das Zielformat geprüft.
 - **Im lokalen Inventar speichern** beziehungsweise **Auf Gerät übertragen**
   fragt nach dem Zielpfad und bestätigt das Ersetzen vorhandener Dateien.
 - **Bearbeiten** schaltet unterstützte Textdateien frei. Speichern prüft JSON
@@ -586,7 +610,7 @@ Die Übertragung startet keinen Maischeprozess.
 
 - Ein **Konfigurationsbackup** sichert die über die Backup-Funktion
   bereitgestellten Geräteeinstellungen.
-- **Firmware Backup** sichert die aktive App-Partition über USB.
+- **Firmware Backup** sichert die aktuell laufende Firmware über USB.
 - Das **Migrationsbackup** sichert die Einstellungen über die Geräte-API
   und enthält zusätzlich den Migrationsbericht.
 
@@ -607,8 +631,9 @@ Backup von Einstellungen und Dateisystem.
    der Fehlermeldung.
 
 Flash und Firmwarebackup benötigen den seriellen Port ebenfalls. Das ServiceTool
-führt dafür eine Portübergabe durch. Beachte den angezeigten Zustand nach der
-Aktion.
+gibt den Port dafür vorübergehend frei. Du musst den Monitor vorher nicht
+manuell beenden. War er aktiv, wird sein Neustart nach dem Vorgang automatisch
+angestoßen. Beachte den angezeigten Zustand.
 
 ### Telegraf
 
@@ -654,19 +679,11 @@ Reparatur.
 Dieser Bereich erscheint nur mit der erforderlichen lokalen
 Entwicklungsumgebung. Für normale Wartungsaufgaben wird er nicht benötigt.
 
-:::details Voraussetzungen für den Test Runner
-
-Die Erkennung benötigt die Test-Automation-Dokumente, das Test-Runner-Projekt,
-mindestens eine gültige Suite-Konfiguration und Node.js. Fehlen diese
-Voraussetzungen, bleibt der Eintrag verborgen. Eine ausdrückliche Ausblendung
-über hide_test bleibt wirksam.
-
-:::
-
 ## Migration
 
-Die Migration wechselt das Partitionslayout älterer Geräte auf das
-ServiceApp-Layout. Sie ist mehr als ein normales Firmwareupdate.
+Verwende **Service → Migration** für den geführten Wechsel älterer Geräte auf
+1.70. Dabei sichert das ServiceTool zuerst die Geräteeinstellungen. Für den
+Rückwechsel auf 1.66 steht dieser Ablauf nicht zur Verfügung.
 
 ### Voraussetzungen
 
@@ -686,8 +703,9 @@ Das ServiceTool prüft das Gerät vor dem Schreiben.
 5. Lies das Ergebnis. Ein gestarteter Vorgang ist noch kein erfolgreicher
    Abschluss.
 
-Zuerst wird das API-Backup gespeichert. Danach werden die neuen Images
-installiert. NVS und LittleFS bleiben erhalten; Webdateien werden aktualisiert.
+Zuerst wird die Gerätesicherung gespeichert. Erst danach wird die neue Firmware
+installiert. Einstellungen und gespeicherte Dateien bleiben erhalten;
+die Webdateien werden aktualisiert.
 
 ### Nach einem Abbruch
 
@@ -698,21 +716,48 @@ Firmware zurück. Dafür muss das Gerät über seine URL erreichbar sein.
 Nach einem unterbrochenen Flashvorgang zuerst die Migration fortsetzen.
 Andere serielle Aktionen können bis zur Wiederherstellung gesperrt bleiben.
 
-:::details Was wird gesichert und geprüft?
+### Was enthält die Migrationssicherung?
 
-Migrationssicherungen liegen unter `backups/migrations` und enthalten
-`backup.json` sowie `report.json`. Das API-Backup wird unverändert übernommen:
-Konfiguration, WLAN-Zugangsdaten, Maische- und Fermenterpläne, Profile und
-Logging-Einstellungen. Die Firmware ist nicht enthalten.
-Es gibt keinen Flash-Lesedurchlauf; esptool prüft die geschriebenen Images.
-Ältere vollständige Flash-Sicherungen bleiben über USB wiederherstellbar.
-Nur diese ersetzen auch die Firmware und verwenden eine Rückleseprüfung.
+Unter `backups/migrations` liegen die Gerätesicherung und der Bericht zum
+Vorgang. Gesichert werden die vom Gerät bereitgestellten Einstellungen,
+WLAN-Zugangsdaten, Maische- und Fermenterpläne, Profile und
+Logging-Einstellungen.
+Die bisherige Firmware ist nicht enthalten. **Restore Backup** ist deshalb
+kein Rückwechsel auf die vorherige Firmwareversion.
 
-:::
+Ältere vollständige Flash-Sicherungen lassen sich weiterhin über USB
+wiederherstellen. Sie ersetzen auch die Firmware.
 
 ## Einstellungen
 
 Öffne das **Drei-Punkte-Menü → Einstellungen**.
+
+### Gespeicherte Einstellungen und Zugangsdaten
+
+Das ServiceTool merkt sich Geräteprofile, Rezeptquellen und weitere
+Einstellungen in `config.json`. Beim ersten Start nach dem Update werden ältere
+Rezeptquellen-Einstellungen automatisch übernommen. Kontrolliere anschließend
+unter **Rezeptquellen**, ob User ID, gespeicherter API-Key und Datenbankpfad
+angezeigt werden.
+
+Der Brewfather-Key und gespeicherte Telegraf-Zugangsdaten werden verschlüsselt
+abgelegt. Dafür musst du kein Passwort eingeben. Die Verschlüsselung nutzt
+ein festes, öffentliches Passwort: Sie vermeidet Klartext, schützt aber nicht
+vor jemandem mit Zugriff auf die Datei. Behandle diese Dateien vertraulich.
+Bei Telegraf entscheidet weiterhin die
+Option zum Speichern von Passwörtern, ob Zugangsdaten behalten werden.
+
+Rezepte und Entwürfe sind separate Dateien. Eine Kopie von `config.json` allein
+ist deshalb keine vollständige Sicherung deiner ServiceTool-Daten. Die externe
+kleinerBrauhelfer2-Datenbank bleibt an ihrem bisherigen Speicherort; im
+ServiceTool wird nur ihr Pfad hinterlegt.
+
+### Darstellung
+
+Wähle unter **Darstellung** zwischen **System**, **Hell** und **Dunkel**.
+Die Auswahl wird sofort angewendet und automatisch gespeichert. **System**
+folgt der vom Browser gemeldeten Einstellung und reagiert auch auf Änderungen
+während der Nutzung. Ohne eigene Auswahl bleibt die Darstellung hell.
 
 ### Sprache und Debug-Ausgabe
 
@@ -723,7 +768,8 @@ für die Fehlersuche ein.
 ### Ein weiteres Gerät einrichten
 
 1. Wähle im Abschnitt **Geräte** die Aktion **Gerät hinzufügen**.
-2. Wähle den COM-Port des neuen Geräts und trage seine eindeutige URL ein.
+2. Wähle den COM-Port und trage die eindeutige Geräte-URL ein. Optional kannst
+   du einen eigenen Profilnamen vergeben.
 3. Speichere das Profil. Die Oberfläche wird mit dem gewählten Gerät neu
    geladen.
 4. Richte bei Bedarf unter **Gerät** das WLAN ein.
@@ -737,11 +783,12 @@ leer.
 
 Wähle oben das betreffende Gerät. Unter **Einstellungen → Geräte** zeigt die
 Zusammenfassung die aktuelle Auswahl. **Profil bearbeiten** öffnet dessen
-COM-Port und URL.
+Namen, COM-Port und URL.
 
-Zusätzliche Geräte lassen sich im Profildialog entfernen. Das erste Profil
-bleibt erhalten. Das Entfernen eines Profils löscht keine Daten auf dem
-Brautomat.
+Jedes Profil lässt sich im Profildialog entfernen, auch das letzte.
+Ohne gespeichertes Profil verwendet ServiceTool die Standardverbindung
+`http://brautomat` ohne ausgewählten COM-Port. Andere Einstellungen bleiben
+erhalten. Das Entfernen eines Profils löscht keine Daten auf dem Brautomat.
 
 ### Das ServiceTool aktualisieren
 
@@ -795,6 +842,17 @@ verwende die [Migrationswiederherstellung](#migration).
 Kontrolliere die ausgewählte Quelle. **Special Version** benötigt eine konkrete
 Version. Onlinepakete benötigen eine erreichbare Paketquelle; bei lokalen
 Verzeichnissen müssen die passenden Dateien vorliegen.
+
+### GitHub meldet ein Abfragelimit
+
+Bei **GitHub API limit** warte bis zur angegebenen Uhrzeit. Wiederholtes Klicken
+oder ein Neustart hebt die Sperre nicht auf. Bereits zwischengespeicherte
+Paketinformationen können währenddessen weiter verfügbar sein.
+
+Das ServiceTool verwendet GitHub-Antworten während der laufenden Sitzung für
+15 Minuten erneut. Informationen zu festgelegten Paketständen bleiben länger
+zwischengespeichert. Neue Veröffentlichungen können daher etwas verzögert in
+der Auswahl erscheinen.
 
 ### Angaben für eine Fehlermeldung
 

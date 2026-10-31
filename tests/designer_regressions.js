@@ -13,7 +13,7 @@ const snapshot={captured_at:Date.now()/1000,complete:true,actors:[{NAME:'Pumpe'}
 assert.equal(D.resources(snapshot).find(r=>r.remote).command,'worker1/Ventil');
 plan.snapshot=snapshot;plan.generation='1.66';plan.steps.push(D.step('worker1/Ventil:ON'));
 const before=JSON.stringify(plan);const notes=D.review(plan);
-assert.ok(notes.some(n=>n.code==='generation'));assert.ok(notes.some(n=>n.code==='manual'));
+assert.ok(!notes.some(n=>n.code==='generation'));assert.ok(notes.some(n=>n.code==='manual'));
 assert.equal(JSON.stringify(plan),before,'advisory review must never change the plan');
 const other=D.clone(plan);other.steps[0].Dauer=45;
 assert.deepEqual(D.compare(plan,other)[0].changed,['Dauer']);

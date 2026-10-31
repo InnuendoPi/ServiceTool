@@ -21,6 +21,29 @@ class PackageSelectionTests(unittest.TestCase):
         self.assertTrue(all(not p["available"] for p in catalog["packages"]
                             if p["key"] in ("release", "development")))
 
+    def test_usb_catalog_offers_both_generations_for_either_device(self):
+        def location(source, ref, root):
+            return {"base_url": app.REMOTE_PACKAGES[source]["base_url"],
+                    "version": "1.70.4" if root == "Updates" else "1.66.0"}
+        for firmware in ("1.66.0", "1.70.4", ""):
+            with self.subTest(firmware=firmware), patch.object(app, "package_location", side_effect=location):
+                catalog = app.package_catalog(firmware)
+                self.assertEqual(catalog["package_root"], "all")
+                self.assertTrue(all(p["available"] and p["path"] for p in catalog["packages"]))
+                self.assertEqual([p["root"] for p in catalog["packages"]], ["build", "build", "Updates"])
+
+    def test_special_ref_can_offer_both_target_layouts(self):
+        def query(url, **kwargs):
+            return [{"tag_name": "v-test"}] if "/releases?" in url else []
+        def location(source, ref, root):
+            return {"base_url": f"https://example/{ref}/{root}/ESP32-IDF5",
+                    "version": "1.70.4" if root == "Updates" else "1.66.0", "type": "Release"}
+        with patch.object(app, "json_request", side_effect=query), patch.object(app, "package_location", side_effect=location):
+            rows = app.list_special_versions(None)
+        self.assertEqual([r["root"] for r in rows], ["build", "Updates"])
+        self.assertEqual([r["ref"] for r in rows], ["v-test", "v-test"])
+        self.assertNotEqual(rows[0]["base_url"], rows[1]["base_url"])
+
     def test_generation_boundary(self):
         for version, root in (("1.65.5", "build"), ("1.66.0", "build"), ("1.66.99", "build"), ("1.67.0", "Updates"),
                               ("Brautomat32 V 1.67.2 Develop", "Updates"), ("", "Updates")):
@@ -56,10 +79,9 @@ class PackageSelectionTests(unittest.TestCase):
         self.assertEqual(modern["path"],
                          "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/development/Updates/ESP32-IDF5dev")
         self.assertIn("404", modern["error"])
-        self.assertTrue(all(not p["path"] for p in catalog["packages"]
-                            if p["key"] in ("release", "development")))
-        self.assertTrue(urls)
-        self.assertTrue(all("/Updates/" in url for url in urls))
+        self.assertTrue(all(p["path"] for p in catalog["packages"]))
+        self.assertTrue(any("/Updates/" in url for url in urls))
+        self.assertTrue(any("/Updates/" not in url for url in urls))
 
     def test_modern_package_requires_serviceapp(self):
         with patch.object(app,"json_request",side_effect=[{"version":"1.67.2", "type":"Development"},

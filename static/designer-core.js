@@ -112,7 +112,6 @@ const PlanDesigner = (() => {
     if(value.steps.length>30)add('step_limit');
     if(!snapshot)add('snapshot_missing');
     else {
-      if(Date.now()/1000-(snapshot.captured_at||0)>86400)add('snapshot_old');
       if(!snapshot.complete)add('snapshot_partial');
       if(snapshot.multidevice?.mode && !snapshot.remote_complete)add('remote_unknown');
     }
@@ -129,7 +128,6 @@ const PlanDesigner = (() => {
         const parsed=commandAction(s,snapshot),resource=parsed?.resource;
         const argument=parsed?.argument??args.join(':').trim();
         if(!argument)add('argument',s);
-        if(command.includes('/') && value.generation==='1.66')add('generation',s);
         if(snapshot && !resource && !/^(MAISCHE|IDS|SUD|MLT|HLT|NACHGUSS)(PROFIL|THRESOUT)?$/i.test(command))add('resource_unknown',s,command);
         if(parsed?.kind==='profile'&&resource?.remote){
           const worker=(snapshot.remote?.workers||[]).find(w=>(w.host||w.name||w.id)===resource.name.split('/')[0]);

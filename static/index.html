@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/workspace.css">
   <link rel="stylesheet" href="/designer.css">
+  <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
   <div id="appLoadingOverlay" class="app-loading-overlay">
@@ -19,7 +20,7 @@
   </div>
   <header class="hero">
     <div>
-      <h1 id="title">Brautomat32 ServiceTool V 2.0.1</h1>
+      <h1 id="title">Brautomat32 ServiceTool V 2.0.2</h1>
     </div>
     <div class="hero-actions">
       <div class="header-device">
@@ -35,6 +36,14 @@
           <select id="language">
             <option value="de">Deutsch</option>
             <option value="en" selected>English</option>
+          </select>
+        </label>
+        <label class="theme-setting">
+          <span id="appearanceLabel">Darstellung</span>
+          <select id="appearance">
+            <option id="appearanceSystem" value="system">System</option>
+            <option id="appearanceLight" value="light" selected>Hell</option>
+            <option id="appearanceDark" value="dark">Dunkel</option>
           </select>
         </label>
         <label class="checkline header-check">
@@ -218,7 +227,10 @@
           </label>
           <label>
             <span id="wifiPasswordLabel">Password</span>
-            <input id="wifiPassword" name="wifi-network-key" type="password" autocomplete="off" placeholder="" form="wifiSettingsForm">
+            <div class="input-action">
+              <input id="wifiPassword" name="wifi-network-key" type="password" autocomplete="off" placeholder="" form="wifiSettingsForm">
+              <button type="button" id="wifiPasswordReveal" title="Show password" aria-label="Show password" aria-pressed="false"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+            </div>
           </label>
         <div class="actions end">
           <button type="button" id="wifiSaveBtn" form="wifiSettingsForm">Save &amp; Reboot</button>
@@ -618,6 +630,7 @@
   <script src="/explorer.js"></script>
   <script src="/designer-core.js"></script>
   <script src="/designer.js"></script>
+  <script src="/theme.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

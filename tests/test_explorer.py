@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -65,6 +66,78 @@ class ExplorerTests(unittest.TestCase):
         self.write.assert_not_called()
         self.rename.assert_not_called()
 
+    def test_recipe_version_transfer_binds_path_without_changing_inventory(self):
+        import json
+        original = {"misc": [{"File": "/Rezepte/Alt.json", "Sudname": "Märzen"}],
+                    "mash": [{"Rast": "Rast", "Temperatur": 65, "Dauer": 40}]}
+        content = json.dumps(original, ensure_ascii=False).encode("utf-8")
+        source = self.root / "Maerzen_1.json"
+        source.write_bytes(content)
+        self.fs.action({"side": "local", "action": "transfer", "path": "/Maerzen_1.json",
+                        "target": "/Rezepte/Maerzen_1.json", "overwrite": True})
+        path, uploaded = self.write.call_args.args
+        self.assertEqual(path, "/Rezepte/Maerzen_1.json")
+        result = json.loads(uploaded)
+        self.assertEqual(result["misc"][0]["File"], path)
+        self.assertEqual(result["misc"][0]["Sudname"], "Märzen")
+        self.assertEqual(result["mash"], original["mash"])
+        self.assertEqual(source.read_bytes(), content)
+        # Uploads use the same target binding; a matching plan stays byte-identical.
+        self.fs.action({"side": "device", "action": "upload", "path": path,
+                        "content": base64.b64encode(uploaded).decode(), "overwrite": True})
+        self.assertEqual(self.write.call_args.args[1], uploaded)
+        for unrelated in (b'{"setting":true}', b'not JSON', b'{"mash":[],"misc":{}}'):
+            self.write.reset_mock()
+            with self.assertRaises(ValueError):
+                self.fs.write("device", path, unrelated, overwrite=True)
+            self.write.assert_not_called()
+
+    def test_native_upload_formats_and_rejected_writes(self):
+        formats = {
+            "/Rezepte/Test.json": {"misc": [{"Sudname": "Test"}], "mash": [{"Rast": "Rast", "Temperatur": "65", "Dauer": "30"}]},
+            "/Fermenter/Test.json": {"misc": [{"Fername": "Test"}], "ferm": [{"step": "Gärung", "startTemp": 18, "endTemp": 20, "duration": 1440}]},
+            "/Profile/Test.json": {"profile": [{"pname": "Test", "enabled": 1}]},
+            "/config.txt": {"misc": [{}], "actors": [], "sensors": [], "kettles": []},
+            "/log_cfg.json": {"SYS": 3, "MAS": 0},
+        }
+        brewfather = {"name": "Original", "mash": {"steps": [{"name": "Rast", "stepTemp": 65, "stepTime": 30}]}}
+        for path, value in formats.items():
+            with self.subTest(path=path):
+                content = json.dumps(value, ensure_ascii=False).encode("utf-8")
+                self.fs.action({"side": "device", "action": "upload", "path": path,
+                                "content": base64.b64encode(b"\xef\xbb\xbf" + content).decode(), "overwrite": True})
+                actual = json.loads(self.write.call_args.args[1])
+                if "mash" in value or "ferm" in value:
+                    self.assertEqual(actual["misc"][0]["File"], path)
+                else:
+                    self.assertEqual(actual, value)
+                for invalid in (b"not json", b"[]", b"{}", json.dumps(brewfather).encode()):
+                    self.write.reset_mock()
+                    with self.assertRaisesRegex(ValueError, "Datei wurde nicht übertragen"):
+                        self.fs.action({"side": "device", "action": "upload", "path": path,
+                                        "content": base64.b64encode(invalid).decode(), "overwrite": True})
+                    self.write.assert_not_called()
+        # Wrong native category, corrupt numeric fields and incomplete structures.
+        for path, value in (("/Rezepte/Test.json", formats["/Profile/Test.json"]),
+                            ("/Rezepte/config.txt", formats["/config.txt"]),
+                            ("/Profile/Test.json", {"profile": [{"pname": "Test", "enabled": "bad"}]}),
+                            ("/config.txt", {"misc": [{}], "actors": []}),
+                            ("/Fermenter/Test.json", {"misc": [{"Fername": "Test"}], "ferm": [{"step": "Test", "startTemp": 18, "endTemp": 20}]})):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                self.fs.write("device", path, json.dumps(value).encode(), overwrite=True)
+        self.write.assert_not_called()
+        (self.root / "Rezepte").mkdir()
+        target = self.root / "Rezepte" / "Test.json"
+        target.write_bytes(b"unchanged")
+        with self.assertRaisesRegex(ValueError, "Rezept Planer"):
+            self.fs.action({"side": "local", "action": "upload", "path": "/Rezepte/Test.json",
+                            "content": base64.b64encode(json.dumps(brewfather).encode()).decode(), "overwrite": True})
+        self.assertEqual(target.read_bytes(), b"unchanged")
+        with self.assertRaises(ValueError):
+            self.fs.action({"side": "device", "view": "config", "action": "upload", "path": "/original.json",
+                            "content": base64.b64encode(json.dumps(brewfather).encode()).decode(), "overwrite": True})
+        self.write.assert_not_called()
+
     def test_device_default_directories_cannot_be_deleted(self):
         self.listing.return_value = []
         for path in ("/Fermenter", "/language", "/Profile", "/Rezepte"):
@@ -74,7 +147,7 @@ class ExplorerTests(unittest.TestCase):
         self.listing.assert_not_called()
 
     def test_device_allows_files_in_standard_directories(self):
-        for folder in ("", "/Fermenter", "/language", "/Profile", "/Rezepte"):
+        for folder in ("", "/language"):
             path = folder + "/Plan.json"
             self.fs.action({"side": "device", "action": "upload", "path": path,
                             "content": "e30=", "overwrite": True})
@@ -109,8 +182,9 @@ class ExplorerTests(unittest.TestCase):
                 app.file_explorer("http://device", "unknown")
             (Path(other) / "plan.json").write_text('{}', encoding="utf-8")
             with patch.object(fs, "device_write") as write:
-                fs.action({"side": "local", "path": "/plan.json", "action": "transfer", "target": "/Rezepte/plan.json", "overwrite": True})
-                write.assert_called_once_with("/Rezepte/plan.json", b"{}")
+                with self.assertRaises(ValueError):
+                    fs.action({"side": "local", "path": "/plan.json", "action": "transfer", "target": "/Rezepte/plan.json", "overwrite": True})
+                write.assert_not_called()
             result = app.remove_explorer_folder(selected["token"])
             self.assertEqual(result["folders"], [])
             self.assertEqual(app.load_app_config()["explorer_folders"], [])

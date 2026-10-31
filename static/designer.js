@@ -264,6 +264,7 @@ async function pdTransfer() {
   pdCommitPendingProperties();
   if(!pd.draft.name.trim()){pdNode('Name').focus();throw new Error(pdText('Planname fehlt.','Plan name missing.'));}
   const profile=appConfig.active_device_id||'primary',base=managementDeviceUrl();
+  const profileUrl=appConfig.device_url,port=selectedConnectionPort;
   const draft=PlanDesigner.clone(pd.draft);
   const body=pdDialog(pdText('Maischeplan auf Gerät übertragen','Transfer mash plan to device'));
   const message=pdElement('p');message.setAttribute('role','status');body.append(message);
@@ -271,10 +272,10 @@ async function pdTransfer() {
   report(pdText('Uploadziel wird geprüft und der Maischeplan anschließend übertragen …','Checking upload destination, then transferring the mash plan …'));
   try {
     const plan=await pdApi('export',{draft});
-    if(profile!==(appConfig.active_device_id||'primary')||base!==managementDeviceUrl())throw new Error(pdText('Gerät wurde gewechselt.','Device changed.'));
+    if(profile!==(appConfig.active_device_id||'primary')||profileUrl!==appConfig.device_url||port!==selectedConnectionPort||base!==managementDeviceUrl())throw new Error(pdText('Gerät wurde gewechselt.','Device changed.'));
     await api('/api/explorer/action',{method:'POST',body:{action:'upload',side:'device',
       path:plan.misc[0].File,base_url:base,overwrite:true,
-      designer_context:{profile,snapshot:draft.snapshot},
+      designer_context:{profile,profile_url:profileUrl,target_url:base,snapshot:draft.snapshot},
       content:btoa(Array.from(new TextEncoder().encode(JSON.stringify(plan)),byte=>String.fromCharCode(byte)).join(''))}});
     report(pdText('Maischeplan erfolgreich übertragen: ','Mash plan transferred successfully: ')+base+' · '+plan.misc[0].File);
   } catch(error) {
@@ -864,7 +865,6 @@ const PD_NOTES={
   partial_recipe:['KBH2-Teilexport enthält nur Rasten. Planname und Kochdaten ergänzen.','Partial KBH2 export only contains mash rests. Add name and boil data.'],
   step_limit:['Mehr als 30 Schritte: Firmwaregrenze beachten.','More than 30 steps: check the firmware limit.'],
   snapshot_missing:['Gerätekonfiguration fehlt. Ressourcen können nicht geprüft werden.','No configuration snapshot. Resources cannot be checked.'],
-  snapshot_old:['Gespeicherte Gerätekonfiguration ist älter als einen Tag. Aktualisieren empfohlen.','Configuration is over a day old. Refresh recommended.'],
   snapshot_partial:['Profilbestand unvollständig. Profile zusätzlich einlesen.','Profile inventory incomplete. Read profiles as well.'],
   remote_command:['Remote-Kesselbefehl nicht unterstützt: Rolle, Dauer und Funktion prüfen.','Remote kettle command not supported: check role, duration and function.'],
   remote_profile_unknown:['Profilbestand auf dem Worker nicht über den Master prüfbar. Profil muss dort vorhanden sein.','Worker profile inventory cannot be verified through the master. The profile must exist there.'],
@@ -877,7 +877,6 @@ const PD_NOTES={
   rounding:['Firmware verwendet ganze Grad und Minuten. Rundung prüfen.','Firmware uses whole degrees and minutes. Review rounding.'],
   manual:['Schritt wartet auf Benutzerfreigabe. Absicht prüfen.','Step waits for user confirmation. Check intent.'],
   argument:['Befehlsargument fehlt. Aktion ergänzen.','Command argument missing. Choose an action.'],
-  generation:['Remote-Befehl ist bis 1.66 nicht vorgesehen. Zielgeneration prüfen.','Remote command is not supported by 1.66. Check target generation.'],
   resource_unknown:['Ressource nicht zugeordnet. Konfiguration und Befehlsname prüfen.','Resource not mapped. Check configuration and command name.'],
   role_unassigned:['Remote-Kessel ist dieser Prozessrolle nicht zugeordnet. Rollen am Master prüfen.','Remote kettle is not assigned to this process role. Check master roles.'],
   resource_changed:['Ursprüngliche Ressource fehlt im Konfigurationsstand. Zuordnung prüfen.','Original resource is missing from snapshot. Check mapping.'],
@@ -970,7 +969,7 @@ function pdImportStatus() {
 }
 function pdRender() {
   if(!pdNode('Panel'))return;
-  pdNode('Name').value=pd.draft.name;pdNode('Generation').value=pd.draft.generation;
+  pdNode('Name').value=pd.draft.name;
   pdNode('Saved').textContent=pd.dirty?'●':'';pdSidebar();pdRows();pdProperties();pdComparison();pdDockTools();pdImportStatus();
   const compare=pdNode('CompareToggle'),active=!!pd.comparison;
   compare.className=(active?'danger':'info')+' explorer-icon';
@@ -993,8 +992,6 @@ function initializeDesigner() {
   const card=pdElement('section','','designer-card');const toolbar=pdElement('div','','designer-toolbar');
   const name=pdElement('input');name.id='designerName';name.placeholder=pdText('Planname','Plan name');name.setAttribute('aria-label',name.placeholder);
   name.addEventListener('change',()=>pdChange(()=>pd.draft.name=name.value));toolbar.append(name);
-  const generation=pdElement('select');generation.id='designerGeneration';generation.setAttribute('aria-label',pdText('Zielgeneration','Target generation'));
-  for(const [value,label] of [['1.66',pdText('bis 1.66','up to 1.66')],['1.67+',pdText('ab 1.70','from 1.70')]]){const o=pdElement('option',label);o.value=value;generation.append(o);}generation.addEventListener('change',()=>pdChange(()=>pd.draft.generation=generation.value));toolbar.append(generation);
   const actions=[['file-empty','Neuer Plan','New plan',()=>pdAccept(PlanDesigner.create())],['folder-open','Entwurf öffnen','Open draft',()=>pdSource('drafts')],
     ['floppy-disk','Entwurf speichern','Save draft',pdSaveChoice],['download','Ins Inventar übernehmen','Move to inventory',pdPublish],
     ['upload','Maischeplan auf Gerät übertragen','Transfer mash plan to device',pdTransfer,'Transfer'],
@@ -1051,22 +1048,33 @@ function initializeDesignerSettings() {
   const actions=pdElement('div','','designer-actions');const feedback=pdElement('p');feedback.setAttribute('role','status');
   const run=fn=>async()=>{try{await fn();}catch(error){feedback.textContent=error.message;}};
   const pick=pdButton('folder-open','SQLite-Datei auswählen','Choose SQLite file',run(async()=>{const r=await pdApi('pick-kbh');if(r.path)path.value=r.path;}));
-  const save=pdButton('floppy-disk','Quellen speichern','Save sources',run(async()=>{const r=await pdApi('settings',{settings:{brewfather_user:user.value,brewfather_key:key.value,kbh_path:path.value,import_options:pdOptions()}});key.value='';key.placeholder=r.key_saved?pdText('Gespeichert','Saved'):'';feedback.textContent=pdText('Gespeichert.','Saved.');}));
-  const remove=pdButton('trash-o','API-Schlüssel entfernen','Remove API key',run(async()=>{await pdApi('settings',{settings:{clear_key:true}});key.value='';key.placeholder='';feedback.textContent=pdText('API-Schlüssel entfernt.','API key removed.');}));
+  const setKeyVisible=visible=>{key.type=visible?'text':'password';reveal.title=visible?pdText('API-Schlüssel verbergen','Hide API key'):pdText('API-Schlüssel anzeigen','Show API key');reveal.setAttribute('aria-label',reveal.title);reveal.setAttribute('aria-pressed',String(visible));};
+  const reveal=pdButton('eye','API-Schlüssel anzeigen','Show API key',run(async()=>{
+    if(key.type==='text'){setKeyVisible(false);return;}
+    if(!key.value && key.placeholder){
+      key.readOnly=true;
+      try{const r=await pdApi('reveal-key');key.value=r.brewfather_key||'';}
+      finally{key.readOnly=false;}
+    }
+    setKeyVisible(true);
+  }));
+  reveal.id='designerBfKeyReveal';setKeyVisible(false);
+  const save=pdButton('floppy-disk','Quellen speichern','Save sources',run(async()=>{const r=await pdApi('settings',{settings:{brewfather_user:user.value,brewfather_key:key.value,kbh_path:path.value,import_options:pdOptions()}});key.value='';setKeyVisible(false);key.placeholder=r.key_saved?pdText('Gespeichert','Saved'):'';feedback.textContent=pdText('Gespeichert.','Saved.');}));
+  const remove=pdButton('trash-o','API-Schlüssel entfernen','Remove API key',run(async()=>{await pdApi('settings',{settings:{clear_key:true}});key.value='';setKeyVisible(false);key.placeholder='';feedback.textContent=pdText('API-Schlüssel entfernt.','API key removed.');}));
   const pathRow=pdElement('div','','designer-settings-input');path.parentElement.replaceChild(pathRow,path);pathRow.append(path,pick);
-  const keyRow=pdElement('div','','designer-settings-input');key.parentElement.replaceChild(keyRow,key);keyRow.append(key,remove);
+  const keyRow=pdElement('div','','designer-settings-input');key.parentElement.replaceChild(keyRow,key);keyRow.append(key,reveal,remove);
   save.className='success icon-button';save.title=pdText('Speichern','Save');save.setAttribute('aria-label',save.title);
   actions.id='designerSettingsActions';actions.className='designer-settings-actions';actions.append(save,feedback);
   target=imports;
   field('BoilTemp',pdText('Kochtemperatur °C','Boil temperature °C'),'number').value=100;
   field('MashOutTemp',pdText('Abmaischtemperatur °C','Mash-out temperature °C'),'number').value=78;
-  field('FirstWortTemp',pdText('Vorderwürzenhopfung °C','First-wort hopping °C'),'number').value=78;
+  field('FirstWortTemp',pdText('Vorderwürzenhopfung °C','First-wort hopping °C'),'number').value=75;
   field('WhirlpoolTemp',pdText('Whirlpoolhopfung °C','Whirlpool hopping °C'),'number').value=80;
   settings.append(section);
   const heading=settings.querySelector('#workspaceSettingsTitle');
   const header=pdElement('div','','settings-heading');heading.replaceWith(header);header.append(heading,save);
   document.querySelector('[data-panel="settings"] .header-side').append(actions);
-  pdApi('settings').then(r=>{user.value=r.brewfather_user||'';path.value=r.kbh_path||'';key.placeholder=r.key_saved?pdText('Gespeichert','Saved'):'';const o=r.import_options||{};pdNode('BoilTemp').value=o.boil_temp??100;pdNode('MashOutTemp').value=o.mash_out_temp??78;pdNode('FirstWortTemp').value=o.first_wort_temp??78;pdNode('WhirlpoolTemp').value=o.whirlpool_temp??80;}).catch(e=>feedback.textContent=e.message);
+  pdApi('settings').then(r=>{user.value=r.brewfather_user||'';path.value=r.kbh_path||'';key.placeholder=r.key_saved?pdText('Gespeichert','Saved'):'';const o=r.import_options||{};pdNode('BoilTemp').value=o.boil_temp??100;pdNode('MashOutTemp').value=o.mash_out_temp??78;pdNode('FirstWortTemp').value=o.first_wort_temp??75;pdNode('WhirlpoolTemp').value=o.whirlpool_temp??80;}).catch(e=>feedback.textContent=e.message);
 }
 
 function translateDesigner() {
