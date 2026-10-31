@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
   "version": "2.0.2",
-  "released_at": "",
+  "released_at": "2026-10-31",
   "notes": "Korrigiert Plan\u00fcbertragung und Rezeptpfade sowie Brewfather-Mengen und leere Schrittnamen. Entfernt die Alterswarnung der Ger\u00e4tekonfiguration.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.0.2/Brautomat32ServiceTool-win.zip",
+    "sha256": "df3f9653325320ef5d5f63400f9b139098db7ad61cb149361b2ea232025464c4"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.0.2/Brautomat32ServiceTool-linux.zip",
+    "sha256": "ce8153ded7d169707ef2a84cd6cda6aa0a6328dac8cc4ce6bf1ed6b37043ef9f"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.0.2/Brautomat32ServiceTool-macos.zip",
+    "sha256": "a4d0ecc27078b70cfeb9b42a0c0c3ce045c53f16e7f865fe7864ce3a350f9c6d"
   }
 }
