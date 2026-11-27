@@ -8,6 +8,7 @@ import os
 from pathlib import Path, PurePosixPath
 from datetime import datetime
 from urllib.error import HTTPError
+from recipe_filename import LEGACY_RECIPE_NAME, is_device_recipe_path, validate_local_recipe_filename, validate_recipe_filename
 
 LOG_FILES = {"autotune_log.txt", "webUpdateLog.txt"}
 CONFIG_FILES = {"config.txt", "log_cfg.json"}
@@ -20,7 +21,11 @@ def clean_path(value):
     if "\\" in value or any(ord(c) < 32 for c in value):
         raise ValueError("Invalid path")
     parts = value.strip("/").split("/") if value.strip("/") else []
-    for part in parts:
+    recipe_path = is_device_recipe_path("/" + "/".join(parts))
+    for index, part in enumerate(parts):
+        if recipe_path and index == len(parts) - 1 and part != ".inventory-info.json":
+            validate_recipe_filename(part, new=False)
+            continue
         if part in ("", ".", "..") or any(c in part for c in ':*?"<>|') or part.endswith((".", " ")):
             raise ValueError("Invalid path")
         if part.split(".")[0].upper() in {"CON", "PRN", "AUX", "NUL", *[f"COM{i}" for i in range(1, 10)], *[f"LPT{i}" for i in range(1, 10)]}:
@@ -30,12 +35,14 @@ def clean_path(value):
     return "/" + "/".join(parts)
 
 
-def device_file_path(path):
+def device_file_path(path, *, new_recipe=True):
     path = clean_path(path)
     if path == "/" or str(PurePosixPath(path).parent) not in {
         "/", "/Fermenter", "/language", "/Profile", "/Rezepte"
     }:
         raise ValueError("Auf dem Gerät sind nur Dateien im Hauptverzeichnis oder direkt in Fermenter, language, Profile und Rezepte erlaubt.")
+    if is_device_recipe_path(path):
+        validate_recipe_filename(PurePosixPath(path).name, new=new_recipe)
     return path
 
 
@@ -125,14 +132,18 @@ def validate_upload_format(path, data, view="all"):
 
 
 class FileExplorer:
-    def __init__(self, root, *, listing, read, write, delete, put, rename, local_rename=None, local_delete=None):
+    def __init__(self, root, *, listing, read, write, delete, put, rename, local_rename=None, local_delete=None, recipe_firmware=None):
         self.root = Path(root).resolve()
         self.local_rename, self.local_delete = local_rename, local_delete
+        self.recipe_firmware = recipe_firmware
         self.listing, self.device_read, self.device_write = listing, read, write
         self.device_delete, self.device_put, self.device_rename = delete, put, rename
 
     def local(self, path):
-        target = (self.root / clean_path(path).lstrip("/")).resolve()
+        path = clean_path(path)
+        if is_device_recipe_path(path):
+            validate_local_recipe_filename(PurePosixPath(path).name)
+        target = (self.root / path.lstrip("/")).resolve()
         if not target.is_relative_to(self.root):
             raise ValueError("Path leaves the inventory directory")
         return target
@@ -225,6 +236,8 @@ class FileExplorer:
         return result
 
     def exists(self, side, path):
+        if side == "local":
+            return self.local(path).exists()
         parent = str(PurePosixPath(path).parent)
         return any(row["path"] == path for row in self.entries(side, parent))
 
@@ -234,7 +247,12 @@ class FileExplorer:
         if path == "/":
             raise ValueError("Select a file")
         if side == "device":
-            device_file_path(path)
+            try:
+                device_file_path(path)
+            except ValueError:
+                if not (overwrite and is_device_recipe_path(path) and self.exists(side, path)):
+                    raise
+                device_file_path(path, new_recipe=False)
             validate_upload_format(path, data)
         if not overwrite and self.exists(side, path):
             raise FileExistsError("Destination already exists: " + path)
@@ -262,6 +280,51 @@ class FileExplorer:
                             data = json.dumps(plan, ensure_ascii=False, indent=2).encode("utf-8")
             self.device_write(path, data)
 
+    def legacy_recipe_warning(self, path, data):
+        if (not self.recipe_firmware or not is_device_recipe_path(path)
+                or data.get("acknowledge_legacy_recipe_name")
+                or LEGACY_RECIPE_NAME.fullmatch(PurePosixPath(path).name)):
+            return False
+        version = self.recipe_firmware()
+        return version is not None and version < (1, 67, 0)
+
+    def write_local_copy(self, path, content, mode):
+        exists = self.exists("local", path)
+        if exists and mode not in ("replace", "version"):
+            return {"done": False, "conflict": True, "target": path}
+        payload = content()
+        if exists and mode == "version":
+            current = self.local(path)
+            previous = current.read_bytes()
+            index = 1
+            while True:
+                archive = current.with_name(f"{current.stem}_{index}{current.suffix}")
+                try:
+                    with archive.open("xb") as stream:
+                        stream.write(previous)
+                    break
+                except FileExistsError:
+                    index += 1
+        self.write("local", path, payload, overwrite=exists)
+        return None
+
+    def recipe_write_notice(self, target, data):
+        if not is_device_recipe_path(target):
+            return None
+        overwrite = bool(data.get("overwrite"))
+        existing = not overwrite and self.exists("device", target)
+        try:
+            device_file_path(target, new_recipe=not existing)
+        except ValueError:
+            if not (overwrite and self.exists("device", target)):
+                raise
+            device_file_path(target, new_recipe=False)
+        warning = self.legacy_recipe_warning(target, data)
+        conflict = existing and not data.get("overwrite")
+        if warning or conflict:
+            return {"done": False, "target": target, "recipe_warning": warning, "recipe_conflict": conflict}
+        return None
+
     def action(self, data):
         side, path, action = data["side"], clean_path(data.get("path")), data["action"]
         self.side(side)
@@ -281,7 +344,16 @@ class FileExplorer:
             content = base64.b64decode(data.get("content", ""), validate=True) if action == "upload" else (b"{}\n" if path.endswith(".json") else b"")
             if action == "upload":
                 validate_upload_format(path, content, data.get("view", "all"))
-            self.write(side, path, content, bool(data.get("overwrite")))
+            if side == "device":
+                notice = self.recipe_write_notice(path, data)
+                if notice:
+                    return notice
+            if side == "local" and action == "upload":
+                notice = self.write_local_copy(path, lambda: content, data.get("conflict"))
+                if notice:
+                    return notice
+            else:
+                self.write(side, path, content, bool(data.get("overwrite")))
         elif action == "mkdir":
             if side == "device":
                 raise ValueError("Eigene Ordner können nur im lokalen Inventar erstellt werden.")
@@ -319,27 +391,20 @@ class FileExplorer:
                 if not self.local_rename or not self.local_rename(path, data["name"]):
                     self.local(path).rename(self.local(target))
             else:
+                if self.legacy_recipe_warning(target, data):
+                    return {"done": False, "target": target, "recipe_warning": True}
                 self.device_rename(path, target, bool(data.get("maintenance")))
         elif action == "transfer":
             target_side = "local" if side == "device" else "device"
             target = clean_path(data["target"])
             if target_side == "local":
-                mode = data.get("conflict")
-                exists = self.exists("local", target)
-                if exists and mode not in ("replace", "version"):
-                    return {"action": action, "path": path, "done": False,
-                            "conflict": True, "target": target}
-                content = self.read(side, path)
-                if exists and mode == "version":
-                    current = self.local(target)
-                    index = 1
-                    while current.with_name(f"{current.stem}_{index}{current.suffix}").exists():
-                        index += 1
-                    archive = current.with_name(f"{current.stem}_{index}{current.suffix}")
-                    with archive.open("xb") as stream:
-                        stream.write(current.read_bytes())
-                self.write("local", target, content, overwrite=exists)
+                notice = self.write_local_copy(target, lambda: self.read(side, path), data.get("conflict"))
+                if notice:
+                    return {"action": action, "path": path, **notice}
             else:
+                notice = self.recipe_write_notice(target, data)
+                if notice:
+                    return notice
                 self.write(target_side, target, self.read(side, path), bool(data.get("overwrite")))
         else:
             raise ValueError("Unknown file action")

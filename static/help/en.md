@@ -2,16 +2,33 @@
 
 ## Getting started
 
-ServiceTool connects your computer to a Brautomat. Select the correct device
-first: device actions apply to that selection.
+Open **Assistants** and choose what you want to do. Keep only the intended
+Brautomat connected while the assistant runs.
 
-### Connect a device
+- **Set up Brautomat:** Connect via USB. Keep the existing setup or start
+  from scratch. Starting from scratch erases settings, Wi-Fi credentials
+  and files after you confirm. You can create a configuration backup first
+  if Brautomat is reachable over Wi-Fi. If needed, set up Wi-Fi over USB
+  before creating the backup. After erasing the device, ServiceTool installs
+  the firmware and guides you through Wi-Fi setup. You can then open the
+  web interface.
+- **Update firmware:** Connect via USB or Wi-Fi. On compatible firmware,
+  the **Test versions** setting on Brautomat selects the target channel.
+  Off selects Release, and on selects Development. The assistant shows
+  the target version, channel and installation method. Switching channels
+  can require USB even when the version number stays the same. With USB
+  alone on IDF6, the assistant helps set up Wi-Fi to read this setting.
+- **Migrate firmware:** Connect via USB. The device must be reachable over
+  the network for backup and restore. The assistant guides you through
+  backup, flash and restore.
+- **Create backup:** Back up the device configuration over Wi-Fi. The
+  assistant helps you set up Wi-Fi over USB if needed. ServiceTool saves the
+  backup on your computer and displays the file path.
 
-1. Connect the Brautomat to your computer via USB.
-2. Open **Device** and select its serial port. Use the circular arrow beside the
-   port list to refresh it.
-3. Enter the URL configured for that Brautomat.
-4. Run the connection check beside the URL and read the status at the top right.
+A configuration backup covers the settings and data that Brautomat exposes
+through its API. A full flash image covers additional areas of flash memory.
+
+In **Settings**, clear **Show assistants on launch** to start in Device.
 
 ### Find a task
 
@@ -41,6 +58,11 @@ ServiceTool installation on your computer.
 Continue with [Devices & WiFi](#devices--wifi).
 
 ## Devices & WiFi
+
+The default address for a direct connection is `http://brautomat.local`.
+When a USB port is selected, ServiceTool targets the Brautomat on that
+port and checks the IP address it reports. If you want to save several
+connections, select **Enable device profiles** in **Settings**.
 
 ### Understand the status
 
@@ -83,8 +105,10 @@ Saving a URL in ServiceTool does not change the Brautomat's network name. The
 address must match the actual device configuration. Use distinct addresses for
 multiple devices.
 
-With multiple saved devices, a missing serial port is not replaced with another
-detected port. Check the device profile in that case.
+Choose a different serial port to use it for the current session. Once USB
+and the profile address are confirmed as the same Brautomat, use
+**Save port to profile** to keep the change. Switching profiles or restarting
+uses the saved port again.
 
 ## Firmware
 
@@ -92,7 +116,8 @@ detected port. Check the device profile in that case.
 
 1. Open **Firmware** and check the active device and its reported version.
 2. Choose the target: **1.66 Release**, **1.66 Development** or
-   **1.70 Development**. Development packages are development versions.
+   **1.70 IDF5 Beta**, **IDF6 Release** and **IDF6 Development**.
+   Development packages are development versions.
 3. For **Special Version**, choose an offered version. Check the version shown
    when several entries refer to the same release or revision. Use
    **Open directory** to select a local package folder.
@@ -106,30 +131,25 @@ this address yourself.
 
 ### Install via USB
 
-1. Finish running mash and fermentation processes. Select the correct port
-   under **Device**, then return to **Firmware**.
-2. Back up settings and plans you need under
-   [Data → Backup & Restore](#data).
-3. Select the target package and flash baud rate. Review both options:
-   **Erase Flash** clears all device storage, including settings and files.
-   **Flash LittleFS** writes the filesystem from the package, replacing the
-   files stored there.
-4. Click **Install selected package over USB**. Keep USB and power connected
-   until writing has finished.
-5. Check the device connection, reported firmware version and Brautomat browser
-   interface afterwards.
+1. Finish any mash or fermentation processes. Select the correct port
+   under **Device** and run the connection check.
+2. Select the target package and baud rate under **Firmware**.
+   **Flash erase** and **Overwrite file system (LittleFS)** start off.
+   Erasing removes settings and files. The LittleFS option writes the
+   file system from the package.
+3. If either option is selected, ServiceTool offers to create a
+   **configuration backup**. The USB device must also be reachable on
+   the network. **Set up Wi-Fi for backup** can guide you through Wi-Fi
+   setup and return you to the selected package.
+4. Start the installation. Keep USB and power connected and check
+   the version, connection and web interface afterwards.
 
-USB installation allows moving from 1.66 to 1.70 and back to 1.66. It does not
-create an automatic backup or restore the previous state if writing fails.
-A successful transfer message does not replace the subsequent device check.
+The options are independent. If you erase without overwriting LittleFS,
+the file system remains empty after installation. With both options off,
+compatible packages preserve settings and files.
 
-The two checkboxes are independent. With **Erase Flash** enabled and
-**Flash LittleFS** disabled, the filesystem is erased and not rewritten. With
-both disabled, supported packages preserve settings and files. Their contents
-must still be compatible with the target firmware.
-
-Use [Service → Migration](#migration) for the guided move from 1.66 to 1.70 with
-backup and data restoration. That workflow does not support returning to 1.66.
+Use [Assistants → Migrate firmware](#migration) for a supported layout
+change with backup and restore.
 
 If the button says **Repair main firmware**, the ServiceApp is active. This
 repairs the main firmware over WiFi; it is not a USB change to another firmware
@@ -494,11 +514,19 @@ button toggles the preview. Hover or focus a command button for its tooltip.
   in the inventory. An unchanged Brewfather export cannot be transferred
   directly as a mash plan. Transfers from the inventory also check the format.
 - **Save to local inventory** or **Transfer to device** asks for the destination
-  path and confirmation before replacing an existing file.
+  path and confirmation before replacing an existing file. When uploading to
+  the inventory, you can replace a file with the same name or save the
+  existing file as a version before replacing it.
 - **Edit file** enables supported text files. Saving validates JSON and rejects
   files changed since loading. Application by firmware depends on the file type.
 - **Rename** and **Delete** affect the selected storage location. Only empty
   folders can be deleted.
+
+New mash and fermentation plan filenames can contain spaces and Unicode
+characters. The limit is **50 characters including `.json`**, for example
+`Belgischer Dübel.json`. On firmware **1.66 or earlier**, ServiceTool warns
+about potentially incompatible names before transfer or rename. It keeps the
+name you enter.
 
 The **Logs** shortcut shows `webUpdateLog.txt` and `autotune_log.txt`.
 Binary files and files larger than 4 MiB can be downloaded, but not edited.
@@ -617,29 +645,29 @@ Normal maintenance does not require it.
 
 ## Migration
 
-Use **Service → Migration** for the guided move from older firmware to 1.70.
-ServiceTool backs up device settings first. This workflow does not support
-returning to 1.66.
+Use **Assistants → Migrate firmware** for supported layout changes. The
+assistant chooses the matching published target. Use **Service → Migration**
+to select a package manually or resume an interrupted migration.
 
 ### Requirements
 
-Supported source versions are **1.62.0 through 1.66.x**, targeting
-**1.67.0 or newer with a compatible ServiceApp layout**, on supported ESP32
-devices with 4 MiB flash and the old symmetric layout. ServiceTool checks the
-device before writing.
+**1.62.0 through 1.66.x** can move to a compatible ServiceApp package
+from 1.67 onward. Choose an **IDF6 package** for **1.70 IDF5 Beta**.
+Supported devices use ESP32 with 4 MiB flash.
 
 ### Run migration
 
 1. Finish mash and fermentation processes. Connect USB and make sure the device
    URL is reachable.
-2. Verify the active device and serial port under **Device**.
-3. Open **Service → Migration** and select the package source and target
-   package.
+2. Open **Assistants → Migrate firmware** and run the device check.
+3. Check the target version. To choose a package yourself, open
+   **Service → Migration** and verify the serial port under **Device**.
 4. Start migration. Keep power and USB connected until completion.
 5. Read the final result; starting an operation does not mean it succeeded.
 
 The device backup is saved first. Only then is the new firmware installed.
-Settings and stored files are retained; web files are updated.
+After reboot, the web files are updated. When migrating to IDF6, ServiceTool
+then restores the backup automatically.
 
 ### Recover after an interruption
 

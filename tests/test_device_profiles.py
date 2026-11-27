@@ -138,6 +138,38 @@ class DeviceProfilesTests(unittest.TestCase):
         self.assertEqual(saved["device_profiles"][1]["url"], "http://worker-new")
         self.assertEqual(saved["device_profiles"][0]["url"], "http://existing.local")
 
+    def test_profile_switch_off_keeps_direct_connection_and_preserves_saved_profiles(self):
+        added = app.change_device_profile({"action": "add", "port": "COM5", "url": "http://worker1"})
+        self.assertTrue(added["profiles_enabled"])
+        direct = app.change_device_profile({"action": "mode", "enabled": False})
+        self.assertFalse(direct["profiles_enabled"])
+        self.assertEqual((direct["serial_port"], direct["device_url"]), ("COM5", "http://worker1"))
+        direct.update(serial_port="COM9", device_url="http://direct.local")
+        app.save_app_config(direct)
+        enabled = app.change_device_profile({"action": "mode", "enabled": True})
+        self.assertEqual(enabled["device_profiles"], added["device_profiles"])
+        self.assertEqual((enabled["serial_port"], enabled["device_url"]), ("COM5", "http://worker1"))
+
+    def test_direct_usb_uses_only_the_address_reported_by_the_device(self):
+        network = {"state": "online", "base_url": "http://192.168.1.24", "resolved_ip": "192.168.1.24"}
+        with (patch.object(app, "has_pyserial", return_value=False),
+              patch.object(app, "serial_firmware_version", return_value={"ip": "192.168.1.24", "firmware": "1.71.0"}),
+              patch.object(app, "device_status", return_value=network) as query):
+            result = app.combined_device_status("http://brautomat.local", "COM3")
+            query.assert_called_once_with("http://192.168.1.24", strict=True)
+            self.assertTrue(result["serial_confirmed"])
+            self.assertEqual(result["base_url"], network["base_url"])
+
+    def test_profile_network_does_not_claim_a_different_usb_device(self):
+        network = {"state": "online", "base_url": "http://worker1", "resolved_ip": "192.168.1.25"}
+        with (patch.object(app, "has_pyserial", return_value=False),
+              patch.object(app, "serial_firmware_version", return_value={"ip": "192.168.1.24", "firmware": "1.71.0"}),
+              patch.object(app, "device_status", return_value=network) as query):
+            result = app.combined_device_status("http://worker1", "COM3", profile_bound=True)
+            query.assert_called_once_with("http://worker1", strict=True)
+            self.assertFalse(result["serial_confirmed"])
+            self.assertTrue(result["serial_mismatch"])
+
     def test_access_point_fallback_only_for_single_device(self):
         self.assertEqual(app.candidate_base_urls("http://existing.local"), ["http://existing.local", "http://192.168.4.1"])
         app.change_device_profile({"action": "add", "port": "COM5", "url": "http://worker1"})

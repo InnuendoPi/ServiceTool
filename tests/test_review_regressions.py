@@ -119,9 +119,8 @@ class FlashTests(unittest.TestCase):
                 return (root / url.rsplit("/", 1)[-1]).read_bytes()
             with (patch.object(app, "CACHE_DIR", Path(folder) / "cache"),
                   patch.object(app, "json_request", return_value={"sha": sha}),
-                  patch.object(app, "package_location", return_value={"base_url": f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/Updates/ESP32-IDF5dev"}),
-                  patch.object(app, "download_bytes", side_effect=download),
-                  patch.object(app, "write_package_metadata")):
+                  patch.object(app, "package_location", return_value={"base_url": f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{sha}/Updates/ESP32-IDF5dev", "version": "1.67.0"}),
+                  patch.object(app, "download_bytes", side_effect=download)):
                 first = app.prepare_remote_package(job(), "development_170", False)
                 second = app.prepare_remote_package(job(), "development_170", False, require_base_files=False)
                 self.assertNotEqual(first, second)
@@ -132,7 +131,7 @@ class FlashTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             with (patch.object(app, "CACHE_DIR", Path(folder)),
                   patch.object(app, "json_request", return_value={"sha": "a" * 40}),
-                  patch.object(app, "package_location", return_value={"base_url": "https://example.test/Updates/ESP32-IDF5dev"}),
+                  patch.object(app, "package_location", return_value={"base_url": "https://example.test/Updates/ESP32-IDF5dev", "version": "1.70.0"}),
                   patch.object(app, "download_bytes", return_value=image("BrautomatMain")) as download):
                 root = app.resolve_package(job(), "development_170", "", False, require_base_files=False, firmware_only=True)
                 download.assert_called_once()

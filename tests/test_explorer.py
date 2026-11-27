@@ -308,17 +308,52 @@ class ExplorerTests(unittest.TestCase):
         self.fs.action({"side":"local", "path":"/plans", "action":"delete"})
         self.assertFalse((self.root / "plans").exists())
 
+    def test_recipe_upload_keeps_exact_name_and_warns_before_legacy_write(self):
+        for name in ("Belgian Dubbel.json", "Belgian_Dubbel.json", "Belgischer Dübel.json"):
+            with self.subTest(name=name):
+                self.write.reset_mock()
+                self.fs.recipe_firmware = lambda: (1, 66, 6)
+                self.listing.return_value = [{"type": "file", "name": "Belgian_Dubbel.json"}]
+                path = "/Rezepte/" + name
+                plan = {"misc": [{"Sudname": name[:-5], "File": "/Rezepte/other.json"}],
+                        "mash": [{"Rast": "Ruehrwerk:ON", "Temperatur": 0, "Dauer": 0}]}
+                upload = {"side": "device", "action": "upload", "path": path,
+                          "content": base64.b64encode(json.dumps(plan).encode()).decode()}
+                result = self.fs.action(upload)
+                self.assertFalse(result["done"])
+                self.assertEqual(result["recipe_warning"], "_" not in name)
+                self.assertEqual(result["recipe_conflict"], "_" in name)
+                self.write.assert_not_called()
+                self.assertTrue(self.fs.action({**upload,
+                    "acknowledge_legacy_recipe_name": result["recipe_warning"],
+                    "overwrite": result["recipe_conflict"],
+                })["done"])
+                written_path, written_data = self.write.call_args.args
+                self.assertEqual(written_path, path)
+                written = json.loads(written_data)
+                self.assertEqual(written["misc"][0]["File"], path)
+                self.assertEqual(written["mash"], plan["mash"])
+
     def test_upload_requires_overwrite_and_deletion_keeps_nonempty_folder(self):
         (self.root / "a.txt").write_bytes(b"original")
         data = {"side":"local", "path":"/a.txt", "action":"upload", "content":base64.b64encode(b"new").decode()}
-        with self.assertRaises(FileExistsError):
-            self.fs.action(data)
-        self.fs.action({**data, "overwrite":True})
+        self.assertTrue(self.fs.action({**data, "overwrite":True})["conflict"])
+        self.assertEqual((self.root / "a.txt").read_bytes(), b"original")
+        self.fs.action({**data, "conflict":"version"})
+        self.assertEqual((self.root / "a_1.txt").read_bytes(), b"original")
         self.assertEqual((self.root / "a.txt").read_bytes(), b"new")
         (self.root / "folder").mkdir()
         (self.root / "folder" / "keep.txt").write_text("keep")
         with self.assertRaises(ValueError):
             self.fs.action({"side":"local", "path":"/folder", "action":"delete"})
+
+    def test_device_recipe_rename_warns_before_legacy_write(self):
+        self.fs.recipe_firmware = lambda: (1, 66, 6)
+        rename = {"side":"device", "path":"/Rezepte/Bier.json", "action":"rename", "name":"Belgischer Dübel.json"}
+        self.assertTrue(self.fs.action(rename)["recipe_warning"])
+        self.rename.assert_not_called()
+        self.assertTrue(self.fs.action({**rename, "acknowledge_legacy_recipe_name":True})["done"])
+        self.rename.assert_called_once_with("/Rezepte/Bier.json", "/Rezepte/Belgischer Dübel.json", False)
 
     def test_device_rename_uses_existing_plan_contract(self):
         with patch.object(app, "rename_device_inventory") as rename:

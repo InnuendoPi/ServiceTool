@@ -91,8 +91,33 @@ const I18N = {
     portLabel: "COM Port",
     baudLabel: "Baudrate",
     eraseFlashLabel: "Flash löschen",
-    littlefsLabel: "Flash LittleFS",
-    flashBackupWarning: "Vor Erase oder Flash LittleFS ein Backup erstellen",
+    littlefsLabel: "Dateisystem überschreiben (LittleFS)",
+    flashBackupWarning: "LittleFS wird durch das Dateisystem aus dem Paket ersetzt.",
+    flashBackupBtn: "Konfigurationsbackup erstellen",
+    configBackupScope: "Sichert Einstellungen und Daten, die der Brautomat per API bereitstellt. Kein vollständiges Flash-Abbild.",
+    configBackupRunning: "Konfigurationsbackup wird erstellt …",
+    configBackupSaved: "Sicherung gespeichert:",
+    flashEraseAndInstall: "Flash löschen und Paket installieren",
+    flashFsAndInstall: "Dateisystem überschreiben und Paket installieren",
+    flashSkipBackup: "Ohne Sicherung installieren…",
+    flashRepair: "Hauptfirmware reparieren",
+    flashUsbChanged: "Der USB-Anschluss hat sich geändert. Kehre zur Paketinstallation zurück und prüfe das Ziel.",
+    flashBackupConnection: "WLAN für Sicherung einrichten",
+    flashBackToPackage: "Zurück zur Paketinstallation",
+    flashUsbConnection: "USB-Verbindung prüfen",
+    flashUsbMissing: "Brautomat per USB anschließen und den Anschluss auswählen.",
+    flashUsbProfileMissing: "Gespeicherter USB-Anschluss nicht verfügbar:",
+    flashUsbMismatch: "USB und Netzwerkadresse gehören zu verschiedenen Brautomaten. Prüfe die Zuordnung.",
+    flashUsbCheck: "Der Brautomat am gewählten USB-Anschluss ist noch nicht bestätigt.",
+    flashUsbChecking: "USB-Verbindung wird geprüft …",
+    flashEraseWithFs: "Der Flash wird vollständig gelöscht. Anschließend werden Firmware und Dateisystem aus dem Paket geschrieben.",
+    flashEraseWithoutFs: "Der Flash wird vollständig gelöscht. Das Dateisystem wird nicht neu geschrieben.",
+    configBackupUnavailable: "Der Brautomat ist über USB erkannt. Für die Sicherung braucht er zusätzlich eine WLAN-Verbindung.",
+    flashWithoutBackup: "Ohne bestätigte Sicherung für diesen Brautomat installieren?",
+    goToDevice: "Zu Gerät",
+    firmwareUpdateOffline: "Verbinde den Brautomat im Netzwerk, um nach einem Update zu suchen.",
+    firmwareUpdateMigration: "Migrationsassistent öffnen",
+    firmwareUpdateUsb: "Update-Assistent öffnen",
     firmwareProgressTitle: "Fortschritt",
     packageLabel: "Paketquelle URL / Verzeichnis",
     migrationTitle: "Migration",
@@ -102,6 +127,7 @@ const I18N = {
     serialPortLabel: "COM Port",
     serialBaudLabel: "Baudrate",
     checkDevice: "Gerät prüfen",
+    profilePortUnavailable: "nicht verfügbar",
     openDeviceUrl: "Device im neuen Tab öffnen",
     backupBtn: "Backup",
     backupBtnTooltip: "Backup erstellen",
@@ -113,8 +139,8 @@ const I18N = {
     wifiResetTooltip: "WLAN Zugangsdaten zurücksetzen",
     wifiScanBtn: '<i class="icon-refresh button-icon"></i>',
     wifiScanTooltip: "WLANs scannen",
-    wifiSaveBtn: '<i class="icon-download button-icon"></i>',
-    wifiSaveTooltip: "WLAN speichern und Gerät neu starten",
+    wifiSaveBtn: "WLAN speichern und neu starten",
+    wifiSaveTooltip: "WLAN speichern und neu starten",
     restoreBtn: "Restore ausführen",
     refreshPorts: "Ports neu laden",
     choosePackageDir: "Verzeichnis öffnen",
@@ -272,8 +298,33 @@ const I18N = {
     portLabel: "COM Port",
     baudLabel: "Baud rate",
     eraseFlashLabel: "Flash erase",
-    littlefsLabel: "Flash LittleFS",
-    flashBackupWarning: "Create a backup before erase or flash LittleFS",
+    littlefsLabel: "Overwrite file system (LittleFS)",
+    flashBackupWarning: "LittleFS will be replaced by the file system from the package.",
+    flashBackupBtn: "Create configuration backup",
+    configBackupScope: "Saves settings and data provided by the device API. This is not a full flash image.",
+    configBackupRunning: "Creating configuration backup …",
+    configBackupSaved: "Backup saved:",
+    flashEraseAndInstall: "Erase flash and install package",
+    flashFsAndInstall: "Overwrite file system and install package",
+    flashSkipBackup: "Install without a backup…",
+    flashRepair: "Repair main firmware",
+    flashUsbChanged: "The USB port changed. Return to package installation and check the target.",
+    flashBackupConnection: "Set up Wi-Fi for backup",
+    flashBackToPackage: "Back to package installation",
+    flashUsbConnection: "Check USB connection",
+    flashUsbMissing: "Connect Brautomat via USB and select its port.",
+    flashUsbProfileMissing: "Saved USB port unavailable:",
+    flashUsbMismatch: "The USB port and network address belong to different Brautomats. Check the assignment.",
+    flashUsbCheck: "Brautomat on the selected USB port has not been verified yet.",
+    flashUsbChecking: "Checking USB connection …",
+    flashEraseWithFs: "All flash data will be erased. The firmware and file system from the package will then be written.",
+    flashEraseWithoutFs: "All flash data will be erased. The file system will not be rewritten.",
+    configBackupUnavailable: "Brautomat was detected via USB. A Wi-Fi connection is also needed for backup.",
+    flashWithoutBackup: "Install without a verified backup for this Brautomat?",
+    goToDevice: "Go to Device",
+    firmwareUpdateOffline: "Connect Brautomat to the network to check for an update.",
+    firmwareUpdateMigration: "Open migration assistant",
+    firmwareUpdateUsb: "Open update assistant",
     firmwareProgressTitle: "Progress",
     packageLabel: "Package URL / directory",
     migrationTitle: "Migration",
@@ -283,6 +334,7 @@ const I18N = {
     serialPortLabel: "COM Port",
     serialBaudLabel: "Baud rate",
     checkDevice: "Check device",
+    profilePortUnavailable: "unavailable",
     openDeviceUrl: "Open device in new tab",
     backupBtn: "Backup",
     backupBtnTooltip: "Create backup",
@@ -294,8 +346,8 @@ const I18N = {
     wifiResetTooltip: "Reset WiFi credentials",
     wifiScanBtn: '<i class="icon-refresh button-icon"></i>',
     wifiScanTooltip: "Scan WiFi networks",
-    wifiSaveBtn: '<i class="icon-download button-icon"></i>',
-    wifiSaveTooltip: "Save WiFi and reboot device",
+    wifiSaveBtn: "Save Wi-Fi and restart",
+    wifiSaveTooltip: "Save Wi-Fi and restart",
     restoreBtn: "Run restore",
     refreshPorts: "Reload ports",
     choosePackageDir: "Open directory",
@@ -363,8 +415,8 @@ const I18N = {
   }
 };
 
-I18N.de.migrationPackageHint = "Wähle die Firmware 1.7 und den COM Port aus. Anschließend starte die Migration";
-I18N.en.migrationPackageHint = "Select firmware 1.7 and the COM port. Then start the migration";
+I18N.de.migrationPackageHint = "Firmwarepaket und COM-Port auswählen, dann die Migration starten.";
+I18N.en.migrationPackageHint = "Select the firmware package and COM port, then start migration.";
 I18N.de.migrationRecoveryLabel = "Gespeicherte, nicht abgeschlossene Migrationen auf diesem PC";
 I18N.en.migrationRecoveryLabel = "Saved unfinished migrations on this PC";
 I18N.de.migrationRefresh = "Liste aktualisieren";
@@ -377,15 +429,15 @@ I18N.de.migrationRecoveryHint = "Diese Liste zeigt gespeicherte Vorgänge, nicht
 I18N.en.migrationRecoveryHint = "This list shows saved sessions, not the connected device status. Resume only on the same device. Cancel discards the session and keeps its backup.";
 I18N.de.migrationDiscard = "Abbrechen";
 I18N.en.migrationDiscard = "Cancel";
-I18N.de.migrationHint = "Migration der Brautomat32 Firmware 1.6x auf Version 1.7x";
-I18N.de.migrationRequirementSource = "Quelle: 1.62.0 bis 1.66.x";
-I18N.de.migrationRequirementTarget = "Ziel: ab 1.67, kompatibles ServiceApp-Layout";
+I18N.de.migrationHint = "Firmwaremigration bei geändertem Partitionslayout";
+I18N.de.migrationRequirementSource = "Quelle: 1.62.0 bis 1.66.x oder 1.70 IDF5 Beta";
+I18N.de.migrationRequirementTarget = "Ziel: kompatibles ServiceApp-Paket, für 1.70 IDF5 Beta ein IDF6-Paket";
 I18N.de.migrationRequirementTransport = "Verbindung: Online und USB";
 I18N.de.migrateBtn = "Migration starten";
 
-I18N.en.migrationHint = "Migration of Brautomat32 firmware 1.6x to version 1.7x";
-I18N.en.migrationRequirementSource = "Source: 1.62.0 through 1.66.x";
-I18N.en.migrationRequirementTarget = "Target: 1.67 or newer, compatible ServiceApp layout";
+I18N.en.migrationHint = "Firmware migration for a changed partition layout";
+I18N.en.migrationRequirementSource = "Source: 1.62.0 through 1.66.x or 1.70 IDF5 Beta";
+I18N.en.migrationRequirementTarget = "Target: compatible ServiceApp package, or an IDF6 package for 1.70 IDF5 Beta";
 I18N.en.migrationRequirementTransport = "Connection: online and USB";
 I18N.en.migrateBtn = "Start migration";
 
@@ -393,9 +445,9 @@ I18N.de.migrationTitle = "Migration auf Version 1.7";
 
 I18N.en.migrationTitle = "Migration to version 1.7";
 
-I18N.de.migrationBackupHint = "Die Migration sichert zuerst die Einstellungen über die Geräte-API. Firmware wird nicht gesichert. Restore Backup spielt die gesicherten Einstellungen auf die installierte Firmware zurück.";
+I18N.de.migrationBackupHint = "Bei einem Wechsel auf IDF6 sichert die Migration die Einstellungen, flasht per USB und spielt das Backup zurück.";
 
-I18N.en.migrationBackupHint = "Migration first backs up settings using the device API. Firmware is not backed up. Restore Backup restores the saved settings to the installed firmware.";
+I18N.en.migrationBackupHint = "When switching to IDF6, migration backs up settings, flashes via USB and restores the backup.";
 
 I18N.de.migrationStepPrerequisites = "Voraussetzungen prüfen …";
 I18N.en.migrationStepPrerequisites = "Checking prerequisites …";
@@ -502,11 +554,11 @@ I18N.en.maintenanceReason_line_too_long = "Maintenance command too long";
 
 let currentLang = "en";
 let appConfig = {
-  service_tool_version: "2.0.2",
+  service_tool_version: "2.1.0",
   language: "en",
   appearance: "light",
   debug_output: false,
-  device_url: "http://brautomat",
+  device_url: "http://brautomat.local",
   package_source: "release",
   package_ref: "",
   package_dir: "",
@@ -525,7 +577,6 @@ let lastDeviceStatus = {
 let firmwareUpdateState = null;
 let lastFirmwareUpdatePromptKey = "";
 let checkDeviceInFlight = null;
-let pendingOnlineUpgradeCheck = null;
 let activeProcessPollInFlight = false;
 let startupTraceEpochMs = 0;
 let startupTraceActive = false;
@@ -563,7 +614,7 @@ function hideTestRunnerViaQuery() {
   return new URLSearchParams(window.location.search).get("hide_test") === "1";
 }
 function serviceToolTitle() {
-  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "2.0.2"}`;
+  return `Brautomat32 ServiceTool V ${appConfig.service_tool_version || "2.1.0"}`;
 }
 
 function queueDeferredLoad(taskName, fn, delayMs = 0) {
@@ -658,7 +709,7 @@ function arrayBufferToBase64(buffer) {
 
 function currentSerialProvisioning() {
   return {
-    serial_port: $("portSelect").value || $("serialPortSelect").value || "",
+    serial_port: $("portSelect").value || "",
     serial_baud: 115200
   };
 }
@@ -723,13 +774,54 @@ function sleep(ms) {
 // A different USB device is a session connection, never an edit of a saved profile.
 let temporarySerialConnection = null;
 let selectedConnectionPort = null;
+let sessionProfilePort = null;
+let networkOnlySelection = false;
+function activeConnectionProfile() {
+  if (!appConfig.profiles_enabled) return null;
+  if (appConfig.device_profiles?.length) {
+    return appConfig.device_profiles.find(profile => profile.id === appConfig.active_device_id);
+  }
+  return {id: "primary", port: appConfig.serial_port || "", url: appConfig.device_url};
+}
+function activeProfilePortOverride(profile = activeConnectionProfile()) {
+  return profile && sessionProfilePort?.id === profile.id ? sessionProfilePort : null;
+}
+function directSerialBinding() {
+  return selectedConnectionPort && !activeConnectionProfile();
+}
+function verifiedSerialUrl() {
+  return lastDeviceStatus?.serial_confirmed && lastDeviceStatus.serial_port === selectedConnectionPort &&
+    lastDeviceStatus.state === "online" ? lastDeviceStatus.base_url : "";
+}
 function connectionRequestOptions(path, options) {
-  if (!temporarySerialConnection || !options.body) return options;
+  if (!options.body || path === "/api/device/status") return options;
   const body = { ...options.body };
+  if (activeConnectionProfile() && lastDeviceStatus?.serial_mismatch && (body.port || body.serial_port) &&
+      ["/api/flash", "/api/migration", "/api/wifi/save", "/api/wifi/reset", "/api/device/reboot"].includes(path)) {
+    throw new Error(currentLang === "de" ? "Der USB-Port gehört zu einem anderen Brautomat als die Profiladresse." :
+      "The USB port belongs to a different Brautomat than the profile address.");
+  }
+  if (activeProfilePortOverride()?.port && body.port && ["/api/migration", "/api/firmware/backup"].includes(path)) {
+    if (body.port !== selectedConnectionPort || !verifiedSerialUrl()) {
+      throw new Error(currentLang === "de" ? "USB-Anschluss und Profiladresse müssen für diesen Vorgang zum selben Brautomat gehören." :
+        "This operation requires the USB port and profile address to belong to the same Brautomat.");
+    }
+    return { ...options, body: { ...body, base_url: verifiedSerialUrl() } };
+  }
+  if (directSerialBinding() && Object.hasOwn(body, "base_url")) {
+    const serialOnly = !!(body.serial_port || body.port) && (path.startsWith("/api/wifi/") ||
+      path.startsWith("/api/maintenance/") || path === "/api/flash" || path === "/api/device/reboot");
+    const address = verifiedSerialUrl();
+    if (!address && !serialOnly) {
+      throw new Error(currentLang === "de" ? "Für den ausgewählten USB-Brautomat ist noch keine Netzwerkadresse bestätigt." :
+        "No network address has been verified for the selected USB Brautomat.");
+    }
+    return { ...options, body: { ...body, base_url: address } };
+  }
+  if (!temporarySerialConnection) return options;
   if (Object.hasOwn(body, "base_url") || Object.hasOwn(body, "device_url")) {
     const url = $("deviceUrl").value.trim();
-    const serialOnly = path === "/api/device/status" ||
-      path === "/api/maintenance/status" ||
+    const serialOnly = path === "/api/maintenance/status" ||
       (path.startsWith("/api/wifi/") && !!body.serial_port);
     const localOnly = body.side === "local" && path.startsWith("/api/explorer/");
     if (!url && !serialOnly && !localOnly && path !== "/api/config") {
@@ -743,7 +835,7 @@ function connectionRequestOptions(path, options) {
   return { ...options, body };
 }
 async function api(path, options = {}) {
-  if (temporarySerialConnection && path.includes("?")) {
+  if ((temporarySerialConnection || directSerialBinding()) && path.includes("?")) {
     const [route, query] = path.split("?", 2);
     const params = new URLSearchParams(query);
     if (params.has("base_url")) {
@@ -763,7 +855,7 @@ async function api(path, options = {}) {
       signal: controller?.signal
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || JSON.stringify(json));
+    if (!res.ok) throw Object.assign(new Error(json.error || JSON.stringify(json)), {status: res.status});
     return json;
   } catch (err) {
     if (controller?.signal.aborted) {
@@ -786,9 +878,9 @@ async function saveConfig(partial = {}) {
   return appConfig;
 }
 
-function updateWifiPasswordVisibility() {
-  const visible = $("wifiPassword").type === "text";
-  const button = $("wifiPasswordReveal");
+function updateWifiPasswordVisibility(inputId = "wifiPassword", buttonId = "wifiPasswordReveal") {
+  const visible = $(inputId).type === "text";
+  const button = $(buttonId);
   button.title = currentLang === "de"
     ? (visible ? "Passwort verbergen" : "Passwort anzeigen")
     : (visible ? "Hide password" : "Show password");
@@ -834,7 +926,11 @@ function applyLanguage() {
     if (node) node.textContent = text(key);
   });
   $("title").textContent = serviceToolTitle();
-  $("checkDevice").innerHTML = '<i class="icon-feed button-icon" aria-hidden="true"></i>';
+  $("checkDevice").innerHTML = '<i class="icon-loop2 button-icon" aria-hidden="true"></i>';
+  const portSelect = $("portSelect");
+  if (portSelect.dataset.missingProfilePort) {
+    portSelect.options[0].textContent = portSelect.dataset.missingProfilePort + " · " + text("profilePortUnavailable");
+  }
   $("openDeviceUrl").innerHTML = '<i class="icon-exit button-icon" aria-hidden="true"></i>';
   $("checkServiceToolUpdate").textContent = currentLang === "de" ? "Auf Updates prüfen" : "Check for updates";
   $("openGuide").textContent = currentLang === "de" ? "Hilfe" : "Help";
@@ -845,7 +941,7 @@ function applyLanguage() {
   $("restoreFilePickBtn").innerHTML = '<i class="icon-folder-open button-icon" aria-hidden="true"></i>';
   $("wifiResetBtn").textContent = text("wifiResetBtn");
   $("wifiScanBtn").innerHTML = text("wifiScanBtn");
-  $("wifiSaveBtn").innerHTML = text("wifiSaveBtn");
+  $("wifiSaveBtn").textContent = text("wifiSaveBtn");
   $("restoreBtn").innerHTML = '<i class="icon-box-add button-icon" aria-hidden="true"></i>';
   $("refreshPorts").innerHTML = '<i class="icon-refresh button-icon" aria-hidden="true"></i>';
   $("choosePackageDir").innerHTML = '<i class="icon-folder-open button-icon" aria-hidden="true"></i>';
@@ -857,14 +953,15 @@ function applyLanguage() {
   $("backupFirmwareBtn").innerHTML = '<i class="icon-download button-icon" aria-hidden="true"></i>';
 
   $("updateWebfilesBtn").textContent = text("updateWebfilesBtn");
-  if ($("checkFirmwareUpdateBtn")) $("checkFirmwareUpdateBtn").textContent = text("checkFirmwareUpdateBtn");
+  for (const id of ["checkFirmwareUpdateBtn", "flashBackupBtn", "firmwareUpdateMigration", "flashBackupConnection", "flashUsbConnection", "flashBackToPackage"]) $(id).textContent = text(id);
+  $("firmwareUpdateConnection").textContent = text("goToDevice");
+  if (!$("firmwareUpdateConnection").classList.contains("hidden-panel")) setInlineStatus("firmwareUpdateHint", text("firmwareUpdateOffline"));
   $("installLanguageBtn").textContent = text("installLanguageBtn");
   $("firmwareTransportHint").textContent = currentLang === "de"
-    ? "Prüft auf GitHub, ob eine neuere Firmware verfügbar ist. Die Installation erfolgt anschließend über die Netzwerkverbindung zum Brautomat. Die Paketquelle oben gilt nur für die Paketinstallation."
-    : "Checks GitHub for newer firmware. Installation then uses the network connection to the Brautomat. The package source above applies only to package installation.";
+    ? "Sucht auf GitHub nach einem passenden Update und installiert es über die Netzwerkverbindung zum Brautomat."
+    : "Checks GitHub for a matching update and installs it over the network connection to the Brautomat.";
   $("firmwarePackageTitle").textContent = currentLang === "de" ? "Firmware aus Paket installieren" : "Install firmware from a package";
   $("firmwareReleaseTitle").textContent = currentLang === "de" ? "Veröffentlichte Firmware aktualisieren" : "Update published firmware";
-  $("flashBtn").textContent = text("flashBtn");
   renderMaintenanceButton();
   for (const id of ["migrationBackupHint", "migrationPackageHint", "migrationRecoveryLabel", "migrationRefresh", "migrationResume", "migrationRestore", "migrationDiscard", "migrationRecoveryHint"]) {
     if ($(id)) $(id).textContent = text(id);
@@ -1128,6 +1225,10 @@ function renderFirmwareUpdate(data, explicit = false) {
   const processUnknown = data?.device?.active_process?.state !== "idle" && !activeProcess;
   startBtn.classList.toggle("hidden-panel", !available);
   startBtn.disabled = !available || activeProcess || processUnknown;
+  const requiresUsb = data?.decision === "usb_required";
+  const assistant = $("firmwareUpdateMigration");
+  assistant.classList.toggle("hidden-panel", !requiresUsb && data?.decision !== "migration_required");
+  assistant.textContent = text(requiresUsb ? "firmwareUpdateUsb" : "firmwareUpdateMigration");
   const rows = [
     [text("firmwareUpdateCurrent"), data?.current_version || "-"],
     [text("firmwareUpdateAvailable"), data?.version || "-"],
@@ -1136,8 +1237,11 @@ function renderFirmwareUpdate(data, explicit = false) {
   ];
   const generationMessage = data?.decision === "migration_required"
     ? (currentLang === "de"
-      ? "Dieses Ziel benötigt eine Layoutmigration. Unter Service → Migration fortfahren; kein normales Firmware-Update."
-      : "This target requires layout migration. Use Service → Migration instead of a regular firmware update.")
+      ? "Die Zielversion benötigt ein neues Speicherlayout. Der Migrationsassistent führt durch Sicherung, Installation und Wiederherstellung."
+      : "The target version requires a new storage layout. The migration assistant guides you through backup, installation and restore.")
+    : requiresUsb
+    ? (currentLang === "de" ? "Die Zielversion muss per USB installiert werden. Der Update-Assistent führt durch die Verbindung und Installation."
+      : "The target firmware must be installed via USB. The update assistant guides you through connection and installation.")
     : data?.decision === "invalid_package"
     ? (currentLang === "de"
       ? "Das veröffentlichte Ziel gehört zur alten Firmwaregeneration und passt nicht zum ServiceApp-Layout. Update gesperrt."
@@ -1166,7 +1270,8 @@ function renderFirmwareUpdate(data, explicit = false) {
 async function checkFirmwareUpdate(explicit = false) {
   if (!deviceIsOnline()) {
     if (explicit) {
-      appendStatus("firmwareStatus", text("firmwareUpdateTitle"), currentLang === "de" ? "Firmware Update benötigt Status Online." : "Firmware update requires Online status.");
+      setInlineStatus("firmwareUpdateHint", text("firmwareUpdateOffline"));
+      $("firmwareUpdateConnection").classList.remove("hidden-panel");
     }
     return null;
   }
@@ -1189,7 +1294,11 @@ async function checkFirmwareUpdate(explicit = false) {
       firmwareUpdateState = null;
       const modal = $("firmwareUpdateModal");
       const content = $("firmwareUpdateContent");
-      if (content) content.innerHTML = `<p class="status-line">Error: ${escapeHtml(String(err))}</p>`;
+      $("firmwareUpdateMigration").classList.add("hidden-panel");
+      const message = err.message === "guided_development_unavailable"
+        ? (currentLang === "de" ? "Für aktivierte Testversionen ist kein passendes Development-Paket veröffentlicht." : "No matching Development package has been published for the enabled test versions.")
+        : String(err);
+      if (content) content.innerHTML = '<p class="status-line">' + escapeHtml(message) + "</p>";
       $("startFirmwareWebUpdate")?.classList.add("hidden-panel");
       modal?.classList.remove("hidden-panel");
     }
@@ -1231,7 +1340,7 @@ async function loadOverview() {
   $("language").value = currentLang;
   $("debugOutput").checked = !!appConfig.debug_output;
   if (typeof ServiceToolTheme !== "undefined") ServiceToolTheme.apply(appConfig.appearance);
-  $("deviceUrl").value = appConfig.device_url || "http://brautomat";
+  $("deviceUrl").value = appConfig.device_url || "http://brautomat.local";
   $("packageSource").value = appConfig.package_source || "release";
   $("packageVersion").value = appConfig.package_dir || "";
   $("packageDir").value = $("packageSource").value === "open"
@@ -1253,6 +1362,7 @@ let migrationPackageSelection = false;
 function packageSelectionGeneration() { return migrationPackageSelection ? "Updates" : "all"; }
 function selectedPackageRef() { return $("packageVersion").selectedOptions[0]?.dataset.ref || ""; }
 function selectedPackageRoot() { return $("packageDir").value.includes('/Updates/') ? 'Updates' : 'build'; }
+function selectedPackageUsesIdf6() { return /\/ESP32-IDF6(?:dev)?\/?$/.test($("packageDir").value); }
 function packageGeneration() {
   const version = parseDeviceFirmwareVersion(lastDeviceStatus?.firmware || "");
   return version && compareVersionTuple(version, [1, 67, 0]) < 0 ? "build" : "Updates";
@@ -1322,8 +1432,10 @@ async function loadRepoLanguages() {
   const source = $("packageSource").value;
   const ref = selectedPackageRef();
   const generation = packageGeneration();
+  const idf6 = selectedPackageUsesIdf6();
   const isCurrent = () => loadRepoLanguages.requestId === requestId &&
-    $("packageSource").value === source && (selectedPackageRef()) === ref && packageGeneration() === generation;
+    $("packageSource").value === source && selectedPackageRef() === ref &&
+    packageGeneration() === generation && selectedPackageUsesIdf6() === idf6;
   const select = $("webfilesLanguage");
   const installBtn = $("installLanguageBtn");
   select.innerHTML = "";
@@ -1363,7 +1475,9 @@ async function loadRepoLanguages() {
   select.appendChild(pending);
   let data;
   try {
-    data = await api(`/api/languages/repo?source=${encodeURIComponent(source)}&ref=${encodeURIComponent(ref)}&package_root=${generation}`);
+    const query = new URLSearchParams({source, ref, package_root: generation,
+      package_idf6: idf6 ? "1" : "0"});
+    data = await api(`/api/languages/repo?${query}`);
   } catch (err) {
     if (!isCurrent()) return;
     select.innerHTML = "";
@@ -2194,6 +2308,10 @@ async function openInventoryDetail(kind, side, filename) {
 }
 
 function ensureInventoryFilename(kind, name, type = "file", originalName = "") {
+  if (type === "file" && ["mashplans", "fermenterplans"].includes(kind)) {
+    const value = String(name || "");
+    return value && (value.endsWith(".json") ? value : value + ".json");
+  }
   const trimmed = String(name || "").trim();
   if (!trimmed) return "";
   if (type === "dir") return trimmed;
@@ -2256,6 +2374,7 @@ function deviceIsOnline() {
 }
 
 function effectiveDeviceBaseUrl() {
+  if (directSerialBinding()) return verifiedSerialUrl();
   const resolved = String(lastDeviceStatus?.base_url || "").trim();
   if (resolved) return resolved;
   if (temporarySerialConnection) return $("deviceUrl").value.trim();
@@ -2617,7 +2736,14 @@ async function inventoryAction(kind, action, side = "") {
       }
       body.new_name = entered.trim().toLowerCase().endsWith(".json") ? entered.trim() : `${entered.trim()}.json`;
     }
-    const data = await api(endpointMap[action], { method: "POST", body });
+    const data = action === "local-to-device" && ["mashplans", "fermenterplans"].includes(kind)
+      ? await requestRecipeWrite(endpointMap[action], body, () => body.base_url === managementDeviceUrl())
+      : await api(endpointMap[action], { method: "POST", body });
+    if (!data) {
+      setSpinner(`${kind}Spinner`, false);
+      setInlineStatus(`${kind}InlineStatus`, "");
+      return;
+    }
     appendStatus("managementStatus", managementTitle(kind), data);
     await loadInventory(kind);
   } catch (err) {
@@ -2703,7 +2829,14 @@ async function inventoryActionExplorer(kind, action, side = "") {
       }
       body.name = normalized;
     }
-    const data = await api(endpointMap[action], { method: "POST", body });
+    const data = action === "local-to-device" && ["mashplans", "fermenterplans"].includes(kind)
+      ? await requestRecipeWrite(endpointMap[action], body, () => body.base_url === managementDeviceUrl())
+      : await api(endpointMap[action], { method: "POST", body });
+    if (!data) {
+      setSpinner(`${kind}Spinner`, false);
+      setInlineStatus(`${kind}InlineStatus`, "");
+      return;
+    }
     appendStatus("managementStatus", managementTitle(kind), data);
     await loadInventory(kind);
   } catch (err) {
@@ -3063,16 +3196,10 @@ function choosePreferredSerialPort(ports = [], preferredPort = "") {
   const preferred = String(preferredPort || "").trim();
   if (preferred) {
     const exact = ports.find(port => String(port?.port || "").trim().toUpperCase() === preferred.toUpperCase());
-    if (exact) {
-      const better = ports
-        .filter(port => String(port?.port || "").trim().toUpperCase() !== preferred.toUpperCase())
-        .sort((a, b) => serialPortScore(b, preferred) - serialPortScore(a, preferred));
-      if (!better.length || serialPortScore(exact, preferred) >= serialPortScore(better[0], preferred)) {
-        return exact.port;
-      }
-    }
+    if (exact) return exact.port;
   }
-  return [...ports].sort((a, b) => serialPortScore(b, preferred) - serialPortScore(a, preferred))[0].port;
+  const usbPorts = ports.filter(port => serialPortScore(port) >= 100);
+  return usbPorts.length === 1 ? usbPorts[0].port : "";
 }
 
 async function applySelectedSerialPort(port, persist = true) {
@@ -3080,16 +3207,14 @@ async function applySelectedSerialPort(port, persist = true) {
   ["portSelect", "serialPortSelect"].forEach(id => {
     const select = $(id);
     if (!select) return;
-    if (normalized && Array.from(select.options).some(option => option.value === normalized)) {
-      select.value = normalized;
-    }
+    select.value = normalized;
   });
   const savedPort = temporarySerialConnection?.savedPort ?? appConfig.serial_port ?? "";
   const savedUrl = temporarySerialConnection?.savedUrl ?? appConfig.device_url ?? "";
-  const profile = (appConfig.device_profiles || []).find(p => p.id === appConfig.active_device_id);
+  const profile = activeConnectionProfile();
   const changed = selectedConnectionPort !== normalized;
   selectedConnectionPort = normalized;
-  if (normalized && normalized.toUpperCase() !== String(savedPort).toUpperCase() && (savedPort || profile)) {
+  if (!profile && normalized && normalized.toUpperCase() !== String(savedPort).toUpperCase() && savedPort && !persist) {
     temporarySerialConnection = { port: normalized, savedPort, savedUrl };
     if (changed) $("deviceUrl").value = "";
   } else {
@@ -3099,14 +3224,22 @@ async function applySelectedSerialPort(port, persist = true) {
   if (changed) {
     lastDeviceStatus = {};
     updateDeviceConnectionState("");
-    if (pendingOnlineUpgradeCheck) window.clearTimeout(pendingOnlineUpgradeCheck);
-    pendingOnlineUpgradeCheck = null;
   }
-  if (!temporarySerialConnection && !profile) {
-    appConfig.serial_port = normalized;
-    if (persist) await saveConfig({ serial_port: normalized });
-  }
+  if (persist && !profile) await saveConfig({ serial_port: normalized });
   if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
+}
+
+async function selectDeviceSerialPort(port) {
+  const profile = activeConnectionProfile();
+  const pendingCheck = checkDeviceInFlight;
+  if (profile) {
+    sessionProfilePort = port === profile.port ? null : { id: profile.id, port };
+  } else {
+    networkOnlySelection = !port;
+  }
+  await applySelectedSerialPort(port);
+  if (pendingCheck) await pendingCheck.catch(console.error);
+  if (selectedConnectionPort === port) await checkDevice({refreshPorts:false});
 }
 
 async function loadPorts(options = {}) {
@@ -3117,10 +3250,22 @@ async function loadPorts(options = {}) {
   const currentFirmwarePort = String(($("portSelect")?.value || "").trim());
   const currentSerialMonitorPort = String(($("serialPortSelect")?.value || "").trim());
   const preferredPort = currentFirmwarePort || currentSerialMonitorPort || String(appConfig.serial_port || "").trim();
+  const profile = activeConnectionProfile();
+  const profilePort = activeProfilePortOverride(profile)?.port ?? profile?.port;
+  const missingPort = profilePort && !available.has(profilePort) ? profilePort : "";
 
   ["portSelect", "serialPortSelect"].forEach(id => {
     const select = $(id);
     select.innerHTML = "";
+    if (id === "portSelect") {
+      select.dataset.missingProfilePort = missingPort;
+      select.dataset.detectedUsbPorts = missingPort
+        ? ports.filter(port => serialPortScore(port) >= 100).map(port => port.port).join(", ")
+        : "";
+      const placeholder = new Option(missingPort ? missingPort + " · " + text("profilePortUnavailable") : "—", "");
+      placeholder.disabled = Boolean(missingPort);
+      select.appendChild(placeholder);
+    }
     ports.forEach(port => {
       const option = document.createElement("option");
       option.value = port.port;
@@ -3128,19 +3273,9 @@ async function loadPorts(options = {}) {
       select.appendChild(option);
     });
   });
-  if (!ports.length) {
-    selectedConnectionPort = "";
-    lastDeviceStatus = {};
-    updateDeviceConnectionState("");
-    if (temporarySerialConnection) $("deviceUrl").value = "";
-    if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
-    writeStartupTrace("loadPorts done: no ports found");
-    return data;
-  }
-  const selectedPort = choosePreferredSerialPort(ports, preferredPort);
-  if (selectedPort && available.has(selectedPort)) {
-    await applySelectedSerialPort(selectedPort, false);
-  }
+  const selectedPort = profile ? (available.has(profilePort) ? profilePort : "") :
+    networkOnlySelection ? "" : choosePreferredSerialPort(ports, preferredPort);
+  await applySelectedSerialPort(selectedPort, false);
   refreshMaintenance();
   writeStartupTrace(`loadPorts done: ${ports.length} port(s), selected=${selectedPort || "-"}`);
   return data;
@@ -3185,8 +3320,6 @@ function syncFirmwareActions() {
     packageDir.readOnly = false;
     packageDir.placeholder = "C:\\Brautomat32\\build\\ESP32-IDF5";
     versionGroup.classList.add("hidden-panel");
-    $("eraseFlashSelect").checked = false;
-    $("littlefsSelect").checked = false;
     const openDir = openPackageDirValue();
     if (!packageDir.value || packageDir.value.startsWith("http://") || packageDir.value.startsWith("https://")) {
       packageDir.value = openDir;
@@ -3196,27 +3329,115 @@ function syncFirmwareActions() {
     packageDir.placeholder = currentLang === "de" ? "Kein geprüftes Paket ausgewählt" : "No verified package selected";
     versionGroup.classList.toggle("hidden-panel", source !== "special");
   }
-  syncFlashOptionDependencies();
   updateFlashBackupWarning();
-  $("flashBtn").disabled = source !== "open" && !packageSelectionReady;
 }
 
-function syncFlashOptionDependencies() {
-  const erase = $("eraseFlashSelect");
-  const littlefs = $("littlefsSelect");
-  if (!erase || !littlefs) return;
-  littlefs.disabled = false;
+let flashBackupBusy = false;
+let manualFlashBusy = false;
+let flashBackup = null;
+let flashBackupError = "";
+let flashConnectionReturn = null;
+
+function flashUsbIssue() {
+  const select = $("portSelect");
+  const port = select.value;
+  if (!port || port !== selectedConnectionPort) {
+    const missingPort = select.dataset.missingProfilePort;
+    return missingPort ? text("flashUsbProfileMissing") + " " + missingPort : text("flashUsbMissing");
+  }
+  if (lastDeviceStatus?.serial_port === port && lastDeviceStatus.serial_mismatch) return text("flashUsbMismatch");
+  if ($("deviceConnectionState").dataset.state === "checking") return text("flashUsbChecking");
+  if (!managementServiceActive() && (lastDeviceStatus?.serial_port !== port || lastDeviceStatus.serial_confirmed !== true)) {
+    return text("flashUsbCheck");
+  }
+  return "";
+}
+
+function showFlashConnection(wifi) {
+  flashConnectionReturn = { wifi, port: selectedConnectionPort };
+  selectWorkspaceView("connection");
+  if (workspaceView !== "connection") flashConnectionReturn = null;
+  updateFlashBackupWarning();
+  if (!flashConnectionReturn) return;
+  $(wifi ? "wifiNetworks" : "portSelect").focus();
+  if (!wifi) checkDevice().catch(console.error);
+}
+
+function returnToFlashPackage() {
+  selectWorkspaceView("install");
+  if (workspaceView !== "install") return;
+  flashConnectionReturn = null;
+  updateFlashBackupWarning();
+  const action = $("flashBackupBtn").classList.contains("hidden-panel") ? $("firmwarePackageTitle") : $("flashBackupBtn");
+  action.focus();
+}
+
+function flashBackupTarget() {
+  const port = $("portSelect")?.value;
+  const url = verifiedSerialUrl();
+  if (flashUsbIssue() || !url) return null;
+  return { url, key: JSON.stringify([port, url, lastDeviceStatus.resolved_ip, lastDeviceStatus.firmware]) };
+}
+
+async function waitForConfigBackup(jobId) {
+  const job = await watchJobToTarget(jobId, "backupRestoreStatus");
+  if (job.status !== "done" || !job.result?.backup_file) {
+    throw new Error(job.error || (currentLang === "de" ? "Sicherung konnte nicht bestätigt werden." : "Backup could not be verified."));
+  }
+  loadBackups().catch(console.error);
+  return job.result.backup_file.split(/[\\/]/).pop();
+}
+
+async function backupBeforeFlash() {
+  const target = flashBackupTarget();
+  if (!target || flashBackupBusy || manualFlashBusy) return;
+  flashBackupBusy = true;
+  flashBackupError = "";
+  flashBackup = null;
+  updateFlashBackupWarning();
+  try {
+    const {job_id} = await api("/api/backup", { method: "POST", body: { base_url: target.url, include_api: true } });
+    flashBackup = { key: target.key, filename: await waitForConfigBackup(job_id) };
+  } catch (err) {
+    if (target.key === flashBackupTarget()?.key) flashBackupError = err.message || String(err);
+  } finally {
+    flashBackupBusy = false;
+    updateFlashBackupWarning();
+  }
 }
 
 function updateFlashBackupWarning() {
-  syncFlashOptionDependencies();
   const warning = $("flashBackupWarning");
   if (!warning) return;
-  const active = !!($("eraseFlashSelect")?.checked || $("littlefsSelect")?.checked);
-  const erasedWithoutFs = $("eraseFlashSelect")?.checked && !$("littlefsSelect")?.checked;
-  warning.textContent = text("flashBackupWarning") + (erasedWithoutFs
-    ? (currentLang === "de" ? " — LittleFS wird gelöscht und nicht neu geschrieben." : " — LittleFS will be erased and not rewritten.") : "");
-  warning.classList.toggle("hidden-panel", !active);
+  const erase = $("eraseFlashSelect").checked;
+  const destructive = erase || $("littlefsSelect").checked;
+  const issue = flashUsbIssue();
+  const target = destructive && !issue ? flashBackupTarget() : null;
+  const saved = target && flashBackup?.key === target.key ? flashBackup.filename : "";
+  const busy = flashBackupBusy || manualFlashBusy;
+  const skipBackup = destructive && !saved;
+  $("flashBackupPanel").classList.toggle("hidden-panel", !destructive);
+  $("flashBackupBtn").classList.toggle("hidden-panel", !target || Boolean(saved));
+  $("flashBackupBtn").disabled = busy;
+  $("flashBackupConnection").classList.toggle("hidden-panel", Boolean(issue || target) || !destructive);
+  $("flashBackupConnection").disabled = busy;
+  $("flashUsbConnection").classList.toggle("hidden-panel", !issue);
+  $("flashUsbConnection").disabled = busy;
+  $("flashUsbStatus").classList.toggle("hidden-panel", !issue);
+  setInlineStatus("flashUsbStatus", issue);
+  $("flashUsbDeviceStatus").hidden = !flashConnectionReturn || !issue;
+  setInlineStatus("flashUsbDeviceStatus", flashConnectionReturn ? issue : "");
+  $("flashBackToPackage").classList.toggle("hidden-panel", !flashConnectionReturn);
+  const install = $("flashBtn");
+  install.classList.toggle("hidden-panel", Boolean(issue));
+  install.classList.toggle("ghost", skipBackup);
+  install.classList.toggle("danger", destructive && Boolean(saved));
+  install.disabled = Boolean(issue) || busy || ($("packageSource").value !== "open" && !packageSelectionReady);
+  install.textContent = text(managementServiceActive() ? "flashRepair" :
+    skipBackup ? "flashSkipBackup" : erase ? "flashEraseAndInstall" : destructive ? "flashFsAndInstall" : "flashBtn");
+  warning.textContent = text(erase ? ($("littlefsSelect").checked ? "flashEraseWithFs" : "flashEraseWithoutFs") : "flashBackupWarning");
+  setInlineStatus("flashBackupStatus", flashBackupBusy ? text("configBackupRunning") : saved ? text("configBackupSaved") + " " + saved :
+    issue ? "" : target ? flashBackupError || text("configBackupScope") : text("configBackupUnavailable"));
 }
 
 function setProgressState(panelId, barId, textId, value = 0, visible = false, fileName = "", fileId = null, titleId = null) {
@@ -3265,6 +3486,12 @@ function updateDeviceConnectionState(state) {
     button.className = normalized || "";
   }
   renderDeviceStatusBadge();
+  if (normalized === "online" && $("firmwareUpdateConnection")?.classList) {
+    $("firmwareUpdateConnection").classList.add("hidden-panel");
+    setInlineStatus("firmwareUpdateHint", "");
+  }
+  if ($("flashBackupPanel")?.classList) updateFlashBackupWarning();
+  if (typeof renderWorkspaceConnections === "function") renderWorkspaceConnections();
   if(typeof pdRefreshDeviceSources === "function")pdRefreshDeviceSources();
 }
 
@@ -3322,6 +3549,7 @@ function renderDeviceStatusBadge() {
 function updateActiveProcessState(data = null) {
   displayedActiveProcess = data?.active_process || {};
   renderDeviceStatusBadge();
+  if (typeof renderWorkspaceConnections === "function") renderWorkspaceConnections();
 }
 
 function formatProcessRemainingTooltip(value) {
@@ -3408,7 +3636,7 @@ function requireWifiServiceFirmware(inlineStatusId = "wifiInlineStatus", targetI
 }
 
 function serialDeviceAvailable() {
-  return Boolean(($("portSelect") && $("portSelect").value) || ($("serialPortSelect") && $("serialPortSelect").value));
+  return !!$("portSelect")?.value;
 }
 
 function shouldUseHostWifiFallback() {
@@ -3463,10 +3691,11 @@ async function checkDevice(options = {}) {
       timeoutMs: 30000,
       body: {
         base_url: $("deviceUrl").value,
-        serial_port: $("portSelect").value || $("serialPortSelect").value || "",
+        serial_port: $("portSelect").value || "",
         serial_baud: 115200,
         serial_timeout: serialTimeout,
-        prefer_serial: preferSerial
+        prefer_serial: preferSerial,
+        profile_bound: !!activeConnectionProfile()
       }
     });
     if (checkedPort !== selectedConnectionPort) return;
@@ -3475,7 +3704,7 @@ async function checkDevice(options = {}) {
       if (typeof refreshWorkspaceProfiles === "function") refreshWorkspaceProfiles();
     }
     const previousGeneration = packageGeneration();
-    lastDeviceStatus = { ...lastDeviceStatus, ...data, mode: data?.mode || null };
+    lastDeviceStatus = { ...data, mode: data?.mode || null };
     if (loadedPackageGeneration !== packageSelectionGeneration()) {
       loadPackages().then(loadRepoLanguages).catch(console.error);
     } else if (previousGeneration !== packageGeneration()) {
@@ -3494,52 +3723,10 @@ async function checkDevice(options = {}) {
       renderMaintenanceButton();
     }
     updateActiveProcessState(data);
-    if (data?.state === "online") {
+    if (data?.state === "online" && options.checkUpdates !== false) {
       checkFirmwareUpdate(false).catch(console.error);
     }
     writeStartupTrace(`checkDevice done: state=${data?.state || "-"} transport=${data?.transport || "-"} firmware=${String(data?.firmware || "").trim() || "-"}`);
-    if (data?.state === "serial" && data?.firmware && data?.mode !== "service" && !pendingOnlineUpgradeCheck) {
-      writeStartupTrace("checkDevice schedules online upgrade check");
-      pendingOnlineUpgradeCheck = window.setTimeout(async () => {
-        pendingOnlineUpgradeCheck = null;
-        for (let attempt = 1; attempt <= 3; attempt += 1) {
-          if (checkedPort !== selectedConnectionPort) return;
-          try {
-            const onlineData = await api("/api/device/status", {
-              method: "POST",
-              timeoutMs: 30000,
-              body: {
-                base_url: $("deviceUrl").value,
-                serial_port: "",
-                serial_baud: 115200,
-                serial_timeout: 5,
-                prefer_serial: false
-              }
-            });
-            if (checkedPort !== selectedConnectionPort) return;
-            if (onlineData?.state === "online") {
-              lastDeviceStatus = { ...lastDeviceStatus, ...onlineData };
-              updateDeviceConnectionState("online");
-              updateDeviceVersionMeta(onlineData);
-              updateActiveProcessState(onlineData);
-              checkFirmwareUpdate(false).catch(console.error);
-              writeStartupTrace("online upgrade check done: state=online");
-              break;
-            }
-            if (attempt >= 3) {
-              writeStartupTrace(`online upgrade check ignored: state=${onlineData?.state || "-"}`);
-              break;
-            }
-          } catch (_err) {
-            if (attempt >= 3) {
-              writeStartupTrace("online upgrade check not reachable");
-              break;
-            }
-          }
-          await sleep(2500);
-        }
-      }, 2500);
-    }
   } catch (err) {
     lastDeviceStatus = {
       state: "offline",
@@ -3576,28 +3763,24 @@ function scheduleDeviceCheck(delay = 1200) {
   }, delay);
 }
 
-function scheduleDeviceCheckUntilOnline(delay = 2500, attempts = 6, interval = 2500) {
-  window.setTimeout(async () => {
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        await checkDevice({
-          preferSerial: false,
-          serialTimeout: 2,
-          globalSpinner: false,
-          silent: true,
-          keepVisibleState: true
-        });
-      } catch (err) {
-        console.error(err);
-      }
-      if (($("deviceConnectionState")?.dataset?.state || "") === "online") {
-        return;
-      }
-      if (attempt < attempts - 1) {
-        await sleep(interval);
-      }
+async function scheduleDeviceCheckUntilOnline(delay = 2500, attempts = 6, interval = 2500) {
+  await sleep(delay);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await checkDevice({
+        preferSerial: false,
+        serialTimeout: 2,
+        globalSpinner: false,
+        silent: true,
+        keepVisibleState: true
+      });
+    } catch (err) {
+      console.error(err);
     }
-  }, delay);
+    if (deviceIsOnline() && lastDeviceStatus.base_url) return lastDeviceStatus.base_url;
+    if (attempt < attempts - 1) await sleep(interval);
+  }
+  return "";
 }
 
 function scheduleWifiRescan(delay = 2600) {
@@ -3776,9 +3959,9 @@ async function scanWifi(forceRefresh = true, allowHostFallback = true) {
     select.innerHTML = "";
     const pending = document.createElement("option");
     pending.value = "";
-    pending.textContent = "Scanning WiFi networks. Please wait ...";
+    pending.textContent = currentLang === "de" ? "WLAN-Netzwerke werden gesucht …" : "Scanning for Wi-Fi networks …";
     select.appendChild(pending);
-    setInlineStatus("wifiInlineStatus", "Scanning WiFi networks. Please wait ...");
+    setInlineStatus("wifiInlineStatus", pending.textContent);
     appendStatus("firmwareStatus", text("wifiTitle"), "Scanning WiFi networks. Please wait ...");
     if (allowHostFallback && shouldUseHostWifiFallback()) {
       const data = await api("/api/wifi/host-scan", { method: "POST", body: {} });
@@ -3878,7 +4061,12 @@ async function saveWifi() {
   const serviceMode = managementServiceActive();
   setButtonsDisabled(["wifiResetBtn", "wifiScanBtn", "wifiSaveBtn"], true);
   try {
-    const transport = serviceMode ? {serial_port: $("portSelect").value, serial_baud: 115200} : wifiTransportProvisioning();
+    const backupConnection = flashConnectionReturn;
+    if (backupConnection?.wifi && backupConnection.port !== selectedConnectionPort) {
+      setInlineStatus("wifiInlineStatus", text("flashUsbChanged"));
+      return;
+    }
+    const transport = serviceMode || backupConnection?.wifi ? currentSerialProvisioning() : wifiTransportProvisioning();
     if (transport.serial_port && !requireSerialPortForAction(transport.serial_port, "wifiInlineStatus", "firmwareStatus", text("wifiTitle"))) {
       return;
     }
@@ -3911,22 +4099,33 @@ async function saveWifi() {
       maintenanceRefreshTimer = setTimeout(refreshMaintenance, 3000);
       return;
     }
-    const verification = data && typeof data === "object" ? data.verification : null;
-    if (verification && verification.result === "success") {
-      setInlineStatus("wifiInlineStatus", "WLAN configuration successful");
-      lastDeviceStatus = { ...lastDeviceStatus, state: "online", transport: "http" };
-      updateDeviceConnectionState("online");
-    } else if (verification && verification.result === "failed") {
-      setInlineStatus("wifiInlineStatus", "Credentials saved, but WiFi connection failed. Device returned to config portal.");
-    } else if (verification && verification.result === "unknown") {
-      setInlineStatus("wifiInlineStatus", "Credentials saved. Reboot scheduled, but final state could not be verified.");
-      } else {
-        setInlineStatus("wifiInlineStatus", "Credentials saved. Device reboot scheduled.");
-      }
-      scheduleDeviceCheckUntilOnline(2500, 6, 2500);
-    } catch (err) {
-      appendStatus("firmwareStatus", text("wifiTitle"), String(err));
-      setInlineStatus("wifiInlineStatus", `Error: ${err?.message || String(err)}`);
+    if (data.verification?.result === "failed") {
+      lastDeviceStatus = { ...lastDeviceStatus, state: "serial", base_url: "" };
+      updateDeviceConnectionState("serial");
+      setInlineStatus("wifiInlineStatus", currentLang === "de"
+        ? "WLAN-Zugangsdaten gespeichert. Verbindung fehlgeschlagen. Prüfe Netzwerkname und Passwort."
+        : "Wi-Fi credentials saved. Connection failed. Check the network name and password.");
+      return;
+    }
+    const selectedPort = selectedConnectionPort;
+    const selectedUrl = $("deviceUrl").value;
+    updateDeviceConnectionState("checking");
+    setInlineStatus("wifiInlineStatus", currentLang === "de" ? "Neustart läuft. Warte auf den Brautomat …" : "Restarting. Waiting for Brautomat …");
+    const address = await scheduleDeviceCheckUntilOnline();
+    if (selectedPort !== selectedConnectionPort || (!selectedPort && selectedUrl !== $("deviceUrl").value)) {
+      setInlineStatus("wifiInlineStatus", currentLang === "de" ? "Geräteauswahl geändert." : "Device selection changed.");
+      return;
+    }
+    setInlineStatus("wifiInlineStatus", address
+      ? (currentLang === "de" ? "Brautomat erreichbar unter " : "Brautomat reachable at ") + address
+      : (currentLang === "de" ? "WLAN-Zugangsdaten gespeichert. Der Brautomat ist noch nicht erreichbar." : "Wi-Fi credentials saved. Brautomat is not reachable yet."));
+    if (address && backupConnection?.wifi && backupConnection === flashConnectionReturn &&
+        backupConnection.port === selectedConnectionPort && flashBackupTarget() && workspaceView === "connection") {
+      returnToFlashPackage();
+    }
+  } catch (err) {
+    appendStatus("firmwareStatus", text("wifiTitle"), String(err));
+    setInlineStatus("wifiInlineStatus", `Error: ${err?.message || String(err)}`);
   } finally {
     setSpinner("wifiSpinner", false);
     setButtonsDisabled(["wifiResetBtn", "wifiScanBtn", "wifiSaveBtn"], false);
@@ -3934,6 +4133,12 @@ async function saveWifi() {
 }
 
 async function startFlash() {
+  if (manualFlashBusy || flashBackupBusy) return false;
+  const issue = flashUsbIssue();
+  if (issue) {
+    setInlineStatus("flashInlineStatus", issue);
+    return false;
+  }
   if ($("packageSource").value !== "open" && !packageSelectionReady) {
     setInlineStatus("flashInlineStatus", currentLang === "de" ? "Bitte ein verfügbares Firmwarepaket auswählen." : "Select an available firmware package.");
     return false;
@@ -3942,8 +4147,16 @@ async function startFlash() {
     if (!requireSerialPortForAction($("portSelect").value, "flashInlineStatus", "firmwareStatus", text("flashTitle"), { allowRunningMonitor: true })) {
       return;
     }
+    const erase = $("eraseFlashSelect").checked;
+    const littlefs = $("littlefsSelect").checked;
+    const target = flashBackupTarget();
+    if ((erase || littlefs) && (!target || target.key !== flashBackup?.key) && !window.confirm(text("flashWithoutBackup"))) return false;
+    manualFlashBusy = true;
+    flashBackup = null;
+    flashBackupError = "";
+    updateFlashBackupWarning();
     setSpinner("flashSpinner", true);
-    setInlineStatus("flashInlineStatus", "Preparing firmware flash...");
+    setInlineStatus("flashInlineStatus", currentLang === "de" ? "Firmwarepaket wird vorbereitet …" : "Preparing firmware package …");
     setProgressState("firmwareProgressPanel", "firmwareProgressBar", "firmwareProgressText", 0, true);
     const data = await api(managementServiceActive() ? "/api/maintenance/firmware" : "/api/flash", {
       method: "POST",
@@ -3955,8 +4168,8 @@ async function startFlash() {
         source_firmware: lastDeviceStatus?.firmware || "",
         package_ref: selectedPackageRef(),
         package_dir: $("packageDir").value,
-        erase_flash: $("eraseFlashSelect").checked,
-        include_littlefs: $("littlefsSelect").checked
+        erase_flash: erase,
+        include_littlefs: littlefs
       }
     });
     setStatus("firmwareStatus", "");
@@ -3971,6 +4184,9 @@ async function startFlash() {
     setInlineStatus("flashInlineStatus", `Error: ${String(err)}`);
     setSpinner("flashSpinner", false);
     return false;
+  } finally {
+    manualFlashBusy = false;
+    updateFlashBackupWarning();
   }
 }
 
@@ -4027,6 +4243,7 @@ async function updateWebfiles() {
         base_url: $("deviceUrl").value,
         package_source: source,
         package_root: packageGeneration(),
+        package_idf6: selectedPackageUsesIdf6(),
         package_ref: selectedPackageRef()
       }
     });
@@ -4085,6 +4302,7 @@ async function installLanguage() {
         base_url: $("deviceUrl").value,
         package_source: source,
         package_root: packageGeneration(),
+        package_idf6: selectedPackageUsesIdf6(),
         package_ref: selectedPackageRef(),
         filename
       }
@@ -4118,8 +4336,8 @@ async function startMigration() {
   try {
     if ($("packageSource").value !== "open" && (!packageSelectionReady || loadedPackageGeneration !== "Updates")) {
       setInlineStatus("migrationInlineStatus", currentLang === "de"
-        ? "Bitte ein geprüftes Migrationspaket auswählen, z. B. 1.70 Development."
-        : "Select a verified migration package, e.g. 1.70 Development.");
+        ? "Bitte ein geprüftes Migrationspaket auswählen, z. B. IDF6 Development."
+        : "Select a verified migration package, e.g. IDF6 Development.");
       return;
     }
     if (!requireOnlineForDeviceAction("migrationInlineStatus", "migrationStatus", text("migrationTitle"))) {
@@ -4172,7 +4390,7 @@ async function refreshMigrationSessions() {
     const data = await api("/api/migration/sessions");
     select.replaceChildren();
     const sessions = (data.sessions || []).filter(session => session.backup_verified &&
-      ["backup-verified", "writing", "verifying", "flash-verified", "booting", "updating-webfiles", "restoring", "recovery-verified"].includes(session.phase));
+      ["backup-verified", "writing", "verifying", "flash-verified", "booting", "updating-webfiles", "restoring-api", "restoring", "recovery-verified"].includes(session.phase));
     $("migrationRecoveryPanel").classList.toggle("hidden-panel", sessions.length === 0);
     $("migrationSessionChoice").classList.toggle("hidden-panel", sessions.length === 0);
     for (const session of sessions) {
@@ -4180,6 +4398,8 @@ async function refreshMigrationSessions() {
       option.value = session.id;
       option.textContent = `${session.id} · ${session.source_version || "?"} → ${session.target_version || "?"} · ${session.port || ""}`;
       option.disabled = !session.backup_verified;
+      option.dataset.networkOnly = String(session.backup_type === "api" &&
+        ["updating-webfiles", "restoring-api"].includes(session.phase));
       select.appendChild(option);
     }
     if ([...select.options].some(option => option.value === previous)) select.value = previous;
@@ -4205,9 +4425,13 @@ async function discardMigrationSession() {
 
 async function recoverMigration(action) {
   try {
-    const sessionId = $("migrationSession").value;
+    const session = $("migrationSession");
+    const sessionId = session.value;
     const port = $("portSelect").value;
-    if (action !== "restore" && (!port || !sessionId)) throw new Error(currentLang === "de" ? "Sicherung und COM-Port auswählen." : "Select a backup and serial port.");
+    const networkOnly = action === "resume" && session.selectedOptions[0]?.dataset.networkOnly === "true";
+    if (action === "resume" && (!sessionId || (!networkOnly && !port))) {
+      throw new Error(currentLang === "de" ? "Sicherung und bei USB-Fortsetzung den COM-Port auswählen." : "Select a backup and, for USB recovery, a serial port.");
+    }
     let backupDir = "";
     let backupType = "flash";
     if (action === "restore") {
@@ -4216,7 +4440,7 @@ async function recoverMigration(action) {
       backupDir = selected.directory;
       backupType = selected.backup_type || "flash";
     }
-    if (backupType === "flash" && !port) throw new Error(currentLang === "de" ? "COM-Port auswählen." : "Select a serial port.");
+    if (action === "restore" && backupType === "flash" && !port) throw new Error(currentLang === "de" ? "COM-Port auswählen." : "Select a serial port.");
     const message = action === "restore" && backupType === "api"
       ? (currentLang === "de" ? "Gesicherte Einstellungen und WLAN-Zugangsdaten auf das ausgewählte Gerät zurückspielen? Die installierte Firmware bleibt erhalten." : "Restore saved settings and Wi-Fi credentials to the selected device? The installed firmware is retained.")
       : action === "restore"
@@ -4599,8 +4823,6 @@ function maintenanceUnsupported() {
 function renderMaintenanceButton() {
   const unsupported = maintenanceUnsupported();
   const service = managementServiceActive();
-  $("flashBtn").textContent = service
-    ? (currentLang === "de" ? "Hauptfirmware reparieren" : "Repair main firmware") : text("flashBtn");
   $("maintenanceUnavailable").textContent = currentLang === "de"
     ? "Der Wartungsmodus steht mit dem ServiceApp-Partitionslayout ab 1.67 zur Verfügung. Ältere Versionen benötigen eine Migration."
     : "Maintenance mode is available with the ServiceApp partition layout from 1.67. Older versions require migration.";
@@ -4615,6 +4837,7 @@ function renderMaintenanceButton() {
     if (service) $(id).checked = false;
     $(id).disabled = service || maintenanceBusy;
   }
+  if ($("flashBackupPanel")?.classList) updateFlashBackupWarning();
   const maintenanceLabel = text(maintenanceActive ? "maintenanceStop" : "maintenanceStart");
   $("maintenanceToggleLabel").textContent = maintenanceLabel;
   $("maintenanceToggle").title = maintenanceLabel;
@@ -4803,9 +5026,14 @@ function placeFirmwareSelection(name) {
 }
 
 function activateTab(name) {
+  if (name !== "start" && typeof startState !== "undefined" && startState?.busy) return;
   if (name === "designer") openDesigner().catch(console.error);
   if (name !== "management" && typeof explorerCanLeave === "function" && !explorerCanLeave()) return;
   if (typeof workspaceTabActivated === "function") workspaceTabActivated(name);
+  if (flashConnectionReturn && workspaceView !== "connection") {
+    flashConnectionReturn = null;
+    updateFlashBackupWarning();
+  }
   placeFirmwareSelection(name);
   if (name === "testrunner" && hideTestRunnerViaQuery()) {
     return;
@@ -4819,6 +5047,7 @@ function activateTab(name) {
   }
   if (name === "firmware") {
     refreshMaintenance();
+    checkExpertConnectionOnEntry();
     writeStartupTrace("activateTab firmware");
   }
   if (name === "management") {
@@ -4861,7 +5090,7 @@ function attachEvents() {
   });
   $("deviceUrl").addEventListener("change", async () => {
     if (!temporarySerialConnection) {
-      await saveConfig({ device_url: $("deviceUrl").value.trim() || "http://brautomat" });
+      await saveConfig({ device_url: $("deviceUrl").value.trim() || "http://brautomat.local" });
     }
     lastDeviceStatus = {};
     updateDeviceConnectionState("");
@@ -4943,6 +5172,10 @@ function attachEvents() {
   $("chooseInventoryRoot")?.addEventListener("click", chooseInventoryRoot);
   $("packageSource").addEventListener("change", async () => {
     const source = $("packageSource").value;
+    if (source === "open") {
+      $("eraseFlashSelect").checked = false;
+      $("littlefsSelect").checked = false;
+    }
     packageSelectionReady = false;
     $("packageDir").value = "";
     syncFirmwareActions();
@@ -4985,16 +5218,23 @@ function attachEvents() {
   $("serialBaudSelect").addEventListener("change", async () => {
     await saveConfig({ serial_baud_rate: Number($("serialBaudSelect").value) });
   });
-  $("portSelect").addEventListener("change", async () => {
-    await applySelectedSerialPort($("portSelect").value);
-    refreshMaintenance();
-  });
+  $("portSelect").addEventListener("change", () => selectDeviceSerialPort($("portSelect").value));
   $("serialPortSelect").addEventListener("change", async () => {
-    await applySelectedSerialPort($("serialPortSelect").value);
+    if (!activeConnectionProfile()) await applySelectedSerialPort($("serialPortSelect").value);
   });
   $("backupFirmwareBtn").addEventListener("click", backupCurrentFirmware);
   $("updateWebfilesBtn").addEventListener("click", updateWebfiles);
-  $("checkFirmwareUpdateBtn")?.addEventListener("click", () => checkFirmwareUpdate(true));
+  $("checkFirmwareUpdateBtn").addEventListener("click", () => checkFirmwareUpdate(true));
+  $("firmwareUpdateConnection").addEventListener("click", () => selectWorkspaceView("connection"));
+  $("flashUsbConnection").addEventListener("click", () => showFlashConnection(false));
+  $("flashBackupConnection").addEventListener("click", () => showFlashConnection(true));
+  $("flashBackToPackage").addEventListener("click", returnToFlashPackage);
+  $("flashBackupBtn").addEventListener("click", backupBeforeFlash);
+  $("firmwareUpdateMigration").addEventListener("click", () => {
+    closeFirmwareUpdateModal();
+    selectWorkspaceView("start");
+    if (workspaceView === "start") openStartAssistant(firmwareUpdateState?.decision === "usb_required" ? "update" : "migration");
+  });
   $("installLanguageBtn").addEventListener("click", installLanguage);
   $("flashBtn").addEventListener("click", startFlash);
   $("migrateBtn").addEventListener("click", startMigration);
@@ -5061,6 +5301,13 @@ async function checkStartupDevice() {
   await scanWifi(true, false);
 }
 
+let expertConnectionChecked = false;
+function checkExpertConnectionOnEntry() {
+  if (expertConnectionChecked || !($("deviceUrl").value.trim() || serialDeviceAvailable())) return;
+  expertConnectionChecked = true;
+  checkStartupDevice().catch(console.error);
+}
+
 async function init() {
   writeStartupTrace("init start", { reset: true, force: true });
   try {
@@ -5072,6 +5319,7 @@ async function init() {
     initializeBackupSortHeader();
     await loadOverview();
     if (typeof initializeWorkspace === "function") initializeWorkspace();
+    if (typeof initializeStart === "function") initializeStart();
     if (typeof initializeDesigner === "function") initializeDesigner();
     writeStartupTrace("loadOverview done");
     applyLanguage();
@@ -5082,9 +5330,13 @@ async function init() {
     writeStartupTrace("attachEvents done");
     await loadPorts();
     writeStartupTrace("initial loadPorts done");
-    activateTab("firmware");
-    if ($("deviceUrl").value.trim() || serialDeviceAvailable()) {
-      checkStartupDevice().catch(console.error);
+    const showStart = appConfig.show_start !== false && typeof initializeStart === "function";
+    const returnView = window.sessionStorage?.getItem("workspaceAfterProfileChange");
+    window.sessionStorage?.removeItem("workspaceAfterProfileChange");
+    if (returnView && typeof selectWorkspaceView === "function") selectWorkspaceView(returnView);
+    else activateTab(showStart ? "start" : "firmware");
+    if (workspaceView === "start") {
+      checkDevice({refreshPorts:false, serialTimeout:5, silent:true, globalSpinner:false, checkUpdates:false}).catch(console.error);
     }
     setProgressState("firmwareProgressPanel", "firmwareProgressBar", "firmwareProgressText", 0, false);
     setProgressState("webfilesProgressPanel", "webfilesProgressBar", "webfilesProgressText", 0, false, "", "webfilesProgressFile", "webfilesProgressTitle");

@@ -2,18 +2,36 @@
 
 ## Erste Schritte
 
-Das ServiceTool verbindet deinen Computer mit einem Brautomat. Wähle zuerst das
-richtige Gerät aus. Alle Geräteaktionen beziehen sich auf diese Auswahl.
+Öffne **Assistenten** und wähle, was du vorhast. Lass während des Assistenten
+nur den gewünschten Brautomat angeschlossen.
 
-### Den Brautomat verbinden
+- **Brautomat einrichten:** Per USB anschließen. Du kannst eine vorhandene
+  Einrichtung weiterverwenden oder den Brautomat komplett neu einrichten.
+  Bei der Neueinrichtung werden nach Bestätigung Einstellungen, WLAN-Daten
+  und Dateien gelöscht. Ist der Brautomat im WLAN erreichbar, kannst du
+  vorher ein Konfigurationsbackup erstellen. Fehlt die WLAN-Verbindung,
+  kannst du sie vor dem Backup per USB einrichten. Nach dem Löschen
+  installiert ServiceTool die Firmware und führt dich durch die
+  WLAN-Einrichtung. Anschließend kannst du das Webinterface öffnen.
+- **Firmware aktualisieren:** Per USB oder WLAN verbinden. Bei kompatibler
+  Firmware bestimmt **Testversionen** am Brautomat den Zielkanal. Aus steht
+  für Release, ein für Development. Der Assistent zeigt Zielversion, Kanal
+  und Updateweg. Ein Kanalwechsel kann auch bei gleicher Versionsnummer
+  eine USB-Installation erfordern. Bei reinem USB-Zugriff auf IDF6 hilft
+  der Assistent bei der WLAN-Einrichtung, um den Kanal abzufragen.
+- **Firmware migrieren:** Per USB anschließen. Für Sicherung und
+  Wiederherstellung muss der Brautomat im Netzwerk erreichbar sein.
+  Der Assistent führt durch Backup, Flash und Restore.
+- **Backup erstellen:** Sichere die Gerätekonfiguration über WLAN. Bei
+  Bedarf hilft dir der Assistent, das WLAN per USB einzurichten. ServiceTool
+  speichert die Sicherung lokal und zeigt den Dateipfad an.
 
-1. Schließe den Brautomat per USB an deinen Computer an.
-2. Öffne **Gerät**. Wähle den COM-Port. Fehlt er in der Liste, klicke auf den
-   kreisförmigen Pfeil neben der Auswahl.
-3. Trage die Geräte-URL ein. Nutze die Adresse, die du für diesen Brautomat
-   eingerichtet hast.
-4. Klicke neben der URL auf die Verbindungsprüfung. Lies das Statusbadge oben
-   rechts.
+Das Konfigurationsbackup umfasst Einstellungen und Daten, die der Brautomat
+über seine API bereitstellt. Ein vollständiges Flash-Abbild umfasst weitere
+Speicherbereiche.
+
+Unter **Einstellungen** lässt sich **Beim Öffnen Assistenten anzeigen**
+abwählen.
 
 ### Wo finde ich was?
 
@@ -50,6 +68,12 @@ Drei-Punkte-Menü prüft das ServiceTool auf deinem Computer.
 Weiter mit [Geräte & WLAN](#geräte--wlan).
 
 ## Geräte & WLAN
+
+Bei einer Direktverbindung gilt `http://brautomat.local` als Standard.
+Ist ein USB-Port ausgewählt, bestimmt der dort erkannte Brautomat das
+Ziel. ServiceTool prüft dann dessen gemeldete IP-Adresse. Unter
+**Einstellungen** kannst du für mehrere gespeicherte Verbindungen
+**Geräteprofile aktivieren**.
 
 ### Den Verbindungsstatus verstehen
 
@@ -99,8 +123,10 @@ Das Speichern einer URL im ServiceTool ändert nicht den Netzwerknamen des
 Brautomaten. Die eingetragene Adresse muss zur tatsächlichen Gerätekonfiguration
 passen. Verwende bei mehreren Geräten eindeutige Adressen.
 
-Bei mehreren gespeicherten Geräten wird ein fehlender COM-Port nicht durch
-einen anderen erkannten Port ersetzt. Prüfe in diesem Fall das Geräteprofil.
+Wähle einen anderen COM-Port, um ihn für die aktuelle Sitzung zu verwenden.
+Sobald USB und die Profiladresse zum selben Brautomat gehören, kannst du mit
+**COM-Port im Profil speichern** die Auswahl dauerhaft übernehmen. Beim
+Profilwechsel oder Neustart gilt wieder der gespeicherte Port.
 
 ## Firmware
 
@@ -108,7 +134,8 @@ einen anderen erkannten Port ersetzt. Prüfe in diesem Fall das Geräteprofil.
 
 1. Öffne **Firmware** und kontrolliere oben das aktive Gerät und dessen Version.
 2. Wähle die gewünschte Zielversion: **1.66 Release**, **1.66 Development** oder
-   **1.70 Development**. Die Development-Pakete sind Entwicklungsversionen.
+   **1.70 IDF5 Beta**, **IDF6 Release** und **IDF6 Development**.
+   Die Development-Pakete sind Entwicklungsversionen.
 3. Bei **Special Version** wähle zusätzlich einen der angebotenen Stände.
    Achte auf die Versionsangabe, wenn mehrere Einträge zum selben Stand
    erscheinen. Mit **Open directory** wählst du ein lokales Paketverzeichnis.
@@ -122,32 +149,26 @@ nicht von Hand umschreiben.
 
 ### Per USB installieren
 
-1. Beende laufende Brau- und Fermenterprozesse. Stelle unter **Gerät** den
-   richtigen COM-Port ein und gehe zurück zu **Firmware**.
-2. Sichere benötigte Einstellungen und Pläne unter
-   [Daten → Sichern & Wiederherstellen](#daten).
-3. Wähle das Zielpaket und die Flash-Baudrate. Prüfe die beiden Optionen:
-   **Flash löschen** löscht den gesamten Gerätespeicher einschließlich
-   Einstellungen und Dateien. **Flash LittleFS** schreibt das Dateisystem aus
-   dem Paket und ersetzt dadurch die dort gespeicherten Dateien.
-4. Starte **Ausgewähltes Paket über USB installieren**. Halte USB und
-   Stromversorgung bis zum Abschluss verbunden.
-5. Prüfe anschließend die Geräteverbindung, die angezeigte Firmwareversion und
-   die Browseroberfläche des Brautomaten.
+1. Beende laufende Brau- und Fermenterprozesse. Wähle unter **Gerät** den
+   richtigen COM-Port und lass die Verbindung prüfen.
+2. Wähle unter **Firmware** das Zielpaket und die Flash-Baudrate.
+   **Flash löschen** und **Dateisystem überschreiben (LittleFS)** sind
+   standardmäßig aus. Löschen entfernt Einstellungen und Dateien. Die
+   LittleFS-Option schreibt das Dateisystem aus dem Paket.
+3. Bei einer der beiden Optionen bietet ServiceTool direkt ein
+   **Konfigurationsbackup** an. Dafür muss der USB-Brautomat auch über das
+   Netzwerk erreichbar sein. Bei Bedarf führt **WLAN für Sicherung
+   einrichten** zur WLAN-Einrichtung und zurück zum ausgewählten Paket.
+4. Starte die Installation und halte USB und Stromversorgung verbunden.
+   Prüfe danach Firmwareversion, Verbindung und Webinterface.
 
-Die USB-Installation erlaubt den Wechsel von 1.66 auf 1.70 und zurück auf 1.66.
-Sie erstellt kein automatisches Backup und stellt bei einem Fehler nicht
-selbstständig den vorherigen Zustand wieder her. Die Erfolgsmeldung nach der
-Übertragung ersetzt deshalb nicht die anschließende Geräteprüfung.
+Die Optionen sind unabhängig. Bei aktiviertem **Flash löschen** und
+ausgeschaltetem **Dateisystem überschreiben (LittleFS)** bleibt das
+Dateisystem nach der Installation leer. Sind beide Optionen aus, bleiben
+Einstellungen und Dateien bei passenden Paketen erhalten.
 
-Die beiden Checkboxen sind unabhängig. Ist **Flash löschen** aktiviert und
-**Flash LittleFS** ausgeschaltet, wird das Dateisystem gelöscht und nicht neu
-geschrieben. Sind beide ausgeschaltet, bleiben Einstellungen und Dateien bei
-den unterstützten Paketen erhalten. Sie müssen aber zur Zielfirmware passen.
-
-Für den geführten Wechsel von 1.66 auf 1.70 mit Sicherung und Wiederherstellung
-verwende [Service → Migration](#migration). Dieser Ablauf ist nicht für den
-Rückwechsel auf 1.66 vorgesehen.
+Für einen unterstützten Layoutwechsel mit Sicherung und Wiederherstellung
+verwende [Assistenten → Firmware migrieren](#migration).
 
 Steht auf dem Button **Hauptfirmware reparieren**, ist die ServiceApp aktiv.
 Dann wird die Hauptfirmware über WLAN repariert; dies ist kein USB-Wechsel auf
@@ -543,11 +564,19 @@ Die Symbole erklären ihre Funktion per Tooltip, auch bei Tastaturfokus.
   Auch beim Übertragen aus dem Inventar wird das Zielformat geprüft.
 - **Im lokalen Inventar speichern** beziehungsweise **Auf Gerät übertragen**
   fragt nach dem Zielpfad und bestätigt das Ersetzen vorhandener Dateien.
+  Bei einem gleichnamigen Upload ins Inventar kannst du die vorhandene
+  Datei ersetzen oder sie vor dem Ersetzen als Version sichern.
 - **Bearbeiten** schaltet unterstützte Textdateien frei. Speichern prüft JSON
   und verhindert das Überschreiben einer seit dem Laden geänderten Datei.
   Wann die Firmware eine Datei übernimmt, hängt vom Dateityp ab.
 - **Umbenennen** und **Löschen** betreffen die ausgewählte Datei am angezeigten
   Speicherort. Ordner können nur gelöscht werden, wenn sie leer sind.
+
+Neue Maische- und Fermenterpläne dürfen Leerzeichen und Umlaute enthalten.
+Der Dateiname ist auf **50 Zeichen inklusive `.json`** begrenzt, etwa
+`Belgischer Dübel.json` oder `Gärung Weißbier.json`. Auf Firmware **1.66 oder
+älter** warnt ServiceTool beim Übertragen oder Umbenennen vor möglicherweise
+inkompatiblen Dateinamen. Der Dateiname wird unverändert übernommen.
 
 Unter **Logs** findest du `webUpdateLog.txt` und `autotune_log.txt`.
 Binärdateien und Dateien über 4 MiB kannst du herunterladen, aber nicht im
@@ -681,31 +710,32 @@ Entwicklungsumgebung. Für normale Wartungsaufgaben wird er nicht benötigt.
 
 ## Migration
 
-Verwende **Service → Migration** für den geführten Wechsel älterer Geräte auf
-1.70. Dabei sichert das ServiceTool zuerst die Geräteeinstellungen. Für den
-Rückwechsel auf 1.66 steht dieser Ablauf nicht zur Verfügung.
+Verwende **Assistenten → Firmware migrieren** für unterstützte Layoutwechsel.
+Der Assistent ermittelt die passende veröffentlichte Zielversion.
+Unter **Service → Migration** kannst du ein Paket manuell wählen oder einen
+unterbrochenen Vorgang fortsetzen.
 
 ### Voraussetzungen
 
-Unterstützt werden Ausgangsversionen **1.62.0 bis einschließlich 1.66.x**
-und Zielversionen **ab 1.67.0 mit kompatiblem ServiceApp-Layout** auf
-unterstützten ESP32-Geräten mit 4 MiB Flash und altem symmetrischen Layout.
-Das ServiceTool prüft das Gerät vor dem Schreiben.
+**1.62.0 bis 1.66.x** können auf ein kompatibles ServiceApp-Paket ab
+1.67 wechseln. Für **1.70 IDF5 Beta** ein **IDF6-Paket** wählen.
+Unterstützt werden ESP32-Geräte mit 4 MiB Flash.
 
 ### Migration durchführen
 
 1. Beende Brau- und Fermenterprozesse. Verbinde den Brautomat per USB und stelle
    sicher, dass seine URL erreichbar ist.
-2. Kontrolliere das aktive Gerät und den COM-Port unter **Gerät**.
-3. Öffne **Service → Migration** und wähle Paketquelle und Zielpaket.
+2. Öffne **Assistenten → Firmware migrieren** und lass das Gerät prüfen.
+3. Kontrolliere die angezeigte Zielversion. Für ein selbst gewähltes Paket
+   öffne **Service → Migration** und kontrolliere unter **Gerät** den COM-Port.
 4. Starte die Migration. Halte USB und Stromversorgung bis zum Abschluss
    verbunden.
 5. Lies das Ergebnis. Ein gestarteter Vorgang ist noch kein erfolgreicher
    Abschluss.
 
 Zuerst wird die Gerätesicherung gespeichert. Erst danach wird die neue Firmware
-installiert. Einstellungen und gespeicherte Dateien bleiben erhalten;
-die Webdateien werden aktualisiert.
+installiert. Nach dem Neustart werden die Webdateien aktualisiert.
+Beim Wechsel auf IDF6 folgt die automatische Wiederherstellung des Backups.
 
 ### Nach einem Abbruch
 

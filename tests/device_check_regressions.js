@@ -14,6 +14,7 @@ const source = fs.readFileSync('static/app.js', 'utf8');
     },
     document: {createElement: () => ({})}, currentLang: 'de', console,
     firmwareInstallationActive: () => false, checkDeviceInFlight: null,
+    activeConnectionProfile: () => null, directSerialBinding: () => false,
     selectedConnectionPort: 'COM3', temporarySerialConnection: null, lastDeviceStatus: {},
     loadPorts: async () => {}, writeStartupTrace() {}, setButtonsDisabled() {},
     updateDeviceConnectionState() {}, updateDeviceVersionMeta() {}, updateActiveProcessState() {},
@@ -39,13 +40,10 @@ const source = fs.readFileSync('static/app.js', 'utf8');
   assert.equal(scans, 1); assert.equal(probes, 2); assert.equal(overlays, 2);
   assert.equal(pending, 0);
 
-  // Execute the startup detection at its actual call site; tab changes are tested separately.
-  const start = source.indexOf('    if ($("deviceUrl").value.trim() || serialDeviceAvailable())', source.indexOf('async function init('));
-  assert.ok(start > 0);
-  const startup = source.slice(start, source.indexOf('    setProgressState(', start));
+  // The Start tab waits for an explicit action. The expert area probes once on entry.
   vm.runInContext(source.slice(source.indexOf('async function checkStartupDevice('), source.indexOf('async function init(')), ctx);
   ctx.maintenanceSelectionKey = () => 'COM3';
-  vm.runInContext(startup, ctx);
+  vm.runInContext('checkExpertConnectionOnEntry(); checkExpertConnectionOnEntry();', ctx);
   await vm.runInContext('checkDeviceInFlight', ctx);
   assert.equal(probes, 3); assert.equal(scans, 1); assert.equal(overlays, 3);
   let timerCallback, cleared = 0, state = '', errors = [];

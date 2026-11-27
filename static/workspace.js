@@ -5,6 +5,7 @@ let profileEditorMode = "update";
 let profileEditorId = "";
 let profileChangePending = false;
 const workspaceGroups = {
+  start: [["start", "Assistenten", "Assistants", "start"]],
   device: [["connection", "Gerät", "Device", "firmware"]],
   firmware: [["install", "Firmware", "Firmware", "firmware"]],
   data: [["designer", "Rezept Planer", "Recipe Planner", "designer"], ["management", "Explorer", "Explorer", "management"], ["backup", "Sichern & Wiederherstellen", "Backup & restore", "backup"]],
@@ -12,7 +13,7 @@ const workspaceGroups = {
 };
 function workspaceText(de, en) { return currentLang === "de" ? de : en; }
 function workspaceProfiles() {
-  return appConfig.device_profiles?.length ? appConfig.device_profiles : [{id:"primary", url:appConfig.device_url, port:appConfig.serial_port,
+  return appConfig.profiles_enabled && appConfig.device_profiles?.length ? appConfig.device_profiles : [{id:"primary", url:appConfig.device_url, port:appConfig.serial_port,
     name:appConfig.serial_port ? "" : workspaceText("Standardverbindung", "Default connection")}];
 }
 function deviceProfileName(index, count, profile = {}) { return profile.name?.trim() || (count === 1 ? "Brautomat" : index === 0 ? "Master" : `worker${index}`); }
@@ -21,8 +22,10 @@ function refreshWorkspaceProfiles() {
   if (!workspaceReady) return;
   document.getElementById("settingsInventoryPath").value = appConfig.inventory_root || "";
   const profiles = workspaceProfiles();
-  const active = appConfig.active_device_id || profiles[0].id;
+  const enabled = !!appConfig.profiles_enabled;
+  const active = enabled ? (appConfig.active_device_id || profiles[0].id) : profiles[0].id;
   const select = document.getElementById("activeDeviceSelect");
+  const headerSelect = document.getElementById("headerProfileSelect");
   const temporary = typeof temporarySerialConnection !== "undefined" && temporarySerialConnection;
   select.replaceChildren();
   if (temporary) {
@@ -32,6 +35,11 @@ function refreshWorkspaceProfiles() {
   }
   profiles.forEach((p, index) => select.add(new Option(deviceProfileName(index, profiles.length, p), p.id)));
   select.value = temporary ? "" : active;
+  select.disabled = !enabled;
+  headerSelect.replaceChildren(...profiles.map((p, index) => new Option(deviceProfileName(index, profiles.length, p), p.id)));
+  headerSelect.value = active;
+  document.getElementById("enableProfiles").checked = enabled;
+  document.getElementById("settingsProfileControls").hidden = !enabled;
   const chosen = profiles.find(p => p.id === active) || profiles[0];
   const actualPort = document.getElementById("portSelect").value;
   document.getElementById("activeDeviceAddress").textContent = [actualPort,
@@ -42,14 +50,15 @@ function refreshWorkspaceProfiles() {
   const editorSelect=document.getElementById("settingsProfileSelect");
   const editing=editorSelect.value;
   editorSelect.replaceChildren();
-  const savedProfiles=appConfig.device_profiles?.length ? profiles : appConfig.serial_port ? profiles : [];
+  const savedProfiles=enabled && (appConfig.device_profiles?.length || appConfig.serial_port) ? profiles : [];
   savedProfiles.forEach((p,index)=>editorSelect.add(new Option(deviceProfileName(index,savedProfiles.length,p)+" · "+p.port+" · "+p.url,p.id)));
   if(!savedProfiles.length)editorSelect.add(new Option(workspaceText("Keine gespeicherten Profile", "No saved profiles"), ""));
   editorSelect.value=savedProfiles.length ? (savedProfiles.some(p=>p.id===editing)?editing:active) : "";
   document.getElementById("editDeviceProfile").disabled = !editorSelect.value;
   // Saved profiles are optional; USB selection remains available for test devices.
   for (const id of ["portSelect", "serialPortSelect"]) document.getElementById(id).disabled = false;
-  document.getElementById("deviceUrl").readOnly = profiles.length > 1 && !temporary;
+  document.getElementById("deviceUrl").readOnly = !!activeConnectionProfile();
+  renderWorkspaceConnections();
 }
 function translateWorkspace() {
   if (typeof translateDesigner === "function") translateDesigner();
@@ -60,6 +69,7 @@ function translateWorkspace() {
     workspaceSettingsTitle:["Einstellungen", "Settings"], workspaceMaintenanceTitle:["Wartung", "Maintenance"],
     workspaceDevicesTitle:["Geräte", "Devices"],
     settingsInventoryLabel:["Lokales Inventar", "Local inventory"],
+    enableProfilesLabel:["Geräteprofile aktivieren", "Enable device profiles"],
     workspaceSettingsButton:["Einstellungen", "Settings"], profilePortLabel:["COM-Port", "Serial port"],
     profileNameLabel:["Profilname (optional)", "Profile name (optional)"],
     profileUrlLabel:["Geräte-URL", "Device URL"], profileSave:["Speichern", "Save"], profileCancel:["Abbrechen", "Cancel"],
@@ -70,9 +80,11 @@ function translateWorkspace() {
   inventoryPick.title = workspaceText("Inventarverzeichnis auswählen", "Choose inventory directory");
   inventoryPick.setAttribute("aria-label", inventoryPick.title);
   const menuToggle = document.getElementById("workspaceMenuToggle");
+  document.getElementById("headerProfileSelect").setAttribute("aria-label", workspaceText("Geräteprofil", "Device profile"));
   menuToggle.setAttribute("aria-label", workspaceText("Menü", "Menu"));
   menuToggle.title = workspaceText("Menü", "Menu");
   renderWorkspaceNavigation();
+  if (typeof translateStart === "function") translateStart();
 }
 function initializeWorkspaceMenu(headerActions, settingsButton) {
   const menu = document.createElement("div"); menu.className = "workspace-menu";
@@ -109,7 +121,7 @@ function renderWorkspaceNavigation() {
   const root = document.getElementById("mainNavigation"), sub = document.getElementById("sectionNavigation");
   root.replaceChildren(); sub.replaceChildren();
   const selected = Object.keys(workspaceGroups).find(key => workspaceGroups[key].some(row => row[0] === workspaceView));
-  const labels = {device:["Gerät","Device"],firmware:["Firmware","Firmware"],data:["Daten","Data"],service:["Service","Service"]};
+  const labels = {start:["Assistenten","Assistants"],device:["Gerät","Device"],firmware:["Firmware","Firmware"],data:["Daten","Data"],service:["Service","Service"]};
   for (const key of Object.keys(workspaceGroups)) {
     const button = document.createElement("button"); button.type = "button";
     button.textContent = workspaceText(...labels[key]);
@@ -124,8 +136,77 @@ function renderWorkspaceNavigation() {
     button.addEventListener("click", () => selectWorkspaceView(row[0])); sub.appendChild(button);
   }
   document.body.dataset.workspaceView = workspaceView;
+  document.body.dataset.workspaceGroup = selected || "settings";
+  renderWorkspaceConnections();
+}
+
+function renderWorkspaceConnections() {
+  if (!workspaceReady || typeof lastDeviceStatus === "undefined") return;
+  const head = document.getElementById("workspaceConnections");
+  const assistant = workspaceView === "start";
+  head.hidden = !["start", "connection", "install", "settings"].includes(workspaceView);
+  document.getElementById("headerProfileSelect").hidden = assistant || !appConfig.profiles_enabled;
+  const s = typeof startState === "undefined" ? null : startState;
+  const state = lastDeviceStatus || {};
+  const guided = assistant && s;
+  const checking = guided ? !s.device || (s.busy && s.verifyPending) ||
+    s.error === "guided_multiple" || s.error === "guided_device_changed" :
+    (!state.state || document.getElementById("deviceConnectionState").dataset.state === "checking");
+  const network = guided ? !!s.device?.base_url : state.state === "online";
+  const usb = guided ? !!(s.device?.port && (s.device.firmware || s.device.mac)) : state.serial_confirmed === true;
+  const icons = [
+    ["usbConnectionStatus", usb, ["USB verbunden", "USB connected"], ["USB nicht verbunden", "USB disconnected"], ["USB noch nicht geprüft", "USB not checked yet"]],
+    ["networkConnectionStatus", network, ["Geräte-API erreichbar", "Device API reachable"], ["Geräte-API nicht erreichbar", "Device API unreachable"], ["Netzwerk noch nicht geprüft", "Network not checked yet"]]
+  ];
+  for (const [id, connected, online, offline, pending] of icons) {
+    const icon = document.getElementById(id);
+    icon.dataset.state = checking ? "pending" : connected ? "on" : "off";
+    icon.setAttribute("aria-label", workspaceText(...(checking ? pending : connected ? online : offline)));
+  }
+  const portSelect = document.getElementById("portSelect");
+  const { missingProfilePort, detectedUsbPorts } = portSelect.dataset;
+  const override = activeProfilePortOverride();
+  if (!guided && !checking && !usb && missingProfilePort) {
+    const missing = override
+      ? workspaceText("Temporärer Port " + missingProfilePort + " nicht verfügbar.", "Temporary port " + missingProfilePort + " unavailable.")
+      : workspaceText("Profilport " + missingProfilePort + " nicht verfügbar.", "Profile port " + missingProfilePort + " unavailable.");
+    const detected = detectedUsbPorts ? workspaceText(" USB-Adapter erkannt: " + detectedUsbPorts + ".", " USB adapters detected: " + detectedUsbPorts + ".") : "";
+    document.getElementById("usbConnectionStatus").setAttribute("aria-label", missing + detected);
+  }
+  const profile = activeConnectionProfile();
+  const port = portSelect.value;
+  const mismatch = profile && port && state.serial_port === port && state.serial_mismatch;
+  const showTemporary = override?.port && port === override.port;
+  const status = document.getElementById("profilePortStatus");
+  status.hidden = !mismatch && !showTemporary;
+  document.getElementById("profilePortActions").hidden = status.hidden;
+  status.textContent = mismatch ? text("flashUsbMismatch") : showTemporary
+    ? workspaceText(port + " für diese Sitzung · Profil: " + (profile.port || "—"),
+      port + " for this session · Profile: " + (profile.port || "—")) : "";
+  status.classList.toggle("warning", Boolean(mismatch));
+  const save = document.getElementById("saveProfilePort");
+  save.hidden = !showTemporary || !!mismatch || !verifiedSerialUrl();
+  save.disabled = checking || profileChangePending;
+  save.textContent = workspaceText(port + " im Profil speichern", "Save " + port + " to profile");
+  const details = [port, state.base_url, state.firmware].filter(Boolean).join(" · ");
+  for (const id of ["connectionTarget", "firmwareTarget"]) document.getElementById(id).textContent = details;
+}
+
+async function saveWorkspaceProfilePort() {
+  const profile = activeConnectionProfile();
+  const override = activeProfilePortOverride(profile);
+  const port = document.getElementById("portSelect").value;
+  if (!override?.port || override.port !== port || !verifiedSerialUrl() || lastDeviceStatus.serial_mismatch || profileChangePending) return;
+  const feedback = document.getElementById("connectionFeedback");
+  feedback.textContent = "";
+  try {
+    await submitDeviceProfile({action:"update", id:profile.id, url:profile.url, port});
+  } catch (error) {
+    feedback.textContent = error.message;
+  }
 }
 function selectWorkspaceView(view) {
+  if (view !== workspaceView && typeof startState !== "undefined" && startState?.busy) return;
   if (view !== "management" && typeof explorerCanLeave === "function" && !explorerCanLeave()) return;
   workspaceView = view;
   const row = Object.values(workspaceGroups).flat().find(item => item[0] === view);
@@ -154,6 +235,7 @@ async function submitDeviceProfile(payload) {
   profileChangePending = true;
   try {
     await api("/api/device-profiles", {method:"POST", body:payload});
+    window.sessionStorage?.setItem("workspaceAfterProfileChange", workspaceView);
     // Old requests remain tied to old DOM values until this document is discarded.
     if (typeof pd !== "undefined") pd.allowUnload = true;
     window.location.reload();
@@ -205,7 +287,16 @@ function initializeWorkspace() {
   portActions.appendChild(portSelect);
   portActions.appendChild(document.getElementById("refreshPorts"));
   portLabel.appendChild(portActions);
-  connection.appendChild(portLabel);
+  connection.append(portLabel, document.getElementById("flashUsbDeviceStatus"), document.getElementById("profilePortActions"));
+  connection.querySelector("#saveProfilePort").addEventListener("click", saveWorkspaceProfilePort);
+  const target = document.createElement("p"); target.className = "workspace-target"; target.id = "connectionTarget";
+  const connectionFeedback = document.createElement("p"); connectionFeedback.className = "workspace-target warning";
+  connectionFeedback.id = "connectionFeedback"; connectionFeedback.setAttribute("role", "status");
+  connection.append(target, connectionFeedback);
+  const firmwareTarget = document.createElement("p"); firmwareTarget.className = "workspace-target"; firmwareTarget.id = "firmwareTarget";
+  const firmwareFeedback = document.createElement("p"); firmwareFeedback.className = "workspace-target warning";
+  firmwareFeedback.id = "firmwareFeedback"; firmwareFeedback.setAttribute("role", "status");
+  cards[0].querySelector("h2").after(firmwareTarget, firmwareFeedback, cards[0].querySelector(".firmware-release"));
   firmware.prepend(connection);
   const maintenance = document.createElement("section"); maintenance.className = "card workspace-maintenance";
   const mh = document.createElement("h2"); mh.id = "workspaceMaintenanceTitle"; maintenance.appendChild(mh);
@@ -214,13 +305,39 @@ function initializeWorkspace() {
   const settingsCard = document.createElement("section"); settingsCard.className = "card span-2";
   const sh = document.createElement("h2"); sh.id = "workspaceSettingsTitle"; settingsCard.appendChild(sh);
   settingsCard.appendChild(document.querySelector(".header-side"));
+  const showStart = document.createElement("label");
+  showStart.className = "checkline start-preference";
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.id = "startOpenPreference";
+  const label = document.createElement("span");
+  label.id = "startOpenPreferenceLabel";
+  showStart.append(checkbox, label);
+  const startStatus = document.createElement("p");
+  startStatus.id = "startPreferenceStatus";
+  startStatus.setAttribute("role", "status");
+  settingsCard.append(showStart, startStatus);
   const devices = document.createElement("section"); devices.className = "workspace-settings-devices";
   const devicesHeading = document.createElement("h3"); devicesHeading.id = "workspaceDevicesTitle";
+  const enableLabel = document.createElement("label"); enableLabel.className = "checkline";
+  const enableProfiles = document.createElement("input"); enableProfiles.type = "checkbox"; enableProfiles.id = "enableProfiles";
+  const enableText = document.createElement("span"); enableText.id = "enableProfilesLabel";
+  enableLabel.append(enableProfiles, enableText);
+  const profileControls = document.createElement("div"); profileControls.id = "settingsProfileControls";
+  const modeStatus = document.createElement("p"); modeStatus.className = "workspace-target warning"; modeStatus.setAttribute("role", "status");
   const selectedDevice = document.createElement("p"); selectedDevice.id = "settingsActiveDevice"; selectedDevice.className = "muted";
   const deviceActions = document.createElement("div"); deviceActions.className = "actions";
   for (const id of ["editDeviceProfile", "addDeviceProfile"]) deviceActions.appendChild(document.getElementById(id));
   const profileSelect=document.createElement("select");profileSelect.id="settingsProfileSelect";profileSelect.setAttribute("aria-label",workspaceText("Profil zum Bearbeiten","Profile to edit"));
-  devices.append(devicesHeading, selectedDevice, profileSelect, deviceActions); settingsCard.appendChild(devices);
+  profileControls.append(selectedDevice, profileSelect, deviceActions);
+  devices.append(devicesHeading, enableLabel, modeStatus, profileControls); settingsCard.appendChild(devices);
+  enableProfiles.addEventListener("change", async () => {
+    enableProfiles.disabled = true;
+    modeStatus.textContent = "";
+    try { await submitDeviceProfile({action:"mode", enabled:enableProfiles.checked}); }
+    catch (error) { modeStatus.textContent = error.message; }
+    finally { enableProfiles.disabled = false; enableProfiles.checked = !!appConfig.profiles_enabled; }
+  });
   const inventory = document.createElement("section"); inventory.className="workspace-settings-devices";
   const inventoryLabel=document.createElement("label");inventoryLabel.id="settingsInventoryLabel";inventoryLabel.htmlFor="settingsInventoryPath";
   const inventoryActions=document.createElement("div");inventoryActions.className="input-action settings-inventory-row";
@@ -247,6 +364,23 @@ function initializeWorkspace() {
     try { await submitDeviceProfile({action:"select", id:event.target.value}); }
     catch (error) { feedback.textContent = error.message; refreshWorkspaceProfiles(); }
   });
+  document.getElementById("headerProfileSelect").addEventListener("change", async event => {
+    connectionFeedback.textContent = firmwareFeedback.textContent = "";
+    try { await submitDeviceProfile({action:"select", id:event.target.value}); }
+    catch (error) { connectionFeedback.textContent = firmwareFeedback.textContent = error.message; refreshWorkspaceProfiles(); }
+  });
+  const tooltip = document.getElementById("connectionTooltip");
+  for (const id of ["usbConnectionStatus", "networkConnectionStatus"]) {
+    const icon = document.getElementById(id);
+    const show = () => { tooltip.textContent = icon.getAttribute("aria-label"); tooltip.hidden = false; };
+    const hide = () => { tooltip.hidden = true; };
+    icon.addEventListener("mouseenter", show);
+    icon.addEventListener("focus", show);
+    icon.addEventListener("click", show);
+    icon.addEventListener("mouseleave", hide);
+    icon.addEventListener("blur", hide);
+    icon.addEventListener("keydown", event => { if (event.key === "Escape") hide(); });
+  }
   document.getElementById("addDeviceProfile").addEventListener("click", () => openDeviceProfile("add"));
   document.getElementById("editDeviceProfile").addEventListener("click", () => openDeviceProfile("update"));
   document.getElementById("closeDeviceProfile").addEventListener("click", () => document.getElementById("deviceProfileDialog").close());

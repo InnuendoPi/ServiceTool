@@ -31,17 +31,9 @@ step does not authorize the remaining steps.
    - [static/index.html](./static/index.html)
    - [version.json](./version.json)
 
-1. Build Windows locally:
-
-```powershell
-& .\build_servicetool_windows_release.ps1
-```
-
-The build creates:
-
-- [dist/Brautomat32ServiceTool.exe](./dist/Brautomat32ServiceTool.exe)
-- [Brautomat32ServiceTool-win.zip](./Brautomat32ServiceTool-win.zip)
-- an updated [version.json](./version.json) with the Windows SHA256 value
+1. For local Windows testing, run `build_servicetool.cmd`. It creates
+   `dist/Brautomat32ServiceTool.exe`. Keep the release manifest unpublished
+   while testing.
 
 1. Review and commit the changes deliberately.
 
@@ -74,10 +66,9 @@ The build creates:
   Device acceptance remains separate.
 
 - `build_servicetool.cmd` builds only `Windows`.
-- `build_servicetool_windows_release.ps1` builds `Windows`, creates the ZIP,
-  and updates the Windows SHA256 value.
-- Reproducible builds for all three platforms are created by GitHub Actions.
-- `Linux` and `macOS` are not built locally.
+- The Windows job uses `build_servicetool_windows_release.ps1` to package
+  its ZIP. The GitHub Actions release job publishes the Windows, Linux and
+  macOS packages and writes the manifest from the verified release assets.
 - Release ZIP files are not stored in git history.
 - Releases may only be published from `main`.
 - Every build and release job uses the exact commit that started the workflow.

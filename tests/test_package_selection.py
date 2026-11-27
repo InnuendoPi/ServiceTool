@@ -30,19 +30,20 @@ class PackageSelectionTests(unittest.TestCase):
                 catalog = app.package_catalog(firmware)
                 self.assertEqual(catalog["package_root"], "all")
                 self.assertTrue(all(p["available"] and p["path"] for p in catalog["packages"]))
-                self.assertEqual([p["root"] for p in catalog["packages"]], ["build", "build", "Updates"])
+                self.assertEqual([p["root"] for p in catalog["packages"]], ["build", "build", "Updates", "Updates", "Updates"])
 
     def test_special_ref_can_offer_both_target_layouts(self):
         def query(url, **kwargs):
             return [{"tag_name": "v-test"}] if "/releases?" in url else []
-        def location(source, ref, root):
-            return {"base_url": f"https://example/{ref}/{root}/ESP32-IDF5",
+        def location(source, ref, root, *, idf6=False):
+            directory = "ESP32-IDF6" if idf6 else "ESP32-IDF5"
+            return {"base_url": f"https://example/{ref}/{root}/{directory}",
                     "version": "1.70.4" if root == "Updates" else "1.66.0", "type": "Release"}
         with patch.object(app, "json_request", side_effect=query), patch.object(app, "package_location", side_effect=location):
             rows = app.list_special_versions(None)
-        self.assertEqual([r["root"] for r in rows], ["build", "Updates"])
-        self.assertEqual([r["ref"] for r in rows], ["v-test", "v-test"])
-        self.assertNotEqual(rows[0]["base_url"], rows[1]["base_url"])
+        self.assertEqual([r["root"] for r in rows], ["build", "Updates", "Updates"])
+        self.assertEqual([r["ref"] for r in rows], ["v-test"] * 3)
+        self.assertEqual(len({r["base_url"] for r in rows}), 3)
 
     def test_generation_boundary(self):
         for version, root in (("1.65.5", "build"), ("1.66.0", "build"), ("1.66.99", "build"), ("1.67.0", "Updates"),
@@ -94,13 +95,61 @@ class PackageSelectionTests(unittest.TestCase):
             return [{"tag_name":"missing"}] if "/releases?" in url else [
                 {"sha":"a"*40,"commit":{"message":"V 1.67.2"}},
                 {"sha":"b"*40,"commit":{"message":"V 1.67.1"}}]
-        def location(source,ref,root):
-            if ref=="missing": raise ValueError("missing")
+        def location(source,ref,root,*,idf6=False):
+            if ref=="missing" or idf6: raise ValueError("missing")
             return {"version":"1.67.0","type":"Development","base_url":ref+"/Updates/ESP32-IDF5dev"}
         with patch.object(app,"json_request",side_effect=query), patch.object(app,"package_location",side_effect=location):
             rows=app.list_special_versions("Updates")
         self.assertEqual(len(rows),2)
         self.assertIn("1.67.2",rows[0]["label"])
+
+    def test_idf6_package_routes_and_manifest_variant(self):
+        files = [{"name": name, "type": "file"} for name in app.REQUIRED_PACKAGE_FILES + ["serviceapp.bin"]]
+        for source, branch, kind, directory in (
+            ("release_idf6", "main", "Release", "ESP32-IDF6"),
+            ("development_idf6", "development", "Development", "ESP32-IDF6dev"),
+        ):
+            with self.subTest(source=source):
+                with patch.object(app, "json_request", side_effect=[{"version": "1.71.0", "type": kind}, files]) as query:
+                    result = app.package_location(source, "", "Updates")
+                    self.assertTrue(result["base_url"].endswith(f"/{branch}/Updates/{directory}"))
+                    self.assertTrue(query.call_args_list[0].args[0].endswith(f"/{branch}/Updates/version-idf6.json"))
+                other = "Development" if kind == "Release" else "Release"
+                with patch.object(app, "json_request", return_value={"version": "1.71.0", "type": other}) as query:
+                    with self.assertRaisesRegex(ValueError, "variant"):
+                        app.package_location(source, "", "Updates")
+                    query.assert_called_once()
+
+    def test_idf6_main_must_embed_the_selected_channel_and_version(self):
+        main = (b"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/development/"
+                b"Updates/version-idf6.json\0embedded\x001.71.0\x00")
+        development = (app.REMOTE_PACKAGES["development_idf6"]["base_url"] + "/firmware.bin").encode() + b"\0"
+        release = (app.REMOTE_PACKAGES["release_idf6"]["base_url"] + "/firmware.bin").encode() + b"\0"
+        main += app.github_raw_language_base("main").encode() + b"Updates/version-idf6.json\0" + development
+        app.check_idf6_package_main(main, "/Updates/ESP32-IDF6dev", "1.71.0")
+        app.check_idf6_image_pair(main, development)
+        with self.assertRaisesRegex(ValueError, "same IDF6 update channel"):
+            app.check_idf6_image_pair(main, release)
+        with self.assertRaisesRegex(ValueError, "channel"):
+            app.check_idf6_package_main(main + release, "/Updates/ESP32-IDF6dev", "1.71.0")
+        with self.assertRaisesRegex(ValueError, "channel"):
+            app.check_idf6_package_main(main, "/Updates/ESP32-IDF6", "1.71.0")
+        with self.assertRaisesRegex(ValueError, "version"):
+            app.check_idf6_package_main(main, "/Updates/ESP32-IDF6dev", "1.71.1")
+
+    def test_webupdate_idf6_uses_firmware_channel_and_never_idf5_fallback(self):
+        for branch, kind in (("main", "Release"), ("development", "Development")):
+            url = f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{branch}/Updates/version-idf6.json"
+            status = {"firmware": "1.71.0", "dev": False, "raw": {"updateSource": {"manifest": url}}}
+            with (patch.object(app, "device_status", return_value=status),
+                  patch.object(app, "read_firmware_update_info", return_value=None)):
+                with patch.object(app, "json_request", return_value={"version": "1.71.1", "type": kind}) as query:
+                    self.assertTrue(app.firmware_update_status("http://device")["available"])
+                    query.assert_called_once_with(url, timeout=20.0)
+                with patch.object(app, "json_request", side_effect=HTTPError(url, 404, "missing", {}, None)) as query:
+                    with self.assertRaises(HTTPError):
+                        app.firmware_update_status("http://device")
+                    query.assert_called_once_with(url, timeout=20.0)
 
     def test_wrong_generation_manifest_is_rejected_before_package_lookup(self):
         for root, version in (("build", "1.70.0"), ("Updates", "1.66.99"),
@@ -172,7 +221,9 @@ class BranchRoutingTests(unittest.TestCase):
             query.assert_called_once_with("development", "Updates")
 
     def test_explicit_channel_overrides_legacy_dev_boolean(self):
-        with patch.object(app, "device_status", return_value={"firmware":"1.70.0", "dev":False, "updatechannel":2}), patch.object(app, "remote_repo_version_manifest", return_value={"version":"1.70.0"}) as query:
+        with (patch.object(app, "device_status", return_value={"firmware":"1.70.0", "dev":False, "updatechannel":2}),
+              patch.object(app, "read_firmware_update_info", return_value=None),
+              patch.object(app, "remote_repo_version_manifest", return_value={"version":"1.70.0"}) as query):
             self.assertFalse(app.firmware_update_status("http://device")["available"])
             query.assert_called_once_with("development", "Updates")
         with self.assertRaises(ValueError):

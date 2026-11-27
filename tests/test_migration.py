@@ -17,16 +17,21 @@ def table(layout):
     return (data + b"\xeb\xeb" + b"\xff" * 14 + hashlib.md5(data).digest()).ljust(4096, b"\xff")
 
 
-def image(role=None, version="1.67.0"):
+def image(role=None, version="1.67.0", idf=None):
     header = bytearray(24)
     header[0:4] = bytes((0xE9, 1, 2, 0x20))
     header[23] = 1
     segment = bytearray(512)
     struct.pack_into("<I", segment, 0, 0xABCD5432)
     segment[16:23] = b"buildid"
+    if idf:
+        sdk = f"v{idf}.1.1".encode()
+        segment[112:112 + len(sdk)] = sdk
     if role:
         struct.pack_into("<16sII", segment, 256, role.encode(), 1, 24)
     segment[400:400 + len(version) + 2] = b"\0" + version.encode() + b"\0"
+    if idf == 6:
+        segment.extend((app.REMOTE_PACKAGES["development_idf6"]["base_url"] + "/firmware.bin").encode() + b"\0")
     body = bytes(header) + struct.pack("<II", 0x3F400020, len(segment)) + segment
     checksum = 0xEF
     for byte in segment:
@@ -53,11 +58,12 @@ def nvs(active=False, records=None):
     return bytes(page).ljust(0x5000, b"\xff")
 
 
-def package(root, version="1.67.0"):
+def package(root, version="1.67.0", *, idf6=False):
     root.mkdir()
-    contents = {"firmware.bin": image("BrautomatMain", version),
-                "serviceapp.bin": image("BrautomatSvcApp"),
-                "bootloader.bin": image(), "partitions.bin": table(m.NEW_LAYOUT),
+    sdk = 6 if idf6 else None
+    contents = {"firmware.bin": image("BrautomatMain", version, sdk),
+                "serviceapp.bin": image("BrautomatSvcApp", idf=sdk),
+                "bootloader.bin": image(), "partitions.bin": table(m.IDF6_LAYOUT if idf6 else m.NEW_LAYOUT),
                 "boot_app0.bin": b"\xff" * 8192}
     for name, content in contents.items():
         (root / name).write_bytes(content)
@@ -126,6 +132,79 @@ class MigrationTests(unittest.TestCase):
         session.save(base_url="http://device", source_version="1.66.1", target_version="1.67.0", user_files={})
         session.capture_api(payload)
         return session, payload
+
+    def test_idf5_beta_migration_restores_after_boot_and_resumes_over_http(self):
+        from contextlib import ExitStack
+
+        target = package(self.root / "idf6", "1.71.0", idf6=True)
+        (target / "version.json").write_text('{"version": "1.71.0"}', encoding="utf-8")
+        device = Device()
+        device.flash[0x8000:0x9000] = table(m.NEW_LAYOUT)
+        original = bytes(device.flash)
+        backup = b'{"config":[{}],"future_field":[42]}'
+        job = app.Job("test", "migration", "Test")
+
+        def restore(job, base, filename, content, **kwargs):
+            self.assertEqual(device.boots, 1)
+            self.assertEqual(content, backup)
+            self.assertEqual(filename, "backup.json")
+
+        with ExitStack() as stack:
+            for name, value in {
+                "CACHE_DIR": self.root / "cache",
+            }.items():
+                stack.enter_context(patch.object(app, name, value))
+            for name, value in {
+                "migration_root": self.root / "backups",
+                "ensure_migration_port_unlocked": None,
+                "ensure_esptool_port_available": None,
+                "current_firmware_version": ("1.70.0", (1, 70, 0)),
+                "migration_require_idle": None,
+                "download_config_backup": backup,
+                "ensure_esptool_available": Path("tool"),
+                "clear_migration_webupdate_markers": [],
+                "prepare_esptool_serial_handover": {},
+                "json_request": {"firm": "1.71.0"},
+                "download_fs_file": b"web-content",
+            }.items():
+                stack.enter_context(patch.object(app, name, return_value=value))
+            stack.enter_context(patch.object(m, "Esptool", return_value=device))
+            with patch.object(app, "restore_job", side_effect=RuntimeError("restore interrupted")):
+                with self.assertRaisesRegex(RuntimeError, "restore interrupted"):
+                    app.migration_job(job, "http://device", True, "COM3", 921600,
+                                      "open", str(target), "", False, True)
+            session = next((self.root / "backups").iterdir())
+            self.assertEqual(m.Session.load_directory(session).report["phase"], "restoring-api")
+            with patch.object(app, "restore_job", side_effect=restore) as apply:
+                app.migration_recovery_job(job, session.name, "", 921600, "resume")
+                apply.assert_called_once()
+        self.assertEqual(device.writes, 1)
+        self.assertEqual(device.flash[0x8000:0x9000], table(m.IDF6_LAYOUT))
+        self.assertEqual(device.flash[0x220000:0x350000],
+                         (target / "serviceapp.bin").read_bytes().ljust(0x130000, b"\xff"))
+        for offset, size in m.PRESERVED.values():
+            self.assertEqual(device.flash[offset:offset + size], original[offset:offset + size])
+        report = m.Session.load_directory(session).report
+        self.assertEqual(report["phase"], "complete")
+        self.assertTrue(report["restore_completed"])
+
+    def test_idf6_source_layout_and_mixed_idf_images_fail_before_write(self):
+        target = package(self.root / "idf6", "1.71.0", idf6=True)
+        version = "1.71.0"
+        session = m.ApiSession.create(self.root / "backups", target, m.validate_package(target, version), {})
+        session.save(source_layout="idf5")
+        session.capture_api(b'{"config":[{}]}')
+        device = Device()
+        with self.assertRaisesRegex(ValueError, "partition layout"):
+            session.install(device, lambda _: None)
+        self.assertEqual(device.writes, 0)
+        self.assertNotIn("mac", session.report)
+        self.assertEqual(app.usb_flash_plan(target, False)[-1][2], 0x220000)
+        (target / "serviceapp.bin").write_bytes(image("BrautomatSvcApp", idf=5))
+        with self.assertRaisesRegex(ValueError, "ESP-IDF version"):
+            m.validate_package(target, version)
+        with self.assertRaisesRegex(ValueError, "ESP-IDF version"):
+            app.usb_flash_plan(target, False)
 
     def test_api_install_and_reload_never_read_flash(self):
         session, payload = self.api_session()

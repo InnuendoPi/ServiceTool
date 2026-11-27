@@ -349,12 +349,45 @@ function exChooseInventoryVersion(target) {
     dialog.addEventListener("cancel",event=>{event.preventDefault();finish(null);});dialog.showModal();
   });
 }
+function isDeviceRecipePath(path) {
+  return /^\/(?:Rezepte|Fermenter)\/[^/]+\.json$/i.test(path);
+}
+async function requestRecipeWrite(endpoint, body, isCurrent) {
+  let result = await api(endpoint, {method:"POST", body});
+  if (!result.recipe_warning && !result.recipe_conflict) return result;
+  if (!isCurrent()) return null;
+  if (result.recipe_warning && !confirm(exText(
+    body.action === "rename"
+      ? "Die Firmware 1.66.x oder älter kann Dateinamen mit Leer- oder Sonderzeichen möglicherweise nicht laden. Trotzdem umbenennen?"
+      : "Die Firmware 1.66.x oder älter kann Dateinamen mit Leer- oder Sonderzeichen möglicherweise nicht laden. Unverändert übertragen?",
+    body.action === "rename"
+      ? "Firmware 1.66.x or older may be unable to load file names containing spaces or special characters. Rename anyway?"
+      : "Firmware 1.66.x or older may be unable to load file names containing spaces or special characters. Transfer without renaming?"
+  ))) return null;
+  if (result.recipe_conflict && !confirm(exText(
+    `„${result.target}“ existiert bereits. Datei ersetzen?`,
+    `"${result.target}" already exists. Replace the file?`
+  ))) return null;
+  if (!isCurrent()) return null;
+  result = await api(endpoint, {method:"POST", body:{...body,
+    acknowledge_legacy_recipe_name: !!result.recipe_warning,
+    overwrite: !!result.recipe_conflict
+  }});
+  if (result.recipe_warning || result.recipe_conflict) {
+    throw new Error(exText("Dateiname oder Ziel hat sich geändert. Bitte erneut versuchen.", "The file name or destination changed. Try again."));
+  }
+  return result;
+}
 async function exAction(action,fields={}) {
   if(ex.busy)return false;
   const context=exContext();ex.busy=true;exButtons();
   try {
     const body={side:ex.side,view:ex.view,path:ex.selected?.path || ex.path,base_url:managementDeviceUrl(),maintenance:managementServiceActive(),local_folder:ex.side === "local" ? ex.localFolder : "",action,...fields};
-    let result=await api("/api/explorer/action",{method:"POST",body});
+    const recipeTarget = body.side === "device" && action === "upload" ? body.path :
+      body.side === "local" && action === "transfer" ? body.target : "";
+    if (recipeTarget && isDeviceRecipePath(recipeTarget)) body.overwrite = false;
+    let result = await requestRecipeWrite("/api/explorer/action", body, () => context === exContext());
+    if (!result) return false;
     if(result.conflict) {
       const conflict=await exChooseInventoryVersion(result.target);
       if(!conflict || context !== exContext())return false;
@@ -371,14 +404,14 @@ function exDeviceTarget(file) {
   const info=versionInfoForName(file.name);
   const configNames=["config.txt","log_cfg.json"];
   const name=info && (configNames.includes(info.baseName) || ex.files.some(row=>row.type === "file" && row.name === info.baseName)) ? info.baseName : file.name;
-  if(file.kind === "mashplan")return {name,folder:"/Rezepte"};
+  if(file.kind === "mashplan")return {name:file.name,folder:"/Rezepte"};
   if(configNames.includes(name) || !name.toLowerCase().endsWith(".json"))return {name,folder:"/"};
   const root=ex.localFolder ? (appConfig.explorer_folders || []).find(item=>item.token === ex.localFolder)?.path || "" : appConfig.inventory_root || "";
   const parts=(root.replaceAll("\\","/")+file.path).split("/").slice(0,-1);
   const known=["Fermenter","language","Profile","Rezepte"];
   for(const part of parts.reverse()) {
     const folder=known.find(item=>item.toLowerCase() === part.toLowerCase());
-    if(folder)return {name,folder:"/"+folder};
+    if(folder)return {name:folder === "Rezepte" || folder === "Fermenter" ? file.name : name,folder:"/"+folder};
     if(part.toLowerCase() === "config")return {name,folder:"/"};
   }
   return {name,folder:"/"};
@@ -475,7 +508,7 @@ async function exUpload(event) {
   const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
   for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
   if(context !== exContext() || side !== ex.side || path !== `${ex.path.replace(/\/$/,"")}/${file.name}`)return;
-  if(await exAction("upload",{path,content:btoa(binary),overwrite:true}))await loadExplorer();
+  if(await exAction("upload",{path,content:btoa(binary),overwrite:side === "device"}))await loadExplorer();
 }
 async function exCopy() {
   if(ex.preview?.text == null)return;

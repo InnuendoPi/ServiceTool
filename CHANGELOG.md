@@ -1,6 +1,25 @@
 # Changelog
 
-## 2.0.2 - Unveröffentlicht
+## 2.1.0
+
+- Assistenten führen durch Einrichtung, Firmware-Update, Migration und
+  Konfigurationsbackup. Bei der Einrichtung kann vor dem Löschen eine
+  Sicherung erstellt werden.
+- Unterstützt Release und Development für IDF6 sowie die bestehenden
+  Paketpfade für 1.66 und die 1.70-IDF5-Beta. Bei kompatibler Firmware folgt
+  die Updateprüfung der Einstellung **Testversionen**. Ein Kanalwechsel
+  kann eine USB-Installation erfordern.
+- Migriert die 1.70-IDF5-Beta per USB auf IDF6 mit Backup, passender
+  Partitionstabelle und ServiceApp sowie anschließendem Restore.
+- Erhält Leerzeichen und Umlaute in Namen von Maische- und Fermenterplänen.
+  Bei Firmware 1.66 oder älter warnt das ServiceTool vor inkompatiblen
+  Namen. Der Explorer fragt vor dem Ersetzen vorhandener Dateien nach.
+- Ein abweichender USB-Port lässt sich für die aktuelle Sitzung nutzen
+  und nach bestätigter Gerätezuordnung optional ins Profil übernehmen.
+- Der Wartungsmodus unterstützt beide ServiceApp-Layouts. Sicherungen
+  erhalten eindeutige Dateinamen.
+
+## 2.0.2
 
 - Ergänzt unter Einstellungen die Darstellung System, Hell und Dunkel.
   Die Auswahl wird zentral gespeichert; System folgt der Browserpräferenz.

@@ -170,12 +170,12 @@ def select_service(device, directory: Path, status) -> None:
     status("maintenanceChecking")
     device.identity()
     metadata = device.read(0x8000, 0x8000, directory / "boot-metadata.bin")
-    layout = metadata[:0x1000]
-    migration.check_layout(layout, migration.NEW_LAYOUT)
+    layout = migration.service_layout(metadata[:0x1000])
     nvs = metadata[0x1000:0x6000]
     check_no_pending_update(nvs)
     status("maintenanceCheckingImage")
-    image = device.read(0x220000, 0x120000, directory / "serviceapp.bin")
+    service_offset, service_size = migration.image_regions(layout)["serviceapp.bin"]
+    image = device.read(service_offset, service_size, directory / "serviceapp.bin")
     if len(image) < 24 or image[0] != 0xE9 or not 1 <= image[1] <= 16:
         raise ValueError("Invalid ServiceApp image")
     cursor = 24
@@ -185,6 +185,7 @@ def select_service(device, directory: Path, status) -> None:
         cursor += 8 + struct.unpack_from("<I", image, cursor + 4)[0]
     end = (cursor // 16) * 16 + 16 + 32
     migration.check_image(image[:end], "BrautomatSvcApp")
+    migration.check_service_layout_sdk(layout, image[:end])
     original = metadata[0x6000:0x8000]
     migration.durable_write(directory / "otadata-backup.bin", original)
     # ESP-IDF OTA sequence 2 selects ota_1. Preserve both original sectors on disk.

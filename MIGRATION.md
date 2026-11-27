@@ -1,28 +1,29 @@
 # Migration mit ServiceApp
 
-Die Migration unterstützt Brautomat32 von **1.62.0 bis einschließlich 1.66.x**
-auf **1.67.0 oder neuer mit kompatiblem ServiceApp-Layout**.
-Ein vorheriges Zwischenupdate ist nicht erforderlich. Unterstützt werden
-ESP32-Geräte mit 4 MiB Flash und dem bisherigen symmetrischen Partitionslayout.
-Das ServiceTool prüft Firmware und Partitionstabelle des Zielpakets vor
-dem Schreiben. Die Quellversion wird über die Geräte-API ermittelt.
+Die Migration unterstützt ESP32-Geräte mit 4 MiB Flash.
+
+- **1.62.0 bis 1.66.x** können direkt auf ein kompatibles ServiceApp-Paket
+  ab 1.67 wechseln.
+- **1.70 IDF5 Beta** wechselt auf ein **IDF6-Paket**. Bei der Umstellung
+  auf IDF6 prüft das ServiceTool auch die Partitionstabelle des Geräts.
 
 ## Migration durchführen
 
-1. Gerät per USB anschließen und sicherstellen, dass es über die Geräte-URL
-   erreichbar ist. Alle Brau- und Fermenterprozesse müssen beendet sein.
-2. Im Tab **Migration** die Paketquelle, das Firmwarepaket und den COM-Port
-   auswählen. Diese Auswahl wird mit dem Firmwaretab geteilt.
-3. **Migration starten** wählen. USB und Stromversorgung bis zum Abschluss
-   verbunden lassen. Der aktuelle Arbeitsschritt wird angezeigt.
+1. Alle Brau- und Fermenterprozesse beenden. Den Brautomat per USB anschließen
+   und sicherstellen, dass er über seine Geräte-URL erreichbar ist.
+2. **Assistenten → Firmware migrieren** öffnen und das Gerät prüfen lassen.
+   Soll ein Paket manuell gewählt werden, **Service → Migration** öffnen und
+   unter **Gerät** den COM-Port kontrollieren.
+3. Zielversion prüfen und **Migration starten** wählen. USB und Stromversorgung
+   bis zum Abschluss verbunden lassen. Der aktuelle Arbeitsschritt wird
+   angezeigt.
 
-Zuerst wird das API-Backup als `backup.json` gespeichert. Der gesamte von der
-Firmware gelieferte Inhalt bleibt erhalten: Einstellungen, WLAN-Zugangsdaten,
-Maischepläne, Fermenterpläne, Profile und Logging-Konfiguration.
-Danach werden Hauptfirmware, ServiceApp und Bootdateien installiert.
-NVS und LittleFS werden nicht überschrieben; Webdateien werden aktualisiert.
-Es gibt keinen `read-flash`-Durchlauf. esptool bestätigt die geschriebenen Images.
-Die Firmware selbst ist nicht Bestandteil dieses Backups.
+Das ServiceTool speichert zuerst das vollständige API-Backup als
+`backup.json`. Danach schreibt es Hauptfirmware, Partitionstabelle,
+ServiceApp und Bootdateien. NVS und LittleFS bleiben beim Flashen erhalten.
+Nach dem Start aktualisiert das Tool die zum Paket passenden Webdateien.
+Beim Wechsel auf IDF6 spielt es anschließend das API-Backup automatisch
+zurück und wartet auf die erneute Erreichbarkeit des Geräts.
 
 ## Firmwarepaket
 
@@ -52,16 +53,16 @@ Ein neuer Backupordner enthält:
 - `backup.json`: unverändertes API-Backup der Firmware.
 - `report.json`: Angaben zur Sicherung und zum Migrationsverlauf.
 
-Für **Restore Backup** das Gerät über seine URL verbinden und den Backupordner
-wählen. Die Einstellungen werden über die Restore-API zurückgespielt.
+Für **Restore Backup** unter **Service → Migration** das Gerät über seine URL
+verbinden und den Backupordner wählen. Die Einstellungen werden über die
+Restore-API zurückgespielt.
 Die installierte Firmware bleibt erhalten; ein Firmware-Rückwechsel erfolgt
 nicht. Die API muss dafür erreichbar sein.
 
-Nach einem unterbrochenen Schreibvorgang **Migration fortsetzen** verwenden,
-sofern die Installationsdateien noch im Cache liegen. Das geprüfte Paket wird
-erneut installiert, ohne Flash auszulesen. Andere serielle Aktionen bleiben
-während einer unvollständigen Migration gesperrt. Nach fehlgeschlagener
-Schreibprüfung erfolgt kein automatischer Neustart.
+Bei einem unterbrochenen Schreibvorgang **Migration fortsetzen** verwenden,
+solange das geprüfte Paket im Cache liegt. Nach erfolgreichem Start können
+Webdatei-Update und automatischer Restore über die Geräte-URL fortgesetzt
+werden. Nach fehlgeschlagener Schreibprüfung erfolgt kein Neustart.
 
 Ältere Sicherungen mit `flash-backup.bin` und `nvs.bin` bleiben unterstützt.
 Nur deren Wiederherstellung verwendet USB, ersetzt auch die Firmware und

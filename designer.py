@@ -1,5 +1,6 @@
 """Recipe adapters and local draft storage. No device writes or SQLite migrations."""
 from config_store import load_config, write_config, LOCK as CONFIG_LOCK
+from recipe_filename import validate_local_recipe_filename, validate_recipe_name
 import base64
 import copy
 import hashlib
@@ -332,16 +333,13 @@ def export_plan(value):
     # Advisory rules never gate this conversion. JSON must still be representable.
     meta = {"Kochdauer": 0, "Nachiso": 0, **copy.deepcopy(value.get("misc", {}))}
     meta["Sudname"] = str(value.get("name", ""))
-    meta["File"] = "/Rezepte/" + filename(value.get("name") or "Maischeplan") + ".json"
+    meta["File"] = "/Rezepte/" + validate_recipe_name(value.get("name") or "Maischeplan") + ".json"
     return {"misc": [meta], "mash": [
         {**(copy.deepcopy(s.get("original", {})) if value.get("source", {}).get("type") == "Brautomat" else {}),
          "Rast": s["Rast"], "Temperatur": number(s.get("Temperatur")),
          "Dauer": number(s.get("Dauer")), "autonext": bool(s.get("autonext"))}
         for s in value["steps"]]}
 
-
-def filename(name):
-    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(name)).strip(" .")[:100] or "Maischeplan"
 
 
 def kbh_database(path):
@@ -491,8 +489,10 @@ class DesignerStore:
                 raw = str(path)
                 if inventory_root is None:
                     raw = raw.removeprefix("/Rezepte/")
-                value = (boundary / clean_path(raw).lstrip("/")).resolve()
-                if not value.is_relative_to(boundary) or value.suffix.lower() != ".json" or value.name.startswith("."):
+                relative_path = clean_path(raw).lstrip("/")
+                validate_local_recipe_filename(Path(relative_path).name)
+                value = (boundary / relative_path).resolve()
+                if not value.is_relative_to(boundary) or value.suffix.lower() != ".json" or value.name == ".inventory-info.json":
                     raise ValueError("Invalid inventory recipe path")
                 return value
             def family(path):
@@ -537,11 +537,11 @@ class DesignerStore:
                 return path.relative_to(root).as_posix()
             if action == "inventory-publish":
                 value = validate_draft(data["draft"])
-                name = filename(value.get("name", ""))
+                name = validate_recipe_name(value.get("name", ""))
                 if not value.get("name", "").strip():
                     raise ValueError("Planname fehlt")
                 ref = value.get("inventory_ref") or {}
-                path = destination / (name + ".json")
+                path = target((destination.relative_to(boundary) / (name + ".json")).as_posix())
                 if ref.get("name") == name and (not data.get("folder") or data["folder"].rstrip("/") == ref.get("folder", "/Rezepte").rstrip("/")):
                     found = next((Path(k) for k, v in state.items() if v.get("id") == ref.get("id") and Path(k).is_relative_to(boundary)), None)
                     if not found or not found.exists() or not found.resolve().is_relative_to(boundary) or not Path(ref.get("root", "")).resolve().is_relative_to(boundary):
@@ -557,7 +557,9 @@ class DesignerStore:
                     if relative(base) in info:
                         info[relative(archived)] = info[relative(base)]
                 info.pop(relative(base), None)
-                content = json.dumps(export_plan(value), ensure_ascii=False, indent=2).encode("utf-8")
+                plan = export_plan(value)
+                plan["misc"][0]["File"] = "/Rezepte/" + base.name
+                content = json.dumps(plan, ensure_ascii=False, indent=2).encode("utf-8")
                 writes[base] = content
                 entry = {"id": uuid.uuid4().hex, "draft": value}
                 state[str(base)] = entry

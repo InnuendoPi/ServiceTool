@@ -112,6 +112,66 @@ class LanguageInstallTests(unittest.TestCase):
         self.assertIn(f"/{self.revision}/Updates/data/language/english.json", download.call_args.args[0])
         self.assertEqual(result["commit"], self.revision)
 
+    def test_idf6_language_catalog_uses_split_directories(self):
+        def catalog(url, **kwargs):
+            if "/contents/Updates/languages?" in url:
+                return [{"name": "english.json", "path": "Updates/languages/english.json"}]
+            self.assertIn("/contents/Updates/data/language?", url)
+            return [{"name": "deutsch.json", "path": "Updates/data/language/deutsch.json"},
+                    {"name": "english.json", "path": "Updates/data/language/english.json"}]
+
+        with patch.object(app, "json_request", side_effect=catalog):
+            expected = ["Updates/data/language/deutsch.json", "Updates/languages/english.json"]
+            for source, ref, idf6 in (("development_idf6", "", False), ("special", "v1.71.0", True)):
+                rows = app.list_remote_languages(source, ref, "Updates", idf6)
+                self.assertEqual([row["path"] for row in rows], expected)
+
+    def test_idf6_raw_language_fallback_and_install(self):
+        with (patch.object(app, "json_request", side_effect=OSError("catalog unavailable")),
+              patch.object(app, "download_bytes", return_value=b'{"label":"test"}') as download):
+            rows = app.list_remote_languages("release_idf6", package_root="Updates")
+        paths = {row["filename"]: row["path"] for row in rows}
+        self.assertEqual(len(paths), 12)
+        self.assertEqual(paths["deutsch.json"], "Updates/data/language/deutsch.json")
+        self.assertEqual(paths["english.json"], "Updates/languages/english.json")
+        self.assertTrue(all("/Updates/data/language/" not in call.args[0]
+                            or call.args[0].endswith("/deutsch.json") for call in download.call_args_list))
+
+        content = b'{"label":"English"}'
+        with (patch.object(app, "device_status", return_value={"firmware": "1.71.0"}),
+              patch.object(app, "remote_repo_version_manifest", return_value={"version": "1.71.0"}),
+              patch.object(app, "list_remote_languages", return_value=[{
+                  "filename": "english.json", "path": paths["english.json"]}]) as catalog,
+              patch.object(app, "download_bytes", return_value=content) as download,
+              patch.object(app, "post_file_to_fs", return_value="ok") as upload,
+              patch.object(app, "download_fs_file", return_value=content),
+              patch.object(app, "post_json", return_value="ok")):
+            app.install_language_job(app.Job("lang", "language", "Language"), "http://device",
+                                     "release_idf6", "english.json", package_root="Updates")
+        catalog.assert_called_once_with("special", self.revision, "Updates", package_idf6=True)
+        self.assertTrue(download.call_args.args[0].endswith(f"/{self.revision}/Updates/languages/english.json"))
+        self.assertEqual(upload.call_args.args[1], "/language/english.json")
+
+    def test_webfiles_update_preserves_language_destination_across_generations(self):
+        for source, root, version, expected in (
+                ("release", "build", "1.66.6", "language/english.json"),
+                ("development_170", "Updates", "1.70.6", "Updates/data/language/english.json"),
+                ("development_idf6", "Updates", "1.71.0", "Updates/languages/english.json")):
+            with (self.subTest(source=source),
+                  patch.object(app, "device_status", return_value={"firmware": version}),
+                  patch.object(app, "package_location"),
+                  patch.object(app, "list_language_files", return_value=["language/english.json"]),
+                  patch.object(app, "download_bytes", return_value=b'content') as download,
+                  patch.object(app, "post_file_to_fs", return_value="ok") as upload,
+                  patch.object(app, "try_base_urls", return_value=("http://device", "ok"))):
+                app.update_webfiles_job(app.Job("web", "webfiles", "Webfiles"),
+                                        "http://device", source, package_root=root)
+            prefix = f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{self.revision}/"
+            self.assertEqual(download.call_args.args[0], prefix + expected)
+            self.assertEqual(upload.call_args.args[1], "/language/english.json")
+            default_source = ("Updates/" if root == "Updates" else "") + "data/language/deutsch.json"
+            self.assertIn(prefix + default_source, [call.args[0] for call in download.call_args_list])
+
     def test_failed_download_upload_or_readback_never_activates_language(self):
         content = b'{"label":"English"}'
         for failing in ("download", "upload", "readback", "mismatch"):

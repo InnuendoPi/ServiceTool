@@ -16,8 +16,8 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
   const checks=[];
   const ctx=vm.createContext({
     $:id=>id==='deviceUrl' ? {value:url} : id==='wifiSpinner' ? {classList:{contains:()=>!scanning}} : {options:[]},
-    document:{querySelectorAll:()=>[]},placeFirmwareSelection(){},refreshMaintenance(){},writeStartupTrace(){},
-    deviceIsOnline:()=>false,serialDeviceAvailable:()=>serial,
+    document:{querySelectorAll:()=>[]},placeFirmwareSelection(){},refreshMaintenance(){},checkExpertConnectionOnEntry:()=>{}, writeStartupTrace(){},
+    deviceIsOnline:()=>false,serialDeviceAvailable:()=>serial,flashConnectionReturn:null,
     checkDevice:options=>{checks.push(options);return Promise.resolve();},console
   });
   vm.runInContext(source.slice(source.indexOf('function activateTab('),source.indexOf('function attachEvents(')),ctx);
@@ -64,12 +64,12 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
   vm.runInContext(workspaceSource, ctx);
   ctx.activateTab = tab => vm.runInContext(`workspaceTabActivated(${JSON.stringify(tab)})`, ctx);
   vm.runInContext('workspaceReady=true; renderWorkspaceNavigation()', ctx);
-  assert.deepEqual(elements.mainNavigation.children.map(n=>n.textContent), ['Gerät','Firmware','Daten','Service']);
+  assert.deepEqual(elements.mainNavigation.children.map(n=>n.textContent), ['Assistenten', 'Gerät', 'Firmware', 'Daten', 'Service']);
   assert.equal(elements.sectionNavigation.children.length,0);
-  elements.mainNavigation.children[1].listeners.click();
+  elements.mainNavigation.children.find(n=>n.textContent==='Firmware').listeners.click();
   assert.equal(ctx.document.body.dataset.workspaceView,'install');
   assert.equal(elements.sectionNavigation.children.length,0);
-  elements.mainNavigation.children[3].listeners.click();
+  elements.mainNavigation.children.find(n=>n.textContent==='Service').listeners.click();
   assert.equal(ctx.document.body.dataset.workspaceView,'logging');
   assert.deepEqual(elements.sectionNavigation.children.map(n=>n.textContent),['Serial Monitor','Telegraf','Wartung','Migration']);
   runnerHidden=false;
@@ -77,8 +77,11 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
   assert.deepEqual(elements.sectionNavigation.children.map(n=>n.textContent),['Serial Monitor','Telegraf','Wartung','Migration','Test Runner']);
   elements.sectionNavigation.children[2].listeners.click();
   assert.equal(ctx.document.body.dataset.workspaceView,'maintenance');
-  elements.mainNavigation.children[0].listeners.click();
+  elements.mainNavigation.children.find(n=>n.textContent==='Gerät').listeners.click();
   assert.equal(ctx.document.body.dataset.workspaceView,'connection');
+  elements.mainNavigation.children.find(n=>n.textContent==='Assistenten').listeners.click();
+  assert.equal(ctx.document.body.dataset.workspaceView,'start');
+  assert.equal(elements.sectionNavigation.children.length,0);
   ctx.designerCanLeave=()=>{throw new Error('Tab changes must not prompt for the retained plan');};
   vm.runInContext('workspaceView="designer";selectWorkspaceView("management")',ctx);
   assert.equal(ctx.document.body.dataset.workspaceView,'management');
@@ -156,12 +159,11 @@ const workspaceSource = fs.readFileSync('static/workspace.js', 'utf8');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 
 {
-  const ctx=vm.createContext({appConfig:{device_profiles:[{},{}]},serialPortScore:()=>99});
+  const ctx=vm.createContext({serialPortScore:port=>port.name === 'USB' ? 250 : 0});
   vm.runInContext(source.slice(source.indexOf('function choosePreferredSerialPort('),source.indexOf('async function applySelectedSerialPort(')),ctx);
-  assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"}],"COM4")',ctx),'COM5');
+  assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5",name:"USB"}],"COM4")',ctx),'COM5');
   assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"},{port:"COM4"}],"COM4")',ctx),'COM4');
-  ctx.appConfig.device_profiles=[];
-  assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5"}],"COM4")',ctx),'COM5');
+  assert.equal(vm.runInContext('choosePreferredSerialPort([{port:"COM5",name:"USB"},{port:"COM6",name:"USB"}],"COM4")',ctx),'');
 }
 const nodes = {};
 const node = id => nodes[id] ||= {value:'', dataset:{state:'serial'}, children:[],
@@ -245,10 +247,12 @@ console.log('Maintenance boot-blocker regression checks passed');
   let requested = '';
   const ctx = vm.createContext({
     $: languageNode, currentLang:'de', packageGeneration:()=> 'Updates', selectedPackageRef:()=>languageNode('packageVersion').value, selectedPackageRoot:()=> 'Updates', appConfig:{package_ref:'v1.65.5'},
-    document:{createElement:()=>({})}, encodeURIComponent,
+    document:{createElement:()=>({})}, URLSearchParams,
     setInlineStatus(){},
     api:async url=>{requested=url; return {languages:[{filename:'deutsch.json',language:'deutsch',path:'data/language/deutsch.json'}]};}
   });
+  vm.runInContext(source.slice(source.indexOf('function selectedPackageUsesIdf6('),
+    source.indexOf('function packageGeneration(')),ctx);
   vm.runInContext(source.slice(source.indexOf('async function loadRepoLanguages('),
     source.indexOf('function formatTestRunnerCounts(')),ctx);
   for (const emptyRef of ['', '  ']) {
@@ -262,6 +266,7 @@ console.log('Maintenance boot-blocker regression checks passed');
   languageNode('packageVersion').value = 'v1.66.0';
   await vm.runInContext('loadRepoLanguages()',ctx);
   assert.match(requested,/ref=v1.66.0/);
+  assert.match(requested,/package_idf6=0/);
   assert.equal(languageNode('webfilesLanguage').value,'deutsch.json');
   assert.equal(languageNode('installLanguageBtn').disabled,false);
   ctx.api=async()=>{throw new Error('offline');};
@@ -309,15 +314,24 @@ console.log('Maintenance boot-blocker regression checks passed');
 (async () => {
   const ns={};
   const get=id=>ns[id] ||= {value:'',children:[],appendChild(v){this.children.push(v);}};
-  get('packageSource').value='development';
+  get('packageSource').value='development_idf6';
+  get('packageDir').value='https://example/development/Updates/ESP32-IDF6dev';
   const status={};
   let rejectOld;
   const oldRequest=new Promise((_resolve,reject)=>{rejectOld=reject;});
   let calls=0;
   const ctx=vm.createContext({$:get,currentLang:'de',packageGeneration:()=> 'Updates',selectedPackageRef:()=>'',selectedPackageRoot:()=> 'Updates',
-    document:{createElement:()=>({})},encodeURIComponent,
+    document:{createElement:()=>({})},URLSearchParams,
     setInlineStatus:(id,value)=>{status[id]=value;},
-    api:()=>++calls===1 ? oldRequest : Promise.resolve({languages:[{filename:'english.json',language:'english',path:'Updates/data/language/english.json'}]})});
+    api:url=>{
+      assert.match(url,/package_idf6=1/);
+      return ++calls===1 ? oldRequest : Promise.resolve({languages:[
+        {filename:'english.json',language:'english',path:'Updates/languages/english.json'}
+      ]});
+    }
+  });
+  vm.runInContext(source.slice(source.indexOf('function selectedPackageUsesIdf6('),
+    source.indexOf('function packageGeneration(')),ctx);
   vm.runInContext(source.slice(source.indexOf('async function loadRepoLanguages('),source.indexOf('function formatTestRunnerCounts(')),ctx);
   const first=vm.runInContext('loadRepoLanguages()',ctx);
   await vm.runInContext('loadRepoLanguages()',ctx);
@@ -361,3 +375,259 @@ console.log('Maintenance boot-blocker regression checks passed');
 
 require('./device_check_regressions.js');
 require('./startup_wifi_regressions.js');
+require('./port_selection_regressions.js');
+
+{
+  const elements = {};
+  const get = id => elements[id] ||= {dataset:{}, value:'', classList:{toggle(){}}, setAttribute(name, value){ this[name] = value; }};
+  const ctx = vm.createContext({document:{getElementById:get}, currentLang:'de', workspaceReady:true,
+    workspaceView:'connection', appConfig:{profiles_enabled:false},
+    activeConnectionProfile:()=>null, activeProfilePortOverride:()=>null, verifiedSerialUrl:()=>'', profileChangePending:false,
+    text:key=>key, lastDeviceStatus:{state:'online', serial_confirmed:false, serial_port:'COM3'}});
+  vm.runInContext(workspaceSource.slice(workspaceSource.indexOf('function renderWorkspaceConnections('),
+    workspaceSource.indexOf('async function saveWorkspaceProfilePort(')), ctx);
+  ctx.workspaceText = de => de;
+  vm.runInContext('renderWorkspaceConnections()', ctx);
+  assert.equal(get('usbConnectionStatus').dataset.state, 'off');
+  assert.equal(get('networkConnectionStatus').dataset.state, 'on');
+  assert.equal(get('headerProfileSelect').hidden, true);
+  ctx.appConfig = {profiles_enabled:true, device_profiles:[]};
+  get('portSelect').dataset = {missingProfilePort:'COM3', detectedUsbPorts:'COM4'};
+  for (const view of ['connection', 'install', 'settings']) {
+    ctx.workspaceView = view;
+    vm.runInContext('renderWorkspaceConnections()', ctx);
+    assert.equal(get('workspaceConnections').hidden, false);
+    assert.equal(get('headerProfileSelect').hidden, false);
+    assert.equal(get('usbConnectionStatus')['aria-label'], 'Profilport COM3 nicht verfügbar. USB-Adapter erkannt: COM4.');
+  }
+  ctx.activeConnectionProfile = () => ({id:'primary',port:'COM3',url:'http://brautomat.local'});
+  ctx.activeProfilePortOverride = () => ({id:'primary',port:'COM4'});
+  get('portSelect').value='COM4';
+  ctx.workspaceView = 'connection';
+  ctx.lastDeviceStatus = {serial_port:'COM4',serial_mismatch:true};
+  vm.runInContext('renderWorkspaceConnections()',ctx);
+  assert.equal(get('profilePortStatus').textContent,'flashUsbMismatch');
+  assert.equal(get('saveProfilePort').hidden,true);
+  ctx.lastDeviceStatus = {serial_port:'COM4',serial_confirmed:true};
+  ctx.verifiedSerialUrl = () => 'http://brautomat.local';
+  vm.runInContext('renderWorkspaceConnections()',ctx);
+  assert.equal(get('saveProfilePort').hidden,false);
+  assert.equal(get('saveProfilePort').textContent,'COM4 im Profil speichern');
+  vm.runInContext(workspaceSource.slice(workspaceSource.indexOf('async function saveWorkspaceProfilePort('),
+    workspaceSource.indexOf('function selectWorkspaceView(')),ctx);
+  const changes = [];
+  ctx.submitDeviceProfile = async payload => { changes.push(JSON.parse(JSON.stringify(payload))); };
+  ctx.lastDeviceStatus.serial_mismatch = true;
+  vm.runInContext('saveWorkspaceProfilePort()',ctx);
+  assert.deepEqual(changes,[]);
+  ctx.lastDeviceStatus.serial_mismatch = false;
+  vm.runInContext('saveWorkspaceProfilePort()',ctx);
+  assert.deepEqual(changes,[{action:'update',id:'primary',url:'http://brautomat.local',port:'COM4'}]);
+  ctx.workspaceView = 'start';
+  ctx.lastDeviceStatus.state = 'online';
+  vm.runInContext('renderWorkspaceConnections()', ctx);
+  assert.equal(get('headerProfileSelect').hidden, true);
+  assert.equal(get('usbConnectionStatus').dataset.state, 'on');
+  assert.equal(get('networkConnectionStatus').dataset.state, 'on');
+  ctx.startState = {kind:'setup'};
+  vm.runInContext('renderWorkspaceConnections()', ctx);
+  assert.equal(get('usbConnectionStatus')['aria-label'], 'USB noch nicht geprüft');
+  ctx.workspaceView = 'management';
+  vm.runInContext('renderWorkspaceConnections()', ctx);
+  assert.equal(get('workspaceConnections').hidden, true);
+}
+
+(async () => {
+  const wizard = fs.readFileSync('static/start-assistant.js', 'utf8');
+  const phases = [
+    {status:'running', progress:0, phase:'package'}, {status:'running', progress:1, phase:'device'},
+    {status:'running', progress:1, phase:'erase'}, {status:'done', progress:100, phase:'write'}
+  ];
+  const observed = [];
+  const state = {};
+  const ctx = vm.createContext({startState:state, startJobPhases:{package:'package', device:'device', erase:'erase', write:'write'},
+    api:async()=>phases.shift(), renderStart(){observed.push([state.message, state.progress]);},
+    sleep:async()=>{}, verifyStartJob:async()=>{}});
+  vm.runInContext(wizard.slice(wizard.indexOf('async function watchStartJob('), wizard.indexOf('function startVersion(')), ctx);
+  await vm.runInContext('watchStartJob("job")', ctx);
+  assert.deepEqual(observed, [['package', null], ['device', null], ['erase', null], ['write', 100]]);
+})().catch(error=>{console.error(error); process.exitCode=1;});
+
+{
+  const html = fs.readFileSync('static/index.html', 'utf8');
+  const wizard = fs.readFileSync('static/start-assistant.js', 'utf8');
+  const start = html.slice(html.indexOf('id="startChoices"'), html.indexOf('id="startAssistant"'));
+  assert.doesNotMatch(start, /<h2>/);
+  for (const task of ['Setup', 'Update', 'Migration', 'Backup']) {
+    const kind = task.toLowerCase();
+    const row = start.match(new RegExp('<button[^>]+data-assistant="' + kind + '"[^>]*>[\\s\\S]*?</button>'))?.[0];
+    assert.ok(row, kind);
+    assert.match(row, new RegExp('aria-labelledby="' + kind + 'StartLabel"'));
+    assert.match(row, new RegExp('aria-describedby="start' + task + 'Help"'));
+    assert.match(row, new RegExp('<span id="' + kind + 'StartLabel"'));
+    assert.match(row, new RegExp('<span id="start' + task + 'Help"'));
+  }
+  const nodes = {};
+  const get = id => nodes[id] ||= {type:'password', attrs:{}, events:{},
+    setAttribute(name,value){ this.attrs[name]=value; },
+    addEventListener(name,handler){ this.events[name]=handler; }};
+  const ctx = vm.createContext({$:get, currentLang:'de', appConfig:{}});
+  vm.runInContext(source.slice(source.indexOf('function updateWifiPasswordVisibility('),
+    source.indexOf('function applyLanguage(')), ctx);
+  vm.runInContext(workspaceSource.match(/^function workspaceText.*$/m)[0], ctx);
+  vm.runInContext(wizard, ctx);
+  vm.runInContext('initializeStart()', ctx);
+  const guide = get('startBrautomatGuide');
+  assert.equal(guide.href, 'https://innuendopi.gitbook.io/brautomat32/brautomat32');
+  vm.runInContext('currentLang = "en"; translateStart()', ctx);
+  assert.equal(guide.href, 'https://innuendopi.gitbook.io/brautomat32');
+  vm.runInContext('currentLang = "de"; translateStart()', ctx);
+  assert.equal(guide.href, 'https://innuendopi.gitbook.io/brautomat32/brautomat32');
+  const reveal = get('startPasswordReveal');
+  reveal.events.click();
+  assert.equal(get('startPassword').type, 'text');
+  assert.equal(reveal.attrs['aria-pressed'], 'true');
+  assert.equal(reveal.attrs['aria-label'], 'Passwort verbergen');
+  reveal.events.click();
+  assert.equal(get('startPassword').type, 'password');
+  assert.equal(reveal.attrs['aria-pressed'], 'false');
+  assert.equal(reveal.attrs['aria-label'], 'Passwort anzeigen');
+}
+
+(async () => {
+  const wizard = fs.readFileSync('static/start-assistant.js', 'utf8');
+  const state = { device:{port:'COM3', base_url:'http://brautomat.local'} };
+  const requests = [];
+  const jobs = [];
+  let finished = false;
+  const ctx = vm.createContext({startState:state, renderStart(){},
+    showStartStep(message, next){ Object.assign(state, {message, next}); },
+    startRequest:async action=>{
+      requests.push(action);
+      if (action === 'backup') return {job_id:'backup'};
+      return action === 'verify' ? state.device : {action:'reset', version:'1.71.0'};
+    },
+    waitForConfigBackup:async id=>{assert.equal(id,'backup'); return 'backup.json';},
+    showStartWifi:async()=>{state.step='wifi';},
+    finishStart(){ finished = true; },
+    runStartJob:async confirmed=>jobs.push(confirmed)
+  });
+  vm.runInContext(wizard.slice(wizard.indexOf('function showExistingSetup('),
+    wizard.indexOf('async function showStartWifi(')), ctx);
+  vm.runInContext('showExistingSetup()', ctx);
+  assert.equal(state.step, 'setup-choice');
+  assert.deepEqual(requests, []);
+  await state.next.run();
+  assert.equal(finished, true);
+  assert.deepEqual(requests, ['verify']);
+  await vm.runInContext('prepareStartReset()', ctx);
+  assert.equal(state.step, 'reset-confirm');
+  assert.match(state.message[0], /vollständig gelöscht/);
+  assert.match(state.message[0], /1\.71\.0/);
+  assert.deepEqual(jobs, []);
+  vm.runInContext('showExistingSetup()', ctx);
+  assert.equal(state.plan.action, 'setup_existing');
+  await vm.runInContext('prepareStartReset()', ctx);
+  assert.match(state.next.label[0],/Ohne Sicherung/);
+  await vm.runInContext('backupStartReset()', ctx);
+  assert.equal(requests.at(-1),'backup');
+  assert.equal(state.backupFile,'backup.json');
+  assert.doesNotMatch(state.next.label[0],/Ohne Sicherung/);
+  assert.deepEqual(jobs, []);
+  await state.next.run();
+  assert.deepEqual(jobs, [true]);
+  state.device.base_url = '';
+  await vm.runInContext('backupStartReset()', ctx);
+  assert.equal(state.step,'wifi');
+  assert.equal(state.backupWifiPending,true);
+  state.backupFile = '';
+  const reconnected = {...state.device, firmware:'1.66.6', base_url:'http://192.168.1.23'};
+  ctx.startVersion = firmware => firmware;
+  ctx.startRequest = async action => action === 'verify' ? reconnected : {action:'reset',version:'1.71.0'};
+  vm.runInContext(wizard.slice(wizard.indexOf('async function verifyStartJob('),
+    wizard.indexOf('function finishStart(')), ctx);
+  await vm.runInContext('verifyStartJob()',ctx);
+  assert.equal(state.device,reconnected);
+  assert.equal(state.backupWifiPending,false);
+  assert.equal(state.step,'reset-confirm');
+})().catch(error=>{console.error(error); process.exitCode=1;});
+
+(async () => {
+  const elements = {};
+  const get = id => elements[id] ||= {classList: {hidden:false,
+    add(){this.hidden=true;}, remove(){this.hidden=false;}, toggle(_,hidden){this.hidden=hidden;}}};
+  let online = false;
+  const ctx = vm.createContext({$:get, currentLang:'de', deviceIsOnline:()=>online,
+    text:key=>key, escapeHtml:String, effectiveDeviceBaseUrl:()=> 'http://device',
+    setInlineStatus:(id,message)=>{get(id).textContent=message;},
+    api:async()=>({decision:'migration_required',available:false})});
+  vm.runInContext(source.slice(source.indexOf('function renderFirmwareUpdate('),
+    source.indexOf('async function startFirmwareWebUpdate(')),ctx);
+  await vm.runInContext('checkFirmwareUpdate(true)',ctx);
+  assert.equal(get('firmwareUpdateHint').textContent,'firmwareUpdateOffline');
+  assert.equal(get('firmwareUpdateConnection').classList.hidden,false);
+  online = true;
+  await vm.runInContext('checkFirmwareUpdate(true)',ctx);
+  assert.equal(get('firmwareUpdateMigration').classList.hidden,false);
+  assert.equal(get('startFirmwareWebUpdate').classList.hidden,true);
+  vm.runInContext('renderFirmwareUpdate({decision:"usb_required"},true)',ctx);
+  assert.equal(get('firmwareUpdateMigration').textContent,'firmwareUpdateUsb');
+  assert.equal(get('startFirmwareWebUpdate').classList.hidden,true);
+  vm.runInContext('renderFirmwareUpdate({decision:"no_newer"},true)',ctx);
+  assert.equal(get('firmwareUpdateMigration').classList.hidden,true);
+})().catch(error=>{console.error(error); process.exitCode=1;});
+
+(async () => {
+  const wizard = fs.readFileSync('static/start-assistant.js', 'utf8');
+  const html = fs.readFileSync('static/index.html', 'utf8');
+  assert.match(html, /<select id="startNetworks">/);
+  const requests = [];
+  const elements = {
+    startNetworks:{value:'', replaceChildren(...options){ this.options = options; }},
+    startManualOption:{value:''}, startSsid:{value:''}
+  };
+  const ctx = vm.createContext({
+    $:id=>elements[id], startState:{}, renderStart(){}, sleep:async()=>{},
+    Option:class { constructor(label, value) { this.label = label; this.value = value; } },
+    startRequest:async(action, options)=>{
+      assert.equal(action, 'scan');
+      requests.push(options.refresh);
+      return requests.length < 3
+        ? {status:'running', networks:[]}
+        : {status:'ready', preferred_ssid:'Werkstatt', networks:[
+          {ssid:'Brauhaus', rssi:-70}, {ssid:'Werkstatt', rssi:-66},
+          {ssid:'Gast', rssi:-80}, {ssid:'Brauhaus', rssi:-45}, {ssid:''}
+        ]};
+    }
+  });
+  vm.runInContext(wizard.slice(wizard.indexOf('async function scanStartWifi('),
+    wizard.indexOf('async function saveStartWifi(')), ctx);
+  await vm.runInContext('scanStartWifi()', ctx);
+  assert.deepEqual(requests, [true, false, false]);
+  assert.equal(elements.startNetworks.value, 'Werkstatt');
+  assert.deepEqual(elements.startNetworks.options.map(option=>option.value), ['Brauhaus', 'Werkstatt', 'Gast', '']);
+  assert.equal(elements.startNetworks.options[0].label, 'Brauhaus (-45 dBm)');
+  elements.startNetworks.value = 'Gast';
+  await vm.runInContext('scanStartWifi()', ctx);
+  assert.equal(elements.startNetworks.value, 'Gast');
+  elements.startNetworks.value = '';
+  elements.startSsid.value = 'Verstecktes Netz';
+  await vm.runInContext('scanStartWifi()', ctx);
+  assert.equal(elements.startNetworks.value, '');
+  assert.equal(elements.startSsid.value, 'Verstecktes Netz');
+})().catch(error=>{console.error(error); process.exitCode=1;});
+
+(async () => {
+  const source = fs.readFileSync("static/start-assistant.js", "utf8");
+  const state = {step:"running", kind:"update"};
+  const ctx = vm.createContext({startState:state, renderStart(){}, verifyStartJob(){}, probeStartDevice(){},
+    api:async()=>{throw Object.assign(new Error("job not found"), {status:404});}});
+  for (const [start,end] of [["async function startTask(", "function showStartStep("],
+                             ["async function watchStartJob(", "function startVersion("]]) {
+    vm.runInContext(source.slice(source.indexOf(start), source.indexOf(end)), ctx);
+  }
+  await vm.runInContext('startTask(() => watchStartJob("lost"))', ctx);
+  assert.equal(state.jobId,null);
+  assert.equal(state.error,"guided_job_lost");
+  assert.equal(state.next.run,ctx.verifyStartJob);
+})().catch(error=>{console.error(error);process.exitCode=1;});

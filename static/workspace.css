@@ -202,3 +202,70 @@ body[data-workspace-view=maintenance] .workspace-maintenance { display:block; }
 .settings-inventory-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; width:min(640px,100%); }
 .settings-inventory-row input { min-width:0; }
 #settingsProfileSelect { width:min(640px,100%); margin-bottom:12px; }
+body[data-workspace-view=start] .workspace-device { display:none; }
+body[data-workspace-group=device] .workspace-device,
+body[data-workspace-group=firmware] .workspace-device,
+body[data-workspace-group=settings] .workspace-device { display:none; }
+.workspace-connections:not([hidden]) { display:flex; align-items:center; gap:4px; position:relative; white-space:nowrap; flex-shrink:0; }
+@media(max-width:560px) {
+  body:is([data-workspace-group=start], [data-workspace-group=device], [data-workspace-group=firmware]) .hero { flex-wrap:nowrap; }
+  body:is([data-workspace-group=start], [data-workspace-group=device], [data-workspace-group=firmware]) .hero > :first-child { min-width:0; overflow-wrap:anywhere; }
+  body:is([data-workspace-group=start], [data-workspace-group=device], [data-workspace-group=firmware]) .workspace-navigation { overflow-x:auto; }
+}
+.workspace-connections select { width:auto; max-width:min(25vw, 160px); margin-inline-end:4px; }
+.workspace-connections [hidden] { display:none; }
+.workspace-connections .connection-icon { position:relative; display:grid; place-items:center; width:30px; height:30px; padding:0; border:0; background:none; color:var(--muted); }
+.workspace-connections .connection-icon[data-state=on] { color:var(--success); }
+.workspace-connections .connection-icon[data-state=off] { color:var(--danger); }
+.connection-icon[data-state=off]::after { content:""; position:absolute; width:19px; border-top:2px solid currentColor; transform:rotate(-42deg); box-shadow:0 1px var(--surface); }
+.connection-tooltip { position:absolute; top:100%; inset-inline-end:0; z-index:101; max-width:min(230px, 65vw); white-space:normal; border:1px solid var(--line); background:var(--surface); padding:6px 8px; border-radius:4px; }
+.workspace-target:empty { display:none; }
+.workspace-target { color:var(--muted); overflow-wrap:anywhere; }
+.workspace-target.warning { color:var(--danger); }
+.workspace-install > .firmware-release { margin:0 0 16px; padding:0 0 16px; border-top:0; border-bottom:1px solid var(--line); }
+.start-layout { grid-column:1 / -1; display:grid; gap:16px; align-items:stretch;
+  grid-template-columns:minmax(0, 3fr) minmax(0, 2fr); width:min(100%, 1440px); }
+.start-links ul { margin:0; padding:0; list-style:none; display:grid; gap:8px; }
+:root body button.start-link { padding:0; min-height:0; border:0; background:none;
+  color:var(--primary); font:inherit; text-decoration:underline; }
+@media(max-width:900px) {
+  .start-layout { grid-template-columns:minmax(0, 1fr); }
+  .start-layout.is-active .start-row:not([aria-current="true"]) { display:none; }
+}
+.start-overview { display:grid; align-content:start; gap:6px; }
+button.start-row { display:grid; grid-template-columns:minmax(140px, 1fr) minmax(0, 2fr);
+  align-items:baseline; gap:14px; width:100%; padding:10px 12px; text-align:left;
+  white-space:normal; border-color:transparent; color:var(--text); }
+button.start-row:hover:not(:disabled) { background:var(--bg); border-color:var(--line); }
+button.start-row[aria-current="true"] { background:var(--selection-bg, #e7efff); border-color:var(--line); }
+.start-row-title { font-weight:600; }
+.start-row[aria-current="true"] .start-row-title,
+.start-layout:not(.is-active) [data-assistant="setup"] .start-row-title { color:var(--primary); }
+.start-row-description { color:var(--muted); font-weight:400; line-height:1.4; }
+@media(max-width:620px) {
+  button.start-row { grid-template-columns:1fr; gap:4px; }
+}
+#startAssistant p:empty, #startPreferenceStatus:empty { display:none; }
+#startAssistant h2 { margin-bottom:8px; }
+#startDevice { margin:0 0 16px; padding:8px 10px; background:var(--bg);
+  border-radius:6px; font-size:.9em; overflow-wrap:anywhere; }
+#startStatus, #startResetBackupStatus { line-height:1.5; overflow-wrap:anywhere; }
+#startStatus.start-warning { padding:10px 12px; border:1px solid var(--warning-border, #e6c56e);
+  border-radius:6px; color:var(--warning-text, #865600); background:var(--warning-bg, #fff8e3); }
+#startResetBackupStatus { color:var(--muted); }
+#startAssistant .actions { margin:12px 0 0; flex-wrap:wrap; }
+#startAssistant .actions button { min-height:34px; white-space:normal; }
+#startAssistant .start-navigation { padding-top:12px; border-top:1px solid var(--line); }
+#startAssistant .start-step-actions .primary:not(:disabled) {
+  background:var(--primary); color:var(--surface); font-weight:600;
+}
+#startAssistant .start-step-actions .primary:hover:not(:disabled) { filter:brightness(.92); }
+#startWifi { margin-top:16px; max-width:460px; }
+#startWifi:not([hidden]) { display:grid; gap:12px; }
+.start-password-field { position:relative; }
+.start-password-field input { padding-inline-end:44px; }
+#startPasswordReveal { position:absolute; inset-block:0; inset-inline-end:0; width:42px; border:0; border-radius:0; padding:0; background:none; }
+#startPasswordReveal:focus-visible { outline-offset:-3px; }
+#startProgress { width:min(100%, 460px); }
+.start-preference { justify-content:flex-start; gap:8px; margin-top:16px; }
+[data-panel="start"] [hidden] { display:none; }

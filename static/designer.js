@@ -272,11 +272,14 @@ async function pdTransfer() {
   report(pdText('Uploadziel wird geprüft und der Maischeplan anschließend übertragen …','Checking upload destination, then transferring the mash plan …'));
   try {
     const plan=await pdApi('export',{draft});
-    if(profile!==(appConfig.active_device_id||'primary')||profileUrl!==appConfig.device_url||port!==selectedConnectionPort||base!==managementDeviceUrl())throw new Error(pdText('Gerät wurde gewechselt.','Device changed.'));
-    await api('/api/explorer/action',{method:'POST',body:{action:'upload',side:'device',
-      path:plan.misc[0].File,base_url:base,overwrite:true,
+    const isCurrent = () => profile === (appConfig.active_device_id || 'primary') &&
+      profileUrl === appConfig.device_url && port === selectedConnectionPort && base === managementDeviceUrl();
+    if (!isCurrent()) throw new Error(pdText('Gerät wurde gewechselt.','Device changed.'));
+    const result = await requestRecipeWrite('/api/explorer/action',{action:'upload',side:'device',
+      path:plan.misc[0].File,base_url:base,overwrite:false,
       designer_context:{profile,profile_url:profileUrl,target_url:base,snapshot:draft.snapshot},
-      content:btoa(Array.from(new TextEncoder().encode(JSON.stringify(plan)),byte=>String.fromCharCode(byte)).join(''))}});
+      content:btoa(Array.from(new TextEncoder().encode(JSON.stringify(plan)),byte=>String.fromCharCode(byte)).join(''))}, isCurrent);
+    if (!result) { report(pdText('Übertragung abgebrochen.','Transfer cancelled.')); return; }
     report(pdText('Maischeplan erfolgreich übertragen: ','Mash plan transferred successfully: ')+base+' · '+plan.misc[0].File);
   } catch(error) {
     message.setAttribute('role','alert');

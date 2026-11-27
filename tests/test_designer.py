@@ -20,6 +20,24 @@ class DesignerTests(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
+    def test_recipe_export_uses_exact_filename_and_counts_characters(self):
+        names = ("Belgian Dubbel", "Belgian_Dubbel", "Belgischer Dübel", "Ü" * 45, "Bier #2 + 5% & Test")
+        for name in names:
+            with self.subTest(name=name):
+                draft = import_recipe({"name": name, "boilTime": 0, "mash": {"steps": [
+                    {"name": "Rast", "stepTemp": 64, "stepTime": 30},
+                ]}})
+                self.assertEqual(draft["source"]["type"], "Brewfather")
+                self.assertEqual(draft["name"], name)
+                draft["steps"][0]["Rast"] = "Ruehrwerk:ON"
+                plan = export_plan(draft)
+                self.assertEqual(plan["misc"][0]["File"], f"/Rezepte/{name}.json")
+                self.assertEqual(plan["mash"][0]["Rast"], "Ruehrwerk:ON")
+        for name in ("Ü" * 46, "../Belgian Dubbel", 'quoted "name"'):
+            draft["name"] = name
+            with self.assertRaisesRegex(ValueError, "Invalid recipe filename"):
+                export_plan(draft)
+
     def test_local_command_annotation_survives_export_and_dock_save(self):
         value = import_recipe({"mash": [{"Rast": "Ruehrwerk : OFF :Läuterpause: Hinweis!"}]})
         expected = "Ruehrwerk:OFF:Läuterpause: Hinweis!"

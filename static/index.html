@@ -20,9 +20,22 @@
   </div>
   <header class="hero">
     <div>
-      <h1 id="title">Brautomat32 ServiceTool V 2.0.2</h1>
+      <h1 id="title">Brautomat32 ServiceTool V 2.1.0</h1>
     </div>
     <div class="hero-actions">
+      <div id="workspaceConnections" class="workspace-connections" hidden>
+        <select id="headerProfileSelect" aria-label="Geräteprofil" hidden></select>
+        <button id="usbConnectionStatus" type="button" class="connection-icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 18V3m-3 3 3-3 3 3m-3 10H7a2 2 0 0 1-2-2v-2m7 1h5a2 2 0 0 0 2-2V9"/>
+            <circle cx="12" cy="20" r="2"/><circle cx="5" cy="10" r="2"/><path d="M17 5h4v4h-4z"/>
+          </svg>
+        </button>
+        <button id="networkConnectionStatus" type="button" class="connection-icon">
+          <i class="icon-connection" aria-hidden="true"></i>
+        </button>
+        <span id="connectionTooltip" class="connection-tooltip" role="tooltip" hidden></span>
+      </div>
       <div class="header-device">
         <input id="deviceUrl" type="text">
         <button id="checkDevice">Check device</button>
@@ -83,11 +96,81 @@
       </div>
     </div>
 
+
+    <section class="tab-panel span-2" data-panel="start">
+      <div id="startLayout" class="start-layout">
+        <div id="startChoices" class="card start-overview">
+          <button class="start-row" type="button" data-assistant="setup" aria-labelledby="setupStartLabel" aria-describedby="startSetupHelp">
+            <span id="setupStartLabel" class="start-row-title">Brautomat einrichten</span>
+            <span id="startSetupHelp" class="start-row-description">Per USB verbinden und die vorhandene Einrichtung nutzen oder von vorne beginnen.</span>
+          </button>
+          <button class="start-row" type="button" data-assistant="update" aria-labelledby="updateStartLabel" aria-describedby="startUpdateHelp">
+            <span id="updateStartLabel" class="start-row-title">Firmware aktualisieren</span>
+            <span id="startUpdateHelp" class="start-row-description">Ein passendes Update per USB oder WLAN installieren.</span>
+          </button>
+          <button class="start-row" type="button" data-assistant="migration" aria-labelledby="migrationStartLabel" aria-describedby="startMigrationHelp">
+            <span id="migrationStartLabel" class="start-row-title">Firmware migrieren</span>
+            <span id="startMigrationHelp" class="start-row-description">Auf eine Firmware mit neuem Speicherlayout wechseln. USB und WLAN werden benötigt.</span>
+          </button>
+          <button class="start-row" type="button" data-assistant="backup" aria-labelledby="backupStartLabel" aria-describedby="startBackupHelp">
+            <span id="backupStartLabel" class="start-row-title">Backup erstellen</span>
+            <span id="startBackupHelp" class="start-row-description">Die Gerätekonfiguration über WLAN sichern.</span>
+          </button>
+        </div>
+        <section id="startLinks" class="card start-links" aria-labelledby="startLinksTitle">
+          <h2 id="startLinksTitle">Anleitungen und Firmware</h2>
+          <ul>
+            <li><button id="startServiceToolGuide" class="start-link" type="button">ServiceTool-Anleitung</button></li>
+            <li><a id="startBrautomatGuide" href="https://innuendopi.gitbook.io/brautomat32/brautomat32" target="_blank" rel="noopener">Brautomat32-Anleitung</a></li>
+            <li><button id="startFirmwarePackages" class="start-link" type="button">Firmwarepakete</button></li>
+          </ul>
+        </section>
+        <div id="startAssistant" class="card" aria-labelledby="startAssistantTitle" hidden>
+          <h2 id="startAssistantTitle"></h2>
+          <p id="startDevice" class="muted"></p>
+          <p id="startStatus" role="status"></p>
+          <p id="startError" class="warning" role="alert"></p>
+          <progress id="startProgress" max="100" aria-labelledby="startStatus" hidden></progress>
+          <div id="startWifi" hidden>
+            <div>
+              <label for="startNetworks"><span id="startSsidLabel">WLAN-Netzwerk</span></label>
+              <div class="input-action">
+                <select id="startNetworks"><option value="" id="startManualOption">Netzwerknamen eingeben</option></select>
+                <button id="startScan" type="button">Netzwerke suchen</button>
+              </div>
+            </div>
+            <div id="startManualNetwork" hidden>
+              <label for="startSsid"><span id="startManualLabel">Netzwerkname (SSID)</span></label>
+              <input id="startSsid" type="text" autocomplete="off">
+            </div>
+            <div>
+              <label for="startPassword"><span id="startPasswordLabel">WLAN-Passwort</span></label>
+              <div class="start-password-field">
+                <input id="startPassword" type="password" autocomplete="new-password">
+                <button id="startPasswordReveal" type="button" title="Passwort anzeigen" aria-label="Passwort anzeigen" aria-controls="startPassword" aria-pressed="false"><i class="icon-eye button-icon" aria-hidden="true"></i></button>
+              </div>
+            </div>
+          </div>
+          <p id="startResetBackupStatus" role="status" hidden></p>
+          <div class="actions start-step-actions">
+            <button id="startResetBackup" type="button" class="primary" hidden></button>
+            <button id="startNext" type="button" class="primary"></button>
+            <button id="startSetupChoice" type="button" class="ghost" hidden></button>
+            <a id="startOpenDevice" target="_blank" rel="noopener" hidden></a>
+          </div>
+          <div class="actions start-navigation">
+            <button id="startResetBack" type="button" class="ghost" hidden></button>
+            <button id="startBack" type="button" class="ghost">Assistent schließen</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="tab-panel span-2 firmware-panel active" data-panel="firmware">
       <section class="card card-stack">
         <h2 id="flashTitle">Firmware Flash</h2>
         <section class="firmware-method" aria-labelledby="firmwarePackageTitle">
-        <h3 id="firmwarePackageTitle">Firmware aus Paket installieren</h3>
+        <h3 id="firmwarePackageTitle" tabindex="-1">Firmware aus Paket installieren</h3>
         <div id="firmwareSelectionHome">
         <div id="sharedFirmwareSelection">
         <div class="grid-2">
@@ -96,7 +179,9 @@
             <select id="packageSource">
               <option value="release">1.66 Release</option>
               <option value="development">1.66 Development</option>
-              <option value="development_170">1.70 Development</option>
+              <option value="development_170">1.70 IDF5 Beta</option>
+              <option value="release_idf6">IDF6 Release</option>
+              <option value="development_idf6">IDF6 Development</option>
               <option value="special">Special Version</option>
               <option value="open">Open directory</option>
             </select>
@@ -116,8 +201,13 @@
         <div class="flash-controls">
           <label>
             <span id="portLabel">COM Port</span>
-            <select id="portSelect"></select>
+            <select id="portSelect" aria-describedby="flashUsbDeviceStatus"></select>
           </label>
+          <p id="flashUsbDeviceStatus" class="workspace-target warning" role="status" hidden></p>
+          <div id="profilePortActions" hidden>
+            <p id="profilePortStatus" class="workspace-target" role="status" hidden></p>
+            <button id="saveProfilePort" class="ghost" type="button" hidden></button>
+          </div>
           <label>
             <span id="baudLabel">Baudrate</span>
             <div class="input-action">
@@ -132,26 +222,37 @@
           <div id="firmwareOnlyOptions" class="checkstack">
             <label class="checkline">
               <span id="eraseFlashLabel">Flash erase</span>
-              <input id="eraseFlashSelect" type="checkbox" checked>
+              <input id="eraseFlashSelect" type="checkbox">
             </label>
             <label class="checkline">
               <span id="littlefsLabel">Webdateien mit aktualisieren</span>
-              <input id="littlefsSelect" type="checkbox" checked>
+              <input id="littlefsSelect" type="checkbox">
             </label>
           </div>
         </div>
         </div>
         </div>
+        <div id="flashBackupPanel" class="hidden-panel">
+          <p id="flashBackupWarning" class="flash-backup-warning"></p>
+          <div class="actions">
+            <button id="flashBackupBtn" class="primary hidden-panel" type="button">Konfigurationsbackup erstellen</button>
+            <button id="flashBackupConnection" class="primary hidden-panel" type="button">WLAN für Sicherung einrichten</button>
+            <span id="flashBackupStatus" role="status"></span>
+          </div>
+        </div>
         <div class="actions end">
-          <button id="flashBtn">Ausgewähltes Paket über USB installieren</button>
-          <span id="flashBackupWarning" class="flash-backup-warning hidden-panel"></span>
+          <p id="flashUsbStatus" class="warning" role="status"></p>
+          <button id="flashUsbConnection" class="ghost hidden-panel" type="button">USB-Verbindung prüfen</button>
+          <button id="flashBtn" class="hidden-panel" type="button">Ausgewähltes Paket über USB installieren</button>
         </div>
         </section>
         <section class="firmware-method firmware-release" aria-labelledby="firmwareReleaseTitle">
           <h3 id="firmwareReleaseTitle">Veröffentlichte Firmware aktualisieren</h3>
-          <p id="firmwareTransportHint" class="hint">Prüft auf GitHub, ob eine neuere Firmware verfügbar ist. Die Installation erfolgt anschließend über die Netzwerkverbindung zum Brautomat. Die Paketquelle oben gilt nur für die Paketinstallation.</p>
+          <p id="firmwareTransportHint" class="hint">Sucht auf GitHub nach einem passenden Update und installiert es über die Netzwerkverbindung zum Brautomat.</p>
           <div class="actions">
             <button id="checkFirmwareUpdateBtn" class="primary" type="button">Nach Firmware-Update suchen</button>
+            <button id="firmwareUpdateConnection" class="ghost hidden-panel" type="button">Zu Gerät</button>
+            <span id="firmwareUpdateHint" role="status"></span>
           </div>
         </section>
         <div class="actions maintenance-actions">
@@ -233,13 +334,14 @@
             </div>
           </label>
         <div class="actions end">
-          <button type="button" id="wifiSaveBtn" form="wifiSettingsForm">Save &amp; Reboot</button>
+          <button type="button" id="wifiSaveBtn" class="primary" form="wifiSettingsForm">WLAN speichern und neu starten</button>
           <button type="button" id="wifiResetBtn" class="danger" form="wifiSettingsForm">WLAN Reset</button>
         </div>
         <div class="status-inline">
           <span id="wifiSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
-          <p id="wifiInlineStatus" class="status-line"></p>
+          <p id="wifiInlineStatus" class="status-line" role="status"></p>
         </div>
+        <button id="flashBackToPackage" class="ghost hidden-panel" type="button">Zurück zur Paketinstallation</button>
       </section>
 
       <section class="card firmware-status debug-panel">
@@ -309,21 +411,6 @@
         <div class="status-inline">
           <span id="backupSpinner" class="spinner hidden-spinner" aria-hidden="true"></span>
           <p id="backupInlineStatus" class="status-line"></p>
-        </div>
-      </section>
-
-      <section class="card remove-me-restore" hidden>
-        <h2 id="restoreTitle_old">Restore</h2>
-        <label>
-          <span id="restoreFileLabel_old">Backup-Datei</span>
-          <input id="restoreFile_old" type="file" accept=".json,application/json">
-        </label>
-        <div class="actions">
-          <button id="restoreBtn_old">Restore ausführen</button>
-        </div>
-        <div class="status-inline">
-          <span id="restoreSpinner_old" class="spinner hidden-spinner" aria-hidden="true"></span>
-          <p id="restoreInlineStatus_old" class="status-line"></p>
         </div>
       </section>
 
@@ -608,6 +695,7 @@
       <div id="firmwareUpdateContent" class="service-update-content"></div>
       <div class="actions end service-update-actions">
         <span id="firmwareUpdateStatus" class="status-line"></span>
+        <button id="firmwareUpdateMigration" class="primary hidden-panel" type="button">Migrationsassistent öffnen</button>
         <button id="startFirmwareWebUpdate" class="primary" type="button">Update starten</button>
       </div>
     </div>
@@ -631,6 +719,7 @@
   <script src="/designer-core.js"></script>
   <script src="/designer.js"></script>
   <script src="/theme.js"></script>
+  <script src="/start-assistant.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -33,6 +33,9 @@ NEW_LAYOUT = (
     ("app1", 0, 17, 0x220000, 0x120000),
     ("coredump", 1, 3, 0x340000, 0x10000), OLD_LAYOUT[-1],
 )
+IDF6_LAYOUT = NEW_LAYOUT[:3] + (
+    ("app1", 0, 17, 0x220000, 0x130000), OLD_LAYOUT[-1],
+)
 IMAGES = {
     "firmware.bin": (0x10000, 0x210000),
     "serviceapp.bin": (0x220000, 0x120000),
@@ -98,6 +101,34 @@ def check_layout(data: bytes, expected: tuple) -> None:
         raise ValueError("Unknown partition layout; NVS/LittleFS preservation cannot be guaranteed")
 
 
+def service_layout(data: bytes) -> tuple:
+    for layout in (NEW_LAYOUT, IDF6_LAYOUT):
+        try:
+            check_layout(data, layout)
+        except ValueError:
+            continue
+        return layout
+    raise ValueError("Unknown ServiceApp partition layout")
+
+
+def image_regions(layout: tuple) -> dict[str, tuple[int, int]]:
+    return IMAGES | {"serviceapp.bin": layout[3][3:5]}
+
+
+def staged_flash_files(package: Path, work: Path) -> list[tuple[int, Path]]:
+    layout = service_layout((package / "partitions.bin").read_bytes())
+    files = []
+    for name, (offset, size) in image_regions(layout).items():
+        target = work / (name + ".write")
+        durable_write(target, (package / name).read_bytes().ljust(size, b"\xff"))
+        files.append((offset, target))
+    if layout == NEW_LAYOUT:
+        target = work / "coredump.write"
+        durable_write(target, b"\xff" * 0x10000)
+        files.append((0x340000, target))
+    return files
+
+
 def check_image(data: bytes, role: str | None = None) -> str:
     if len(data) < 24 or data[0] != 0xE9 or not 1 <= data[1] <= 16:
         raise ValueError("Invalid ESP image header")
@@ -132,11 +163,29 @@ def check_image(data: bytes, role: str | None = None) -> str:
     return data[48:80].split(b"\0", 1)[0].decode("ascii")
 
 
+def image_idf_major(data: bytes) -> int | None:
+    # ESP-IDF version in esp_app_desc_t, following the first segment header.
+    match = re.match(rb"v?(\d+)\.", data[144:176])
+    return int(match.group(1)) if match else None
+
+
+def check_service_layout_sdk(layout: tuple, *images: bytes) -> None:
+    for payload in images:
+        major = image_idf_major(payload)
+        if (layout == IDF6_LAYOUT and major != 6) or (layout == NEW_LAYOUT and major == 6):
+            raise ValueError("Application ESP-IDF version does not match the ServiceApp layout")
+
+
 def validate_package(package: Path, version: str) -> dict:
     if version_tuple(version) < SERVICEAPP_MIN_VERSION:
         raise ValueError("Migration target must be 1.67.0 or newer with a compatible ServiceApp layout")
+    table = package / "partitions.bin"
+    if not table.is_file() or table.is_symlink():
+        raise ValueError("Required migration image missing: partitions.bin")
+    layout = service_layout(table.read_bytes())
+    regions = image_regions(layout)
     payloads = {}
-    for name, (_, limit) in IMAGES.items():
+    for name, (_, limit) in regions.items():
         path = package / name
         if not path.is_file() or path.is_symlink():
             raise ValueError(f"Required migration image missing: {name}")
@@ -144,10 +193,10 @@ def validate_package(package: Path, version: str) -> dict:
         if not payload or len(payload) > limit:
             raise ValueError(f"Migration image exceeds its reserved region: {name}")
         payloads[name] = payload
-    check_layout(payloads["partitions.bin"], NEW_LAYOUT)
     check_image(payloads["bootloader.bin"])
     check_image(payloads["firmware.bin"], "BrautomatMain")
     check_image(payloads["serviceapp.bin"], "BrautomatSvcApp")
+    check_service_layout_sdk(layout, payloads["firmware.bin"], payloads["serviceapp.bin"])
     # The SDK app descriptor can contain a Git build ID, not the product version.
     # Require the declared product version to exist as a complete image string.
     if not contains_version(payloads["firmware.bin"], version):
@@ -157,10 +206,13 @@ def validate_package(package: Path, version: str) -> dict:
     standard = first + b"\xff" * (4096 - 32) + b"\0" * 4 + b"\xff" * (4096 - 4)
     if payloads["boot_app0.bin"] not in (b"\xff" * 0x2000, standard):
         raise ValueError("Boot selection must be the known blank 8 KiB OTA0 initializer")
-    return {"version": version, "images": {
-        name: {"offset": IMAGES[name][0], "size": len(value), "sha256": digest(value)}
+    metadata = {"version": version, "images": {
+        name: {"offset": regions[name][0], "size": len(value), "sha256": digest(value)}
         for name, value in payloads.items()
     }}
+    if layout == IDF6_LAYOUT:
+        metadata["idf6"] = True
+    return metadata
 
 
 def source_slot(data: bytes) -> int:
@@ -424,17 +476,7 @@ class Session:
                 if actual != original[offset:offset + size]:
                     raise RuntimeError(f"{name} differs from backup; use explicit recovery instead")
         self.save("writing", write_started=True)
-        # Fully clear only application regions, including stale old App1/coredump.
-        # Padding never reaches NVS or LittleFS, even with 4 KiB sector erasure.
-        files = []
-        for name, (offset, size) in IMAGES.items():
-            payload = (package / name).read_bytes()
-            target = self.work / (name + ".write")
-            durable_write(target, payload.ljust(size, b"\xff"))
-            files.append((offset, target))
-        coredump = self.work / "coredump.write"
-        durable_write(coredump, b"\xff" * 0x10000)
-        files.append((0x340000, coredump))
+        files = staged_flash_files(package, self.work)
         progress(35)
         self.status("migrationStepInstall")
         device.write(files)
@@ -472,11 +514,12 @@ class Session:
             raise RuntimeError("Saved migration package changed")
         self.status("migrationStepReadback")
         current = device.read(0, FLASH_SIZE, self.work / "resume-readback.bin")
-        check_layout(current[0x8000:0x9000], NEW_LAYOUT)
+        layout = service_layout((package / "partitions.bin").read_bytes())
+        check_layout(current[0x8000:0x9000], layout)
         check_persisted_idle(current[0x9000:0xE000])
         if source_slot(current) != 0:
             raise RuntimeError("Unexpected target boot selection; inspect recovery state")
-        for name, (offset, size) in IMAGES.items():
+        for name, (offset, size) in image_regions(layout).items():
             if name == "boot_app0.bin":
                 continue  # Firmware can mark OTA0 valid after the first boot.
             expected = (package / name).read_bytes().ljust(size, b"\xff")
@@ -512,19 +555,16 @@ class ApiSession(Session):
         mac = device.identity()
         if self.report.get("mac") and mac != self.report["mac"]:
             raise RuntimeError("Connected device differs from the backup device")
-        self.save(mac=mac)
         package = self.work / "package"
         if validate_package(package, self.report["package"]["version"]) != self.report["package"]:
             raise RuntimeError("Staged migration package changed")
-        files = []
-        for name, (offset, size) in IMAGES.items():
-            target = self.work / (name + ".write")
-            durable_write(target, (package / name).read_bytes().ljust(size, b"\xff"))
-            files.append((offset, target))
-        coredump = self.work / "coredump.write"
-        durable_write(coredump, b"\xff" * 0x10000)
-        files.append((0x340000, coredump))
-        self.save("writing", write_started=True)
+        if not self.report.get("write_started"):
+            source_layout = self.report.get("source_layout")
+            if source_layout:
+                table = device.read(0x8000, 0x1000, self.work / "source-partitions.bin")
+                check_layout(table, NEW_LAYOUT if source_layout == "idf5" else OLD_LAYOUT)
+        files = staged_flash_files(package, self.work)
+        self.save("writing", write_started=True, mac=mac)
         self.status("migrationStepInstall")
         progress(35)
         device.write(files)

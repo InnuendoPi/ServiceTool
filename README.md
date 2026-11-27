@@ -4,7 +4,7 @@ Brautomat32 ServiceTool is the desktop companion for Brautomat32 devices.
 It combines recipe planning, device management and maintenance in a local
 browser interface for Windows, Linux and macOS.
 
-This README describes the **2.0.2 source version**. Available release packages
+This README describes the **2.1.0 source version**. Available release packages
 may differ; see [Releases](https://github.com/InnuendoPi/ServiceTool/releases)
 and [CHANGELOG.md](CHANGELOG.md).
 
@@ -13,6 +13,7 @@ Detailed instructions are available in the application's **Help** menu and in
 
 It provides:
 
+- assistants for setup, firmware updates, migration and configuration backup
 - recipe planning with reusable dock steps, drafts, versioning and comparison
 - recipe import from Brautomat JSON, MaischeMalzundMehr, KBH2 and Brewfather
 - configuration backup and restore
@@ -20,6 +21,7 @@ It provides:
 - web files update
 - WiFi provisioning
 - inventory management for recipes, fermenter plans, and profiles
+- exact plan filenames with spaces and Unicode on compatible firmware
 - serial monitor
 - Telegraf telemetry forwarding to CSV, InfluxDB v2, PostgreSQL,
   MariaDB/MySQL, and MQTT
@@ -154,11 +156,12 @@ These runtime folders are intentionally excluded from git.
 The screenshots show ServiceTool 2.0.2 with German interface labels.
 The migration image shows package selection, not a completed migration.
 
-The interface has four main areas. The active device, serial port, URL,
-firmware version and connection/process status appear in the header.
+The header shows USB and network connection status. The **Device** and
+**Firmware** tabs show target details for the selected Brautomat.
 
 | Area | Functions |
 | --- | --- |
+| Assistants | Setup, firmware update, migration and configuration backup |
 | Device | Connection check, COM port, device URL and WiFi setup |
 | Firmware | USB, published firmware updates, web files and language |
 | Data | Recipe Planner, Explorer, Backup & restore |
@@ -167,7 +170,9 @@ firmware version and connection/process status appear in the header.
 The three-dot menu opens **Settings**, **Check for updates** and **Help**.
 Settings include language, appearance, device profiles and recipe sources.
 Up to 20 device profiles can store separate names, ports and URLs. Select the
-intended device before any upload, restore or firmware operation.
+intended device before any upload, restore or firmware operation. A different
+USB port applies to the current session. You can save it to the profile once
+USB and the profile address are confirmed as the same Brautomat.
 
 ### Connect a device and configure WiFi
 
@@ -233,29 +238,30 @@ Dock contents and supporting planning data stay local.
 
 ![Firmware installation and web-file updates](img/firmware-2.0.2.png)
 
-Select **1.66 Release**, **1.66 Development** or **1.70 Development**, or choose
-an offered **Special Version**. **Open directory** selects an extracted local
+Select a listed firmware channel or choose an offered **Special Version**.
+**Open directory** selects an extracted local
 package. Wait for package validation before installing.
 
 | Firmware generation | Release package | Development package |
 | --- | --- | --- |
 | 1.66.x | `main/build/ESP32-IDF5` | `development/build/ESP32-IDF5dev` |
-| 1.70 | Not defined | `development/Updates/ESP32-IDF5dev` |
+| 1.70 IDF5 Beta | — | `development/Updates/ESP32-IDF5dev` |
+| IDF6 | `main/Updates/ESP32-IDF6` | `development/Updates/ESP32-IDF6dev` |
 
 A missing package is not replaced with one from a different generation.
 Special versions use the selected ref consistently for version information and
 package files. The actual images and layout must also be compatible.
 
-For USB installation, select the target package and flash baud rate, then check
-**Erase flash** and **Flash LittleFS** independently. Erasing removes settings
-and files; writing LittleFS replaces the filesystem with the package contents.
-If erase is enabled but LittleFS flashing is disabled, the filesystem is erased
-without being populated again. Back up required data before using either option.
+Select the target package and baud rate for USB installation. **Flash erase**
+and **Overwrite file system (LittleFS)** are independent and start off. If
+you enable either option, you can create a configuration backup before
+installing. The backup needs a confirmed network connection to the same USB
+device. Erasing clears all device storage. When selected, the LittleFS option
+writes the file system from the package.
 
-Direct USB installation supports switching between 1.66 and 1.70, including
-returning to 1.66. It does not create an automatic backup or automatically
-recover the previous state. For a guided move from 1.66 to 1.70, use
-[Service → Migration](#migration-from-166-to-170).
+Use [Assistants → Migrate firmware](#firmware-layout-migration) for supported
+layout changes with backup and restore. Direct USB installation is also
+available for manually selected packages and recovery.
 
 **Check for firmware update** looks for published firmware separately from the
 selected USB package. Network updates require an online device with a confirmed
@@ -332,32 +338,29 @@ The ServiceTool does not save destination passwords by default. Enable the
 explicit checkbox in the Telegraf tab only when storing them in the local
 `config.json` is intended.
 
-### Migration from 1.66 to 1.70
+### Firmware layout migration
 
-![Migration with the 1.70 Development target selected](img/migration-2.0.2.png)
-
-Use **Service → Migration** for the guided transition from the old partition
-layout to the ServiceApp layout. Supported sources are **1.62.0 through 1.66.x**;
-no intermediate firmware update is required. The target must have a verified
-compatible ServiceApp layout (1.67.0 or newer). The current development target
-is **1.70 Development**. Supported devices use ESP32 with 4 MiB flash and the
-old symmetric layout.
+Use **Assistants → Migrate firmware** for guided migration on supported ESP32
+devices with 4 MiB flash. Use **Service → Migration** to select a package
+manually or recover an interrupted migration.
+**1.62.0 through 1.66.x** can migrate directly to a compatible ServiceApp
+package. **1.70 IDF5 Beta** requires an **IDF6** target.
 
 1. Finish all mash and fermentation processes. Connect the device over USB
    and make sure it is also reachable at its network URL.
 2. Check the active device, COM port and source firmware version.
-3. Open **Service → Migration** and select **1.70 Development**, a compatible
-   special version or a complete extracted local package. Firmware and migration
-   share the package selection.
+3. Open **Service → Migration** and select a compatible IDF6 or IDF5
+   package for your source version. You can also select a suitable **Special
+   Version** or an extracted local package.
 4. Start migration and keep power, USB and network connectivity available.
 5. Read the final result, verify the target version and check the device's
    browser interface and saved configuration.
 
 ServiceTool validates the package and web files, saves the device's complete
 API backup, and then installs boot files, main firmware and ServiceApp.
-NVS settings and LittleFS user files are retained; matching web files are
-updated. Migration does not perform a full flash erase or create a full flash
-image backup. Its backup and report are stored under `backups/migrations/`.
+The flash step preserves NVS and LittleFS. After boot, ServiceTool updates
+the web files and automatically restores the API backup when migrating to
+IDF6. The backup and report are stored under `backups/migrations/`.
 
 If installation is interrupted, follow the displayed recovery session and use
 **Resume migration** while its installation files remain cached. After a failed
@@ -482,21 +485,21 @@ existing InfluxDB, PostgreSQL, or MySQL datasource.
 
 ## Builds
 
-Windows can be built locally with:
+For a local Windows test build, run:
 
 ```powershell
-.\build_servicetool_windows_release.ps1
+.\build_servicetool.cmd
 ```
 
-The GitHub Actions workflow `ServiceTool Build` is manual-only and builds
-Windows, Linux, and macOS packages. It uploads the generated ZIP files as
-temporary workflow artifacts.
+The manual GitHub Actions workflow [ServiceTool Build][build-workflow]
+builds the official Windows, Linux,
+and macOS ZIP packages from the same commit. Run it with **Publish release**
+disabled to review the workflow artifacts. For publication, run the
+workflow from the approved commit on `main` with **Publish release** enabled.
+The release job verifies the assets and updates `version.json` with the
+matching download URLs and SHA-256 values.
 
-Release packages are deliberately ignored by git. Publish reviewed packages
-as GitHub Release assets in this repository instead of committing them to
-repository history. Start the same manual workflow with `Publish release`
-enabled to publish the three verified packages. The workflow updates and
-commits `version.json` with the matching release URLs and SHA256 values.
+[build-workflow]: .github/workflows/servicetool-build.yml
 
 ## Repository Layout
 
@@ -511,7 +514,7 @@ commits `version.json` with the matching release URLs and SHA256 values.
 - `examples/grafana/`: portable Grafana dashboard examples
 - `static/help/`: German and English user guides
 - `Brautomat32ServiceTool.spec`: PyInstaller configuration
-- `build_servicetool_windows_release.ps1`: local Windows release build
+- `build_servicetool_windows_release.ps1`: packaging step for the Windows CI job
 - `.github/workflows/servicetool-build.yml`: manual cross-platform builds
 - `version.json`: update manifest used by released applications
 - `tasks/`: shared ServiceTool development tasks; no firmware test-runner data

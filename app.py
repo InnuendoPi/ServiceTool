@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from config_store import load_config, write_config, recipe_defaults
 from explorer import FileExplorer
+from recipe_filename import validate_local_recipe_filename, validate_recipe_filename
 from designer import DesignerStore, requires_master_validation, validate_master_target, snapshot as designer_snapshot
 import base64
 import hashlib
 import github_file_cache
 import http.client
+import io
+import ipaddress
 import json
 import mimetypes
 import migration as migration_engine
@@ -109,9 +112,10 @@ CONFIG_FILE = DATA_ROOT / "config.json"
 HOST = "127.0.0.1"
 SERVICE_HOSTNAME = "serviceBrautomat32.local"
 DEFAULT_PORT = 8765
+DEFAULT_DEVICE_URL = "http://brautomat.local"
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
-SERVICE_TOOL_VERSION = "2.0.2"
+SERVICE_TOOL_VERSION = "2.1.0"
 ESPTOOL_VERSION = "5.6.0"  # Pin downloads and local selection to this version.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
@@ -122,7 +126,7 @@ MIGRATION_MIN_VERSION = (1, 62, 0)
 MIGRATION_TARGET_VERSION = (1, 70, 0)
 ESPTOOL_REPO_BASE = f"https://github.com/espressif/esptool/releases/download/v{ESPTOOL_VERSION}"
 
-REMOTE_PACKAGES: dict[str, dict[str, str]] = {
+REMOTE_PACKAGES: dict[str, dict[str, Any]] = {
     "release": {
         "label": "1.66 Release",
         "branch": "main",
@@ -135,9 +139,21 @@ REMOTE_PACKAGES: dict[str, dict[str, str]] = {
     },
     # Source identifier for the new generation, not a Git branch name.
     "development_170": {
-        "label": "1.70 Development",
+        "label": "1.70 IDF5 Beta",
         "branch": "development",
         "base_url": "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/development/Updates/ESP32-IDF5dev",
+    },
+    "release_idf6": {
+        "label": "IDF6 Release",
+        "branch": "main",
+        "base_url": "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/main/Updates/ESP32-IDF6",
+        "idf6": True,
+    },
+    "development_idf6": {
+        "label": "IDF6 Development",
+        "branch": "development",
+        "base_url": "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/development/Updates/ESP32-IDF6dev",
+        "idf6": True,
     },
     "special": {
         "label": "Special Version",
@@ -148,8 +164,6 @@ REMOTE_PACKAGES: dict[str, dict[str, str]] = {
 REQUIRED_PACKAGE_FILES = ["bootloader.bin", "partitions.bin", "boot_app0.bin", "firmware.bin"]
 REQUIRED_FIRMWARE_FILE = "firmware.bin"
 BASE_FLASH_FILES = ["bootloader.bin", "partitions.bin", "boot_app0.bin"]
-OPTIONAL_PACKAGE_FILES = ["Littlefs.bin"]
-ALL_PACKAGE_FILES = REQUIRED_PACKAGE_FILES + OPTIONAL_PACKAGE_FILES
 WEBUPDATE_TOOL_FILES = [
     "edit.htm.gz",
     "brautomat.min.css.gz",
@@ -532,7 +546,7 @@ def default_config() -> dict[str, Any]:
         "language": "en",
         "appearance": "light",
         "debug_output": False,
-        "device_url": "http://brautomat",
+        "device_url": DEFAULT_DEVICE_URL,
         "package_source": "release",
         "package_ref": "",
         "package_dir": REMOTE_PACKAGES["release"]["base_url"],
@@ -542,6 +556,8 @@ def default_config() -> dict[str, Any]:
         "baud_rate": 460800,
         "serial_baud_rate": 115200,
         "serial_port": "",
+        "show_start": True,
+        "profiles_enabled": False,
         "device_profiles": [],
         "active_device_id": "",
         "telegraf": default_telegraf_config(),
@@ -553,12 +569,17 @@ def load_app_config() -> dict[str, Any]:
     config = default_config()
     raw = load_config(CONFIG_FILE)
     config.update({k: v for k, v in raw.items() if k in config})
+    if "profiles_enabled" not in raw:
+        config["profiles_enabled"] = bool(config["device_profiles"])
+        if config["device_url"] in ("http://brautomat", "http://brautomat/") and not config["device_profiles"]:
+            config["device_url"] = DEFAULT_DEVICE_URL
     if config.get("appearance") not in ("light", "dark", "system"):
         config["appearance"] = "light"
     legacy_package_dir = str(raw.get("package_dir", "")).strip()
     if not config.get("open_package_dir") and legacy_package_dir and not legacy_package_dir.startswith(("http://", "https://")):
         config["open_package_dir"] = legacy_package_dir
-    if config.get("service_tool_version") != SERVICE_TOOL_VERSION or any(k not in raw for k in config):
+    if (config.get("service_tool_version") != SERVICE_TOOL_VERSION or any(k not in raw for k in config)
+            or config["device_url"] != raw.get("device_url")):
         config["service_tool_version"] = SERVICE_TOOL_VERSION
         save_app_config(config)
     return config
@@ -573,7 +594,7 @@ def save_app_config(config: dict[str, Any]) -> dict[str, Any]:
     merged["recipe_sources"] = load_config(CONFIG_FILE)["recipe_sources"]
     # Existing controls still edit the active connection; keep its profile in sync.
     for profile in merged["device_profiles"]:
-        if profile["id"] == merged["active_device_id"]:
+        if merged["profiles_enabled"] and profile["id"] == merged["active_device_id"]:
             profile["url"] = merged["device_url"]
             profile["port"] = merged["serial_port"]
     merged["inventory_root"] = normalize_inventory_root(merged.get("inventory_root", ""))
@@ -611,9 +632,19 @@ def change_device_profile(data: dict[str, Any]) -> dict[str, Any]:
     if any(session and session.snapshot().get("running") for session in (STATE.serial, STATE.telegraf, STATE.test_runner)):
         raise ValueError("Vor dem Profilwechsel Serial Monitor, Telegraf und Test Runner beenden.")
     config = load_app_config()
+    action = data.get("action")
+    if action == "mode":
+        enabled = data.get("enabled")
+        if not isinstance(enabled, bool):
+            raise ValueError("Profilmodus benötigt einen Wahrheitswert.")
+        if enabled and config["device_profiles"]:
+            saved = next((p for p in config["device_profiles"] if p["id"] == config["active_device_id"]),
+                         config["device_profiles"][0])
+            config.update(active_device_id=saved["id"], device_url=saved["url"], serial_port=saved["port"])
+        config["profiles_enabled"] = enabled
+        return save_app_config(config)
     profiles = [dict(p) for p in configured_device_profiles(config)]
     active = config.get("active_device_id") or profiles[0]["id"]
-    action = data.get("action")
     identity = str(data.get("id", active))
     if action in ("add", "update"):
         url = str(data.get("url", "")).strip().rstrip("/")
@@ -662,7 +693,7 @@ def change_device_profile(data: dict[str, Any]) -> dict[str, Any]:
     chosen = next((p for p in profiles if p["id"] == active), None)
     if chosen is None:
         raise ValueError("Unbekanntes Geräteprofil.")
-    config.update(device_profiles=profiles, active_device_id=active,
+    config.update(device_profiles=profiles, active_device_id=active, profiles_enabled=True,
                   device_url=chosen["url"], serial_port=chosen["port"])
     return save_app_config(config)
 
@@ -860,8 +891,15 @@ def normalize_base_url(base_url: str) -> str:
 def candidate_base_urls(base_url: str) -> list[str]:
     primary = normalize_base_url(base_url)
     candidates = [primary]
-    # In multi-device mode an unrelated access point must not answer for a profile.
-    if len(load_app_config().get("device_profiles", [])) > 1:
+    try:
+        ipaddress.ip_address(parse.urlsplit(primary).hostname or "")
+    except ValueError:
+        pass
+    else:
+        return candidates
+    config = load_app_config()
+    # An unrelated access point must not answer on behalf of a bound device.
+    if config.get("profiles_enabled") and config.get("device_profiles"):
         return candidates
     ap_fallback = "http://192.168.4.1"
     if primary != ap_fallback:
@@ -1352,29 +1390,6 @@ def host_wifi_scan() -> dict[str, Any]:
 # downloads+verifies the release ZIP, and on Windows can self-replace the
 # running executable).
 # ---------------------------------------------------------------------------
-def package_exists(path: pathlib.Path) -> bool:
-    return path.exists() and (path / REQUIRED_FIRMWARE_FILE).exists()
-
-
-def remote_package_dir(key: str) -> pathlib.Path:
-    return CACHE_DIR / key
-
-
-def github_raw_package_base(ref: str) -> str:
-    clean_ref = str(ref or "").strip()
-    if not clean_ref:
-        raise ValueError("Package ref missing")
-    build_dir = "ESP32-IDF5dev" if clean_ref == "development" else "ESP32-IDF5"
-    return f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{clean_ref}/build/{build_dir}"
-
-
-def github_raw_tools_base(ref: str) -> str:
-    clean_ref = str(ref or "").strip()
-    if not clean_ref:
-        raise ValueError("Package ref missing")
-    return f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{clean_ref}/data/"
-
-
 def github_raw_language_base(ref: str) -> str:
     clean_ref = str(ref or "").strip()
     if not clean_ref:
@@ -1394,33 +1409,6 @@ def github_version_json_url(ref: str) -> str:
     if not clean_ref:
         raise ValueError("Package ref missing")
     return f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{clean_ref}/version.json"
-
-
-def remote_file_url(key: str, name: str) -> str:
-    package = REMOTE_PACKAGES.get(key)
-    if not package:
-        raise ValueError(f"Unknown package source: {key}")
-    if key == "special":
-        raise ValueError("Special Version requires explicit ref")
-    return f"{package['base_url']}/{name}"
-
-
-def remote_tools_base_url(key: str) -> str:
-    package = REMOTE_PACKAGES.get(key)
-    if not package:
-        raise ValueError(f"Unknown package source: {key}")
-    if key == "special":
-        raise ValueError("Special Version requires explicit ref")
-    return f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{package['branch']}/data/"
-
-
-def remote_language_base_url(key: str) -> str:
-    package = REMOTE_PACKAGES.get(key)
-    if not package:
-        raise ValueError(f"Unknown package source: {key}")
-    if key == "special":
-        raise ValueError("Special Version requires explicit ref")
-    return f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{package['branch']}/"
 
 
 def remote_language_catalog_url(key: str) -> str:
@@ -1873,29 +1861,6 @@ def ensure_esptool_available(job: Job | None = None) -> pathlib.Path:
         return select(cached, version)
 
 
-def write_package_metadata(path: pathlib.Path, source_key: str) -> None:
-    if source_key in REMOTE_PACKAGES:
-        package = REMOTE_PACKAGES[source_key]
-        metadata = {
-            "source": source_key,
-            "label": package["label"],
-            "branch": package["branch"],
-            "base_url": package["base_url"],
-            "downloaded_at": now_iso(),
-            "files": ALL_PACKAGE_FILES,
-        }
-    else:
-        metadata = {
-            "source": "special",
-            "label": "Special Version",
-            "ref": source_key,
-            "base_url": github_raw_package_base(source_key),
-            "downloaded_at": now_iso(),
-            "files": ALL_PACKAGE_FILES,
-        }
-    (path / "package.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-
-
 def package_root_for_firmware(firmware: str) -> str:
     version = parse_version_tuple(str(firmware or ""))
     return "build" if version and version < migration_engine.SERVICEAPP_MIN_VERSION else "Updates"
@@ -1914,27 +1879,31 @@ def require_package_generation(version: str, root: str) -> None:
 
 
 def package_branch(source: str, root: str) -> str:
-    if source == "development_170" and root != "Updates":
-        raise ValueError("1.70 Development requires the ServiceApp layout")
+    if source in ("development_170", "release_idf6", "development_idf6") and root != "Updates":
+        raise ValueError("Selected source requires the ServiceApp layout")
     if source in ("release", "development") and root != "build":
         raise ValueError("Selected 1.66 source requires the legacy layout")
     return REMOTE_PACKAGES[source]["branch"]
 
 
-def package_location(source: str, ref: str, root: str, revision: str = "") -> dict:
+def package_location(source: str, ref: str, root: str, revision: str = "", *, idf6: bool = False) -> dict:
     if root not in ("build", "Updates") or source not in REMOTE_PACKAGES:
         raise ValueError("Invalid firmware package selection")
     selected_ref = ref.strip() if source == "special" else package_branch(source, root)
     if not selected_ref:
         raise ValueError("Select a specific firmware version")
     revision = revision or selected_ref
-    manifest_path = "Updates/version.json" if root == "Updates" else "version.json"
+    idf6 = bool(REMOTE_PACKAGES[source].get("idf6")) or (source == "special" and root == "Updates" and idf6)
+    manifest_path = "Updates/version-idf6.json" if idf6 else ("Updates/version.json" if root == "Updates" else "version.json")
     manifest = json_request(f"https://raw.githubusercontent.com/InnuendoPi/Brautomat32/{revision}/{manifest_path}", timeout=10)
     if not isinstance(manifest, dict):
         raise ValueError("Invalid package version manifest")
     require_package_generation(manifest.get("version", ""), root)
-    development = source in ("development", "development_170") or (source == "special" and "develop" in str(manifest.get("type", "")).lower())
-    directory = "ESP32-IDF5dev" if development else "ESP32-IDF5"
+    variant = str(manifest.get("type", "")).strip().lower()
+    development = source in ("development", "development_170", "development_idf6") or (source == "special" and "develop" in variant)
+    if idf6 and variant not in ({"develop", "development"} if development else {"release"}):
+        raise ValueError("IDF6 manifest variant does not match the selected package")
+    directory = ("ESP32-IDF6" if idf6 else "ESP32-IDF5") + ("dev" if development else "")
     path = f"{root}/{directory}"
     entries = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/{path}?ref={parse.quote(revision, safe='')}", timeout=10)
     names = {item.get("name") for item in entries if isinstance(item, dict) and item.get("type") == "file"} if isinstance(entries, list) else set()
@@ -1950,9 +1919,9 @@ def package_catalog(firmware: str = "", include_special: bool = False, purpose: 
         raise ValueError("Invalid package selection purpose")
     root = "Updates" if purpose == "migration" else None
     packages = []
-    for key in ("release", "development", "development_170"):
+    for key in ("release", "development", "development_170", "release_idf6", "development_idf6"):
         item = {"key": key, "label": REMOTE_PACKAGES[key]["label"], "path": "", "available": False}
-        target_root = root or ("Updates" if key == "development_170" else "build")
+        target_root = root or ("build" if key in ("release", "development") else "Updates")
         item["root"] = target_root
         try:
             package_branch(key, target_root)
@@ -2013,17 +1982,6 @@ def package_details(path: pathlib.Path) -> dict[str, Any]:
     }
 
 
-def download_package_file(job: Job, source_key: str, package_dir: pathlib.Path, filename: str) -> pathlib.Path:
-    package_dir.mkdir(parents=True, exist_ok=True)
-    target = package_dir / filename
-    url = remote_file_url(source_key, filename)
-    job.log(f"Source file: {url}")
-    data = download_bytes(url, timeout=60.0)
-    target.write_bytes(data)
-    job.log(f"Saved: {target} ({len(data)} bytes)")
-    return target
-
-
 def list_special_versions(root: str | None = "Updates") -> list[dict[str, str]]:
     candidates = []
     for url, kind in (("https://api.github.com/repos/InnuendoPi/Brautomat32/releases?per_page=20", "release"),
@@ -2043,12 +2001,16 @@ def list_special_versions(root: str | None = "Updates") -> list[dict[str, str]]:
     def inspect(candidate):
         ref, kind, message = candidate
         found = []
-        for target_root in ((root,) if root else ("build", "Updates")):
+        targets = [("build", False)] if root == "build" else [("Updates", False), ("Updates", True)]
+        if root is None:
+            targets.insert(0, ("build", False))
+        for target_root, idf6 in targets:
             try:
-                location = package_location("special", ref, target_root)
+                location = package_location("special", ref, target_root, **({"idf6": True} if idf6 else {}))
+                firmware_kind = "IDF6" if idf6 else target_root
                 found.append({"ref": ref, "kind": kind, "version": location["version"],
                               "root": target_root, "base_url": location["base_url"],
-                              "label": f"{message} · {ref[:8]} · {location['version']} · {target_root} · {location['type']}"})
+                              "label": f"{message} · {ref[:8]} · {location['version']} · {firmware_kind} · {location['type']}"})
             except (OSError, ValueError):
                 continue
         return found
@@ -2058,6 +2020,42 @@ def list_special_versions(root: str | None = "Updates") -> list[dict[str, str]]:
         return [row for found in executor.map(inspect, candidates) for row in found]
 
 
+
+def selected_idf6(source: str, url: str) -> bool:
+    return bool(REMOTE_PACKAGES[source].get("idf6")) or (
+        source == "special" and url.rstrip("/").rsplit("/", 1)[-1] in ("ESP32-IDF6", "ESP32-IDF6dev")
+    )
+
+
+def check_remote_package_layout(package: pathlib.Path, idf6: bool) -> None:
+    if idf6 != ((package / "partitions.bin").is_file() and
+                package_uses_serviceapp(package) and
+                migration_engine.service_layout((package / "partitions.bin").read_bytes()) == migration_engine.IDF6_LAYOUT):
+        raise ValueError("Partition layout does not match the selected firmware package")
+
+
+def check_idf6_package_main(payload: bytes, base_url: str, version: str) -> None:
+    check_idf6_package_channel(payload, base_url, "Main firmware")
+    if not migration_engine.contains_version(payload, version):
+        raise ValueError("Main firmware version does not match the IDF6 manifest")
+
+
+def idf6_image_channel(payload: bytes) -> str:
+    channels = [source for source in ("release_idf6", "development_idf6")
+                if (REMOTE_PACKAGES[source]["base_url"] + "/firmware.bin").encode("ascii") + b"\0" in payload]
+    return channels[0] if len(channels) == 1 else ""
+
+
+def check_idf6_package_channel(payload: bytes, base_url: str, image: str) -> None:
+    expected = "development_idf6" if base_url.endswith("/ESP32-IDF6dev") else "release_idf6"
+    if idf6_image_channel(payload) != expected:
+        raise ValueError(f"{image} does not match the selected IDF6 update channel")
+
+
+def check_idf6_image_pair(main: bytes, service: bytes) -> None:
+    channel = idf6_image_channel(main)
+    if not channel or channel != idf6_image_channel(service):
+        raise ValueError("Main firmware and ServiceApp must use the same IDF6 update channel")
 
 def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, package_ref: str = "", require_base_files: bool = True, firmware_only: bool = False, selected_url: str = "") -> pathlib.Path:
     if source_key not in REMOTE_PACKAGES:
@@ -2070,15 +2068,13 @@ def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, pa
     sha = str(commit.get("sha", ""))
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError("Unable to pin firmware package to a commit")
-    if selected_url:
-        location = package_location(source_key, package_ref, root, sha)
-        expected = location["base_url"].replace(f"/{sha}/", f"/{ref}/", 1)
-        if selected_url.rstrip("/") != expected:
-            raise ValueError("Package selection changed. Reload the firmware package list before flashing.")
-        base = location["base_url"]
-    else:
-        # Older callers may omit a display URL; resolve the same catalog rules.
-        base = package_location(source_key, package_ref, root, sha)["base_url"]
+    idf6 = selected_idf6(source_key, selected_url)
+    options = {"idf6": True} if source_key == "special" and idf6 else {}
+    location = package_location(source_key, package_ref, root, sha, **options)
+    base = location["base_url"]
+    expected = base.replace(f"/{sha}/", f"/{ref}/", 1)
+    if selected_url and selected_url.rstrip("/") != expected:
+        raise ValueError("Package selection changed. Reload the firmware package list before flashing.")
     package_dir = CACHE_DIR / ("flash-" + uuid.uuid4().hex)
     package_dir.mkdir(parents=True)
     files = [REQUIRED_FIRMWARE_FILE] if firmware_only else BASE_FLASH_FILES + [REQUIRED_FIRMWARE_FILE]
@@ -2094,13 +2090,20 @@ def prepare_remote_package(job: Job, source_key: str, include_littlefs: bool, pa
                 continue
             raise
         (package_dir / filename).write_bytes(content)
+    if idf6:
+        check_idf6_package_main((package_dir / REQUIRED_FIRMWARE_FILE).read_bytes(), base, location["version"])
+    if not firmware_only:
+        check_remote_package_layout(package_dir, idf6)
     if package_uses_serviceapp(package_dir):
         job.set_current_file("serviceapp.bin")
         job.log("Package file: serviceapp.bin")
-        (package_dir / "serviceapp.bin").write_bytes(download_bytes(f"{base}/serviceapp.bin", timeout=60.0))
+        service_payload = download_bytes(f"{base}/serviceapp.bin", timeout=60.0)
+        if idf6:
+            check_idf6_package_channel(service_payload, base, "ServiceApp")
+        (package_dir / "serviceapp.bin").write_bytes(service_payload)
     if not firmware_only:
         validate_package_partitions(package_dir, include_littlefs, require_partitions=require_base_files or include_littlefs)
-    metadata = {"source": source_key, "label": REMOTE_PACKAGES[source_key]["label"],
+    metadata = {"source": source_key, "label": REMOTE_PACKAGES[source_key]["label"], "version": location["version"],
                 "ref": ref, "commit": sha, "base_url": base, "downloaded_at": now_iso(),
                 "files": sorted(item.name for item in package_dir.iterdir() if item.is_file())}
     (package_dir / "package.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -2146,7 +2149,22 @@ def list_language_files(base_url: str) -> list[str]:
     return files
 
 
-def list_remote_languages(source_key: str, package_ref: str = "", package_root: str = "build") -> list[dict[str, str]]:
+def remote_language_directories(package_root: str, idf6: bool) -> tuple[str, str]:
+    if package_root == "build" and not idf6:
+        return "language", "data/language"
+    if package_root == "Updates":
+        return ("Updates/languages" if idf6 else "Updates/language"), "Updates/data/language"
+    raise ValueError("Invalid package generation")
+
+
+def remote_language_paths(filename: str, directories: tuple[str, str], idf6: bool) -> tuple[str, ...]:
+    if idf6:
+        directory = directories[1] if filename == "deutsch.json" else directories[0]
+        return (f"{directory}/{filename}",)
+    return tuple(f"{directory}/{filename}" for directory in directories)
+
+
+def list_remote_languages(source_key: str, package_ref: str = "", package_root: str = "build", package_idf6: bool = False) -> list[dict[str, str]]:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError("Language list supports only remote package sources")
     if source_key == "special":
@@ -2156,16 +2174,13 @@ def list_remote_languages(source_key: str, package_ref: str = "", package_root: 
     else:
         refs = [package_branch(source_key, package_root)]
 
-    if package_root not in ("build", "Updates"):
-        raise ValueError("Invalid package generation")
-    prefix = "Updates/" if package_root == "Updates" else ""
-    catalogs: list[list[Any]] = []
+    idf6 = bool(REMOTE_PACKAGES[source_key].get("idf6")) or (source_key == "special" and package_idf6)
+    directories = remote_language_directories(package_root, idf6)
+    catalogs: list[tuple[str, list[Any]]] = []
     catalog_failed = False
     for ref in refs:
-        for url in (
-            f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/{prefix}language?ref={ref}",
-            f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/{prefix}data/language?ref={ref}",
-        ):
+        for directory in directories:
+            url = f"https://api.github.com/repos/InnuendoPi/Brautomat32/contents/{directory}?ref={parse.quote(ref, safe='')}"
             try:
                 data = json_request(url, timeout=20.0)
             except error.HTTPError as exc:
@@ -2176,25 +2191,27 @@ def list_remote_languages(source_key: str, package_ref: str = "", package_root: 
                 catalog_failed = True
                 continue
             if isinstance(data, list):
-                catalogs.append(data)
+                catalogs.append((directory, data))
             else:
                 catalog_failed = True
 
     files: dict[str, dict[str, str]] = {}
-    for catalog in catalogs:
+    for directory, catalog in catalogs:
         for item in catalog:
             if not isinstance(item, dict):
                 continue
             name = str(item.get("name", "")).strip()
-            path = str(item.get("path", "")).strip()
             if not name.lower().endswith(".json"):
+                continue
+            path = str(item.get("path") or f"{directory}/{name}").strip()
+            if path not in remote_language_paths(name, directories, idf6):
                 continue
             files.setdefault(
                 name.lower(),
                 {
                     "filename": name,
                     "language": name[:-5],
-                    "path": path or f"language/{name}",
+                    "path": path,
                 },
             )
 
@@ -2209,8 +2226,7 @@ def list_remote_languages(source_key: str, package_ref: str = "", package_root: 
     fallback_names.update(item["filename"] for item in files.values())
     base = github_raw_language_base(refs[0])
     def inspect(filename):
-        for directory in ("data/language", "language"):
-            path = f"{prefix}{directory}/{filename}"
+        for path in reversed(remote_language_paths(filename, directories, idf6)):
             try:
                 content = download_bytes(f"{base}{path}", timeout=10.0)
                 if not isinstance(json.loads(content), dict):
@@ -2229,25 +2245,25 @@ def list_remote_languages(source_key: str, package_ref: str = "", package_root: 
     return sorted((item for item in verified if item is not None), key=lambda x: x["language"].lower())
 
 
-def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: str = "", package_root: str = "build") -> dict[str, Any]:
+def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: str = "", package_root: str = "build", package_idf6: bool = False) -> dict[str, Any]:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError("Web files update supports only remote package sources")
 
-    base = normalize_base_url(base_url)
-    if source_key == "special":
-        if not package_ref.strip():
-            raise ValueError("Special Version requires a version ref")
-        tools_base = github_raw_tools_base(package_ref.strip())
-        language_base = github_raw_language_base(package_ref.strip())
-    else:
-        tools_base = remote_tools_base_url(source_key)
-        language_base = remote_language_base_url(source_key)
-    if package_root not in ("build", "Updates"):
-        raise ValueError("Invalid package generation")
-    if package_root == "Updates":
-        ref = package_ref.strip() if source_key == "special" else package_branch(source_key, package_root)
-        language_base = github_raw_language_base(ref) + "Updates/"
-        tools_base = language_base + "data/"
+    device = device_status(base_url)
+    require_package_generation(device.get("firmware", ""), package_root)
+    base = normalize_base_url(device.get("base_url") or base_url)
+    ref = package_ref.strip() if source_key == "special" else package_branch(source_key, package_root)
+    if not ref:
+        raise ValueError("Special Version requires a version ref")
+    commit = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits/{parse.quote(ref, safe='')}")
+    revision = str(commit.get("sha", "")) if isinstance(commit, dict) else ""
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Unable to pin web files to a commit")
+    selected_idf6_package = bool(REMOTE_PACKAGES[source_key].get("idf6")) or (source_key == "special" and package_idf6)
+    package_location(source_key, package_ref, package_root, revision,
+                     **({"idf6": True} if source_key == "special" and selected_idf6_package else {}))
+    language_base = github_raw_language_base(revision) + ("Updates/" if package_root == "Updates" else "")
+    tools_base = language_base + "data/"
     uploaded: list[str] = []
     try:
         device_languages = list_language_files(base)
@@ -2279,7 +2295,12 @@ def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: s
 
     for relative_path in extra_languages:
         job.set_current_file(relative_path)
-        url = f"{language_base}{'data/' if package_root == 'Updates' else ''}{relative_path}"
+        if selected_idf6_package:
+            filename = pathlib.PurePosixPath(relative_path).name
+            source_path, = remote_language_paths(filename, remote_language_directories(package_root, True), True)
+            url = github_raw_language_base(revision) + source_path
+        else:
+            url = f"{language_base}{'data/' if package_root == 'Updates' else ''}{relative_path}"
         job.log(f"Source file: {url}")
         content = download_bytes(url, timeout=60.0)
         try:
@@ -2314,7 +2335,7 @@ def update_webfiles_job(job: Job, base_url: str, source_key: str, package_ref: s
         }
 
 
-def install_language_job(job: Job, base_url: str, source_key: str, filename: str, package_ref: str = "", package_root: str = "build") -> dict[str, Any]:
+def install_language_job(job: Job, base_url: str, source_key: str, filename: str, package_ref: str = "", package_root: str = "build", package_idf6: bool = False) -> dict[str, Any]:
     if source_key not in REMOTE_PACKAGES:
         raise ValueError("Language install supports only remote package sources")
 
@@ -2334,15 +2355,15 @@ def install_language_job(job: Job, base_url: str, source_key: str, filename: str
     revision = str(commit.get("sha", "")) if isinstance(commit, dict) else ""
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise ValueError("Unable to pin language package to a commit")
-    manifest = remote_repo_version_manifest(revision, package_root)
+    idf6 = bool(REMOTE_PACKAGES[source_key].get("idf6")) or (source_key == "special" and package_idf6)
+    manifest = remote_repo_version_manifest(revision, package_root, **({"idf6": True} if idf6 else {}))
     require_package_generation(manifest.get("version", ""), package_root)
-    catalog = list_remote_languages("special", revision, package_root)
+    catalog = list_remote_languages("special", revision, package_root, **({"package_idf6": True} if idf6 else {}))
     entry = next((item for item in catalog if item["filename"] == clean_name), None)
     if entry is None:
         raise ValueError("Selected language is not available in this firmware package. Reload the language list.")
     source_path = entry["path"]
-    prefix = "Updates/" if package_root == "Updates" else ""
-    if source_path not in (f"{prefix}language/{clean_name}", f"{prefix}data/language/{clean_name}"):
+    if source_path not in remote_language_paths(clean_name, remote_language_directories(package_root, idf6), idf6):
         raise ValueError("Invalid language catalog path")
     source_url = f"{github_raw_language_base(revision)}{source_path}"
 
@@ -2406,6 +2427,7 @@ class Job:
     finished_at: str | None = None
     progress: int = 0
     current_file: str | None = None
+    phase: str | None = None
     logs: list[str] = field(default_factory=list)
     result: dict[str, Any] | None = None
     error: str | None = None
@@ -3055,20 +3077,24 @@ def download_config_backup(base_url: str, include_api: bool) -> bytes:
     return payload
 
 
+def store_config_backup(base: str, include_api: bool) -> dict[str, Any]:
+    payload = download_config_backup(base, include_api)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = BACKUP_DIR / f"brautomat-backup-{stamp}-{uuid.uuid4().hex}.json"
+    with target.open("xb") as stream:
+        stream.write(payload)
+    return {"backup_file": str(target), "size": len(payload)}
+
+
 def create_backup_job(job: Job, base_url: str, include_api: bool) -> dict[str, Any]:
     base = normalize_base_url(base_url)
     job.set_progress(5)
     job.set_current_file("backup.json")
     job.log(f"Backup starten: {base}")
-    payload = download_config_backup(base, include_api)
-    job.set_progress(85)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    target = BACKUP_DIR / f"brautomat-backup-{stamp}.json"
-    target.write_bytes(payload)
+    result = store_config_backup(base, include_api)
     job.set_progress(100)
-    job.log(f"Backup gespeichert: {target}")
-    return {"backup_file": str(target), "size": len(payload)}
-
+    job.log(f"Backup gespeichert: {result['backup_file']}")
+    return result
 
 # ---------------------------------------------------------------------------
 # Device status & firmware detection
@@ -3076,8 +3102,12 @@ def create_backup_job(job: Job, base_url: str, include_api: bool) -> dict[str, A
 # single connection state shown in the UI badge: No device / Checking /
 # Serial / Online.
 # ---------------------------------------------------------------------------
-def device_status(base_url: str) -> dict[str, Any]:
-    base, vis = try_base_urls(base_url, lambda candidate: json_request(f"{candidate}/reqVis", timeout=2.5))
+def device_status(base_url: str, *, strict: bool = False) -> dict[str, Any]:
+    if strict:
+        base = normalize_base_url(base_url)
+        vis = json_request(f"{base}/reqVis", timeout=2.5)
+    else:
+        base, vis = try_base_urls(base_url, lambda candidate: json_request(f"{candidate}/reqVis", timeout=2.5))
     firmware = extract_firmware_banner(vis.get("firm")) or str(vis.get("firm") or "").strip()
     if not firmware:
         try:
@@ -3098,7 +3128,7 @@ def device_status(base_url: str) -> dict[str, Any]:
     testflow_schema = 0
     build_type = ""
     try:
-        _snapshot_base, snapshot = try_base_urls(base_url, lambda candidate: json_request(f"{candidate}/dev/snapshot", timeout=2.5))
+        snapshot = json_request(f"{base}/dev/snapshot", timeout=2.5)
         meta = snapshot.get("meta") if isinstance(snapshot, dict) else {}
         if isinstance(meta, dict):
             testflow_enabled = True
@@ -3293,134 +3323,54 @@ def combined_device_status(
     serial_baud: int = 115200,
     serial_timeout: float = 12.0,
     prefer_serial: bool = False,
+    *,
+    profile_bound: bool = False,
 ) -> dict[str, Any]:
-    http_error = ""
-    serial_info: dict[str, Any] | None = None
-    serial_error = ""
-
-    def serial_ip_status(info: dict[str, Any] | None) -> dict[str, Any] | None:
-        ip = str((info or {}).get("ip") or "").strip()
-        if not ip or ip == "0.0.0.0":
-            return None
-        try:
-            status = device_status(f"http://{ip}")
-        except Exception:
-            return None
-        status["serial_port"] = serial_port
-        status["serial_baud"] = serial_baud
-        status["version_source"] = status.get("version_source") or "http-ip"
-        status["serial_firmware"] = (info or {}).get("firmware", "")
-        return status
-
-    if prefer_serial and serial_port:
-        try:
-            serial_info = serial_firmware_version(serial_port, serial_baud, timeout=serial_timeout)
-        except Exception as exc:  # noqa: BLE001
-            serial_error = str(exc)
-
-    try:
-        status = device_status(base_url)
-        if serial_port:
-            status["serial_port"] = serial_port
-            status["serial_baud"] = serial_baud
-        if serial_info and not status.get("firmware"):
-            status["firmware"] = serial_info.get("firmware", "")
-            status["version_source"] = serial_info.get("source", "serial")
-        return status
-    except Exception as exc:  # noqa: BLE001
-        http_error = str(exc)
-
-    if serial_port and not serial_info and has_pyserial():
-        mode = maintenance_status(base_url, serial_port)
-        if mode.get("active") is True:
-            return {
-                "state": "serial", "transport": "serial", "mode": "service",
-                "base_url": "", "hostname": "", "resolved_ip": None,
-                "firmware": "Brautomat32 ServiceApp", "lang": "",
-                "dev": False, "dashboard_only": False,
-                "raw": mode["service"], "serial_port": serial_port,
-                "serial_baud": 115200, "version_source": "maintenance-status",
-                "http_error": http_error,
-            }
-        if mode.get("active") is False and mode.get("main"):
-            serial_info = {**mode["main"], "source": "serial-info"}
-
-    if serial_info:
-        ip_status = serial_ip_status(serial_info)
-        if ip_status:
-            return ip_status
-        return {
-            "state": "serial",
-            "transport": "serial",
-            "base_url": "",
-            "hostname": "",
-            "resolved_ip": None,
-            "firmware": serial_info.get("firmware", ""),
-            "lang": "",
-            "dev": False,
-            "dashboard_only": False,
-            "raw": {},
-            "serial_port": serial_port,
-            "serial_baud": serial_baud,
-            "version_source": serial_info.get("source", "serial"),
-            "http_error": http_error,
-        }
-
-    if serial_port:
-        try:
-            serial_info = serial_firmware_version(serial_port, serial_baud, timeout=serial_timeout)
-            ip_status = serial_ip_status(serial_info)
-            if ip_status:
-                return ip_status
-            return {
-                "state": "serial",
-                "transport": "serial",
-                "base_url": "",
-                "hostname": "",
-                "resolved_ip": None,
-                "firmware": serial_info.get("firmware", ""),
-                "lang": "",
-                "dev": False,
-                "dashboard_only": False,
-                "raw": {},
-                "serial_port": serial_port,
-                "serial_baud": serial_baud,
-                "version_source": serial_info.get("source", "serial"),
-                "http_error": http_error,
-            }
-        except Exception as exc:  # noqa: BLE001
-            return {
-                "state": "offline",
-                "transport": "offline",
-                "base_url": "",
-                "hostname": "",
-                "resolved_ip": None,
-                "firmware": "",
-                "lang": "",
-                "dev": False,
-                "dashboard_only": False,
-                "raw": {},
-                "serial_port": serial_port,
-                "serial_baud": serial_baud,
-                "version_source": "unavailable",
-                "http_error": http_error,
-                "serial_error": serial_error or str(exc),
-            }
-
-    return {
-        "state": "offline",
-        "transport": "offline",
-        "base_url": "",
-        "hostname": "",
-        "resolved_ip": None,
-        "firmware": "",
-        "lang": "",
-        "dev": False,
-        "dashboard_only": False,
-        "raw": {},
-        "http_error": http_error,
-        "serial_error": serial_error,
+    status = {
+        "state": "offline", "transport": "offline", "firmware": "", "base_url": "",
+        "resolved_ip": None, "serial_port": serial_port, "serial_baud": serial_baud,
+        "serial_confirmed": False, "version_source": "unavailable", "raw": {},
     }
+    serial_info = {}
+    serial_service = None
+    if serial_port:
+        if has_pyserial() and not prefer_serial:
+            mode = maintenance_status("", serial_port)
+            if mode.get("active") is True:
+                serial_service = mode["service"]
+            serial_info = mode.get("main") or {}
+        if not serial_info and serial_service is None:
+            try:
+                serial_info = serial_firmware_version(serial_port, serial_baud, timeout=serial_timeout)
+            except (OSError, RuntimeError, ValueError) as exc:
+                status["serial_error"] = str(exc)
+
+    serial_address = guided_ip_url(str(serial_info.get("ip") or ""))
+    address = base_url if profile_bound or not serial_port else serial_address
+    if address:
+        try:
+            network = device_status(address, strict=True)
+        except (OSError, RuntimeError, ValueError) as exc:
+            status["http_error"] = str(exc)
+        else:
+            same_device = bool(serial_info) and (
+                not profile_bound or bool(serial_address and network.get("resolved_ip")
+                                          and serial_address == guided_ip_url(network["resolved_ip"]))
+            )
+            return {**status, **network, "serial_confirmed": same_device,
+                    "serial_mismatch": bool(profile_bound and serial_address and network.get("resolved_ip") and not same_device),
+                    "serial_firmware": serial_info.get("firmware", "") if same_device else "",
+                    "version_source": "http-ip" if serial_port and not profile_bound else "http"}
+
+    if serial_service is not None:
+        return {**status, "state": "serial", "transport": "serial", "mode": "service",
+                "firmware": "Brautomat32 ServiceApp", "raw": serial_service,
+                "serial_confirmed": True, "version_source": "maintenance-status"}
+    if serial_info:
+        status.update(state="serial", transport="serial", serial_confirmed=True,
+                      firmware=serial_info.get("firmware", ""),
+                      version_source=serial_info.get("source", "serial"))
+    return status
 
 
 def validate_serial_reply(value: Any, command: str) -> dict[str, Any]:
@@ -3641,9 +3591,11 @@ def remote_repo_version(ref: str) -> tuple[str, tuple[int, int, int]]:
     return version, require_version_tuple(version, f"Remote {ref}")
 
 
-def remote_repo_version_manifest(ref: str, package_root: str = "build") -> dict[str, Any]:
-    url = (github_raw_language_base(ref) + "Updates/version.json"
-           if package_root == "Updates" else github_version_json_url(ref))
+def remote_repo_version_manifest(ref: str, package_root: str = "build", *, idf6: bool = False) -> dict[str, Any]:
+    if package_root == "Updates":
+        url = github_raw_language_base(ref) + ("Updates/version-idf6.json" if idf6 else "Updates/version.json")
+    else:
+        url = github_version_json_url(ref)
     data = json_request(url, timeout=20.0)
     if not isinstance(data, dict):
         raise RuntimeError(f"Remote version info for {ref} is invalid")
@@ -3655,20 +3607,119 @@ def remote_repo_version_manifest(ref: str, package_root: str = "build") -> dict[
     return data
 
 
-def firmware_update_status(base_url: str) -> dict[str, Any]:
-    status = device_status(base_url)
+
+def read_firmware_update_info(base_url: str, firmware: str) -> dict | None:
+    """Read the device preference. Only an absent endpoint enables legacy selection."""
+    base = normalize_base_url(base_url)
+    try:
+        info = json_request(f"{base}/api/firmware/update-info", timeout=4.0)
+    except error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise
+    installed = info.get("installed") if isinstance(info, dict) else None
+    target = info.get("target") if isinstance(info, dict) else None
+    if not isinstance(installed, dict) or not isinstance(target, dict):
+        raise ValueError("Invalid firmware update information from the device")
+    if require_version_tuple(installed.get("version"), "Installed") != require_version_tuple(firmware, "Device"):
+        raise ValueError("Firmware update information does not match the running firmware")
+    channel = target.get("channel")
+    transport = target.get("transport")
+    if (channel not in ("Release", "Development") or transport not in ("web", "usb") or
+            target.get("idfMajor") != 6 or installed.get("idfMajor") not in (5, 6)):
+        raise ValueError("Invalid firmware channel or update transport from the device")
+    development = channel == "Development"
+    ref = "development" if development else "main"
+    source = "development_idf6" if development else "release_idf6"
+    if target.get("manifest") != github_raw_language_base(ref) + "Updates/version-idf6.json":
+        raise ValueError("Firmware update manifest does not match the public channel")
+    layout = installed.get("layout")
+    if not isinstance(layout, dict):
+        raise ValueError("Invalid device partition layout")
+    expected = migration_engine.IDF6_LAYOUT if installed["idfMajor"] == 6 else migration_engine.NEW_LAYOUT
+    for label, kind, _, offset, size in expected:
+        if kind != 0:
+            continue
+        slot = layout.get(label)
+        if not isinstance(slot, dict) or (slot.get("offset"), slot.get("size")) != (offset, size):
+            raise ValueError("Device partition layout does not match its firmware generation")
+    if installed.get("variant") not in ("Release", "Development", "Debug", "Unknown"):
+        raise ValueError("Invalid installed firmware variant")
+    if transport == "web" and (installed["idfMajor"] != 6 or installed["variant"] != channel):
+        raise ValueError("Device reported WebUpdate for an incompatible firmware channel")
+    return {"source": source, "channel": channel, "ref": ref, "transport": transport, "installed": installed}
+
+
+def configured_firmware_update_status(status: dict, info: dict, base_url: str) -> dict:
+    ref, channel = info["ref"], info["channel"]
+    try:
+        manifest = remote_repo_version_manifest(ref, "Updates", idf6=True)
+    except error.HTTPError as exc:
+        if exc.code == 404 and channel == "Development":
+            raise RuntimeError("guided_development_unavailable") from exc
+        raise
+    variants = {"release"} if channel == "Release" else {"develop", "development"}
+    if str(manifest.get("type", "")).strip().lower() not in variants:
+        raise ValueError("IDF6 manifest variant does not match the device update channel")
+    current = require_version_tuple(info["installed"]["version"], "Installed")
+    version = manifest["version"]
+    remote = require_version_tuple(version, "Target")
+    if remote[:2] < (1, 71):
+        raise ValueError("The configured manifest is not an IDF6 firmware package")
+    if remote < current or (remote == current and info["installed"]["variant"] == channel):
+        decision = "no_newer"
+    elif info["installed"]["idfMajor"] == 5:
+        decision = "migration_required"
+    else:
+        decision = "same_generation" if info["transport"] == "web" else "usb_required"
+    return {
+        "current_version": status["firmware"], "version": version, "type": channel,
+        "release_date": manifest.get("release_date") or manifest.get("released_at") or "",
+        "notes": manifest.get("notes") or "", "ref": ref, "decision": decision,
+        "available": decision == "same_generation", "target_source": info["source"],
+        "device": {
+            "base_url": status.get("base_url") or normalize_base_url(base_url),
+            "state": status.get("state") or "online",
+            "dev": channel == "Development",
+            "active_process": status.get("active_process") or {"state": "unknown"},
+        },
+    }
+
+
+def firmware_update_status(base_url: str, *, verified_device: dict | None = None) -> dict[str, Any]:
+    status = verified_device if verified_device is not None else device_status(base_url)
     current_version = str(status.get("firmware") or "").strip()
     if not current_version:
         raise RuntimeError("Device firmware version unavailable")
     current_parsed = require_version_tuple(current_version, "Device")
+    if current_parsed[:2] >= (1, 70):
+        info = read_firmware_update_info(status.get("base_url") or base_url, current_version)
+        if info is not None:
+            return configured_firmware_update_status(status, info, base_url)
     is_development = bool(status.get("dev")) or "develop" in current_version.lower()
     root = package_root_for_firmware(current_version)
     channel = status.get("updatechannel")
     source = {0: "release", 1: "development", 2: "development_170"}.get(channel)
     if source is None:
         source = "development_170" if root == "Updates" and is_development else ("development" if is_development else "release")
+    update_source = (status.get("raw") or {}).get("updateSource")
+    if update_source is not None:
+        manifest_url = update_source.get("manifest") if isinstance(update_source, dict) else None
+        known_manifests = {
+            github_raw_language_base("main") + "Updates/version-idf6.json": "release_idf6",
+            github_raw_language_base("development") + "Updates/version-idf6.json": "development_idf6",
+            github_raw_language_base("development") + "Updates/version.json": "development_170",
+        }
+        source = known_manifests.get(manifest_url) if isinstance(manifest_url, str) else None
+        if source is None:
+            raise ValueError("Unknown device WebUpdate channel")
     ref = package_branch(source, root)
-    manifest = remote_repo_version_manifest(ref, package_root_for_firmware(current_version))
+    idf6 = selected_idf6(source, "")
+    manifest = remote_repo_version_manifest(ref, root, **({"idf6": True} if idf6 else {}))
+    if idf6:
+        variants = {"release"} if source == "release_idf6" else {"develop", "development"}
+        if str(manifest.get("type", "")).strip().lower() not in variants:
+            raise ValueError("IDF6 manifest variant does not match the device WebUpdate channel")
     remote_version = str(manifest.get("version") or "").strip()
     remote_parsed = require_version_tuple(remote_version, f"Remote {ref}")
     current_modern = current_parsed >= migration_engine.SERVICEAPP_MIN_VERSION
@@ -3697,9 +3748,16 @@ def firmware_update_status(base_url: str) -> dict[str, Any]:
     }
 
 
-def firmware_webupdate_job(job: Job, base_url: str, include_api: bool) -> dict[str, Any]:
+def firmware_webupdate_job(job: Job, base_url: str, include_api: bool, *, guided_check=None,
+                           expected_version: str = "", expected_source: str = "") -> dict[str, Any]:
     job.log("Firmware WebUpdate: prüfe Gerät")
-    status = firmware_update_status(base_url)
+    status = (firmware_update_status(base_url, verified_device=guided_check())
+              if guided_check else firmware_update_status(base_url))
+    if ((expected_version and status["version"] != expected_version) or
+            (expected_source and status.get("target_source") != expected_source)):
+        raise RuntimeError("guided_package_changed")
+    if status.get("decision") == "usb_required":
+        raise RuntimeError("Firmware for the configured channel must be installed via USB")
     if status.get("decision") == "migration_required":
         raise RuntimeError("Firmware WebUpdate blocked: switching from 1.66.x or older to "
                            "1.67 or newer requires layout migration. Use Migration.")
@@ -3712,29 +3770,33 @@ def firmware_webupdate_job(job: Job, base_url: str, include_api: bool) -> dict[s
     if not status.get("available"):
         raise RuntimeError("No newer firmware version available")
 
-    base = normalize_base_url(base_url)
+    checked_address = status["device"]["base_url"] if status.get("target_source") else base_url
+    base = normalize_base_url(checked_address)
     job.set_progress(5)
     job.set_current_file("backup.json")
     job.log(f"Backup starten: {base}")
-    response = post_empty(f"{base}/backup?api={1 if include_api else 0}")
-    job.set_progress(35)
-    job.log(f"Backup-Antwort: {response.strip() or 'ok'}")
-    payload = download_bytes(f"{base}/download?file=/backup.json")
-    validate_backup_content(payload)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    target = BACKUP_DIR / f"brautomat-backup-{stamp}.json"
-    target.write_bytes(payload)
+    backup = store_config_backup(base, include_api)
     job.set_progress(55)
-    job.log(f"Backup gespeichert: {target}")
+    job.log(f"Backup gespeichert: {backup['backup_file']}")
 
     job.set_current_file("/startHTTPUpdate")
     job.log(f"Starte Firmware WebUpdate: {status['current_version']} -> {status['version']} ({status['ref']})")
-    active_base, update_response = try_base_urls(base_url, lambda candidate: post_disruptive_empty(f"{candidate}/startHTTPUpdate", timeout=45.0))
+    if guided_check:
+        guided_check()
+    if status.get("target_source"):
+        info = read_firmware_update_info(base, status["current_version"])
+        if info is None or info["source"] != status["target_source"] or info["transport"] != "web":
+            raise RuntimeError("guided_package_changed")
+    if guided_check or status.get("target_source"):
+        active_base = base
+        update_response = post_disruptive_empty(f"{base}/startHTTPUpdate", timeout=45.0)
+    else:
+        active_base, update_response = try_base_urls(base_url, lambda candidate: post_disruptive_empty(f"{candidate}/startHTTPUpdate", timeout=45.0))
     job.set_progress(100)
     job.log(f"WebUpdate akzeptiert über {active_base}: {update_response.strip() or 'ok'}")
     return {
-        "backup_file": str(target),
-        "backup_size": len(payload),
+        "backup_file": backup["backup_file"],
+        "backup_size": backup["size"],
         "current_version": status["current_version"],
         "target_version": status["version"],
         "ref": status["ref"],
@@ -3806,11 +3868,11 @@ def validate_backup_content(content: bytes) -> dict:
     return value
 
 
-def restore_job(job: Job, base_url: str, filename: str, content: bytes) -> dict[str, Any]:
+def restore_job(job: Job, base_url: str, filename: str, content: bytes, *, progress_start: int = 0) -> dict[str, Any]:
     job.log(f"Start restore: {normalize_base_url(base_url)}")
     result = restore_backup(base_url, filename, content)
     job.log(f"Restore response: {result.get('response', 'ok')}")
-    job.set_progress(50)
+    job.set_progress((100 + progress_start) // 2)
     job.log("Restore applied; waiting for device availability after restart")
     time.sleep(3.0)
     deadline = time.monotonic() + 75.0
@@ -4476,11 +4538,14 @@ def migration_target_version(package_source: str, package_ref: str, package_dir:
         ref = package_ref.strip()
         if not ref:
             raise RuntimeError("Special Version requires a selected ref for migration")
-        manifest = remote_repo_version_manifest(ref, "Updates")
+        idf6 = selected_idf6(package_source, package_dir)
+        manifest = remote_repo_version_manifest(ref, "Updates", **({"idf6": True} if idf6 else {}))
         version = str(manifest["version"])
         return version, require_version_tuple(version, "Migration target")
-    if package_source in ("release", "development", "development_170"):
-        manifest = remote_repo_version_manifest(package_branch(package_source, "Updates"), "Updates")
+    if package_source in REMOTE_PACKAGES:
+        idf6 = selected_idf6(package_source, "")
+        manifest = remote_repo_version_manifest(package_branch(package_source, "Updates"), "Updates",
+                                                **({"idf6": True} if idf6 else {}))
         version = str(manifest["version"])
         return version, require_version_tuple(version, "Migration target")
     raise RuntimeError(f"Unsupported migration package source: {package_source}")
@@ -4547,7 +4612,8 @@ def local_inventory_path(kind: str, filename: str) -> pathlib.Path:
 
 def device_inventory_path(kind: str, filename: str) -> str:
     spec = inventory_spec(kind)
-    return f"{spec['device_dir'].rstrip('/')}/{normalize_inventory_filename(filename)}"
+    name = validate_recipe_filename(filename, new=False) if kind in {"mashplans", "fermenterplans"} else normalize_inventory_filename(filename)
+    return f"{spec['device_dir'].rstrip('/')}/{name}"
 
 
 def parse_partition_table(partitions_bin: pathlib.Path) -> list[dict[str, Any]]:
@@ -4597,7 +4663,7 @@ def package_uses_serviceapp(path: pathlib.Path) -> bool:
     app1 = find_partition(entries, 0, offset=0x220000)
     if app1 is None:
         return False
-    migration_engine.check_layout(table.read_bytes(), migration_engine.NEW_LAYOUT)
+    migration_engine.service_layout(table.read_bytes())
     return True
 
 
@@ -4610,9 +4676,15 @@ def validate_flash_serviceapp(path: pathlib.Path) -> bool:
     payload = (path / "firmware.bin").read_bytes()
     migration_engine.check_image(payload, "BrautomatMain")
     service = path / "serviceapp.bin"
-    if not service.is_file() or service.stat().st_size > 0x120000:
+    layout = migration_engine.service_layout((path / "partitions.bin").read_bytes())
+    _, limit = migration_engine.image_regions(layout)["serviceapp.bin"]
+    if not service.is_file() or service.stat().st_size > limit:
         raise ValueError("Matching serviceapp.bin missing or too large")
-    migration_engine.check_image(service.read_bytes(), "BrautomatSvcApp")
+    service_payload = service.read_bytes()
+    migration_engine.check_image(service_payload, "BrautomatSvcApp")
+    migration_engine.check_service_layout_sdk(layout, payload, service_payload)
+    if layout == migration_engine.IDF6_LAYOUT:
+        check_idf6_image_pair(payload, service_payload)
     return True
 
 
@@ -4620,8 +4692,9 @@ def usb_flash_plan(path: pathlib.Path, include_littlefs: bool, source_firmware: 
     """Validate a complete target package before any serial handover or erase."""
     validate_package_dir(str(path), include_littlefs, require_base_files=True)
     service_layout = validate_flash_serviceapp(path)
-    layout = migration_engine.NEW_LAYOUT if service_layout else migration_engine.OLD_LAYOUT
-    migration_engine.check_layout((path / "partitions.bin").read_bytes(), layout)
+    table = (path / "partitions.bin").read_bytes()
+    layout = migration_engine.service_layout(table) if service_layout else migration_engine.OLD_LAYOUT
+    migration_engine.check_layout(table, layout)
     bootloader = (path / "bootloader.bin").read_bytes()
     if len(bootloader) > 0x7000:
         raise ValueError("Bootloader exceeds its reserved region")
@@ -4896,7 +4969,7 @@ def local_inventory_detail(kind: str, filename: str) -> dict[str, Any]:
 
 
 def device_inventory_detail(base_url: str, kind: str, filename: str) -> dict[str, Any]:
-    clean_name = normalize_inventory_filename(filename)
+    clean_name = validate_recipe_filename(filename, new=False) if kind in {"mashplans", "fermenterplans"} else normalize_inventory_filename(filename)
     content = download_fs_file(base_url, device_inventory_path(kind, clean_name))
     try:
         payload = json.loads(content.decode("utf-8", errors="replace"))
@@ -5022,7 +5095,21 @@ def file_explorer(base_url: str, local_folder: str = "") -> FileExplorer:
                 return True
         return False
 
+    def recipe_firmware():
+        try:
+            _, status = try_base_urls(device_base(), lambda candidate: json_request(f"{candidate}/reqVis", timeout=2.5))
+            version = parse_version_tuple(status.get("firm", "")) if isinstance(status, dict) else None
+            if version is not None:
+                return version
+        except (OSError, RuntimeError, ValueError):
+            pass
+        try:
+            return parse_version_tuple(firmware_slot(device_base()).get("firmware", ""))
+        except (OSError, RuntimeError, ValueError):
+            return None
+
     return FileExplorer(root,
+                        recipe_firmware=recipe_firmware,
                         listing=lambda path: json_request(f"{device_base()}/list?dir={parse.quote(path, safe='/')}", timeout=20.0),
                         read=lambda path: download_fs_file(device_base(), path),
                         write=lambda path, content: post_file_to_fs(device_base(), path, content),
@@ -5104,13 +5191,15 @@ def next_version_path(target: pathlib.Path) -> pathlib.Path:
 
 
 def copy_device_to_local(base_url: str, kind: str, filename: str, local_dir: str = "", conflict: str = "overwrite") -> dict[str, Any]:
-    clean_name = normalize_inventory_filename(filename)
+    clean_name = validate_recipe_filename(filename, new=False) if kind in {"mashplans", "fermenterplans"} else normalize_inventory_filename(filename)
     content = download_fs_file(base_url, device_inventory_path(kind, clean_name))
     target_dir = resolve_local_inventory_path(kind, local_dir)
     if not target_dir.exists():
         raise FileNotFoundError(f"Local directory not found: {target_dir}")
     if not target_dir.is_dir():
         raise NotADirectoryError(f"Local directory expected: {target_dir}")
+    if kind in {"mashplans", "fermenterplans"}:
+        validate_local_recipe_filename(clean_name)
     target = target_dir / clean_name
     mode = "overwrite"
     if target.exists():
@@ -5191,13 +5280,24 @@ def inventory_rel_from_path(kind: str, path: pathlib.Path) -> str:
         return normalize_inventory_relpath(path.name)
 
 
-def copy_local_to_device(base_url: str, kind: str, filename: str) -> dict[str, Any]:
+def copy_local_to_device(base_url: str, kind: str, filename: str, *, overwrite=False, acknowledge_legacy_recipe_name=False) -> dict[str, Any]:
     source = local_inventory_item_path(kind, filename)
     if not source.exists():
         raise FileNotFoundError(f"Local file not found: {source}")
     if not source.is_file():
         raise IsADirectoryError(f"Local file expected: {source}")
     content = source.read_bytes()
+    if kind in {"mashplans", "fermenterplans"}:
+        target = device_inventory_path(kind, source.name)
+        explorer = file_explorer(base_url)
+        notice = explorer.recipe_write_notice(target, {
+            "overwrite": overwrite, "acknowledge_legacy_recipe_name": acknowledge_legacy_recipe_name,
+        })
+        if notice:
+            return notice
+        explorer.write("device", target, content, overwrite)
+        return {"copied": source.name, "target": target, "bytes": len(content)}
+
     clean_name = normalize_inventory_filename(source.name)
     version_match = re.match(r"^(.+)_([0-9]+)(\.[^.]+)$", clean_name)
     if version_match and (source.parent / f"{version_match.group(1)}{version_match.group(3)}").exists():
@@ -5229,7 +5329,7 @@ def delete_local_inventory(kind: str, filename: str) -> dict[str, Any]:
 
 
 def delete_device_inventory(base_url: str, kind: str, filename: str) -> dict[str, Any]:
-    clean_name = normalize_inventory_filename(filename)
+    clean_name = validate_recipe_filename(filename, new=False) if kind in {"mashplans", "fermenterplans"} else normalize_inventory_filename(filename)
     target = device_inventory_path(kind, clean_name)
     delete_fs_path(base_url, target)
     return {"deleted": clean_name, "target": target}
@@ -5237,7 +5337,8 @@ def delete_device_inventory(base_url: str, kind: str, filename: str) -> dict[str
 
 def rename_local_inventory(kind: str, old_name: str, new_name: str) -> dict[str, Any]:
     source = local_inventory_item_path(kind, old_name)
-    target = source.parent / normalize_inventory_filename(new_name)
+    name = validate_local_recipe_filename(new_name, new=True) if source.is_file() and kind in {"mashplans", "fermenterplans"} else normalize_inventory_filename(new_name)
+    target = source.parent / name
     if not source.exists():
         raise FileNotFoundError(f"Local path not found: {source}")
     if target.exists():
@@ -5291,8 +5392,12 @@ def create_local_inventory_file(kind: str, parent_dir: str, name: str) -> dict[s
 
 
 def rename_device_inventory(base_url: str, kind: str, old_name: str, new_name: str, maintenance: bool = False) -> dict[str, Any]:
-    old_clean = normalize_inventory_filename(old_name)
-    new_clean = normalize_inventory_filename(new_name)
+    if kind in {"mashplans", "fermenterplans"}:
+        old_clean = validate_recipe_filename(old_name, new=False)
+        new_clean = validate_recipe_filename(new_name)
+    else:
+        old_clean = normalize_inventory_filename(old_name)
+        new_clean = normalize_inventory_filename(new_name)
     source = device_inventory_path(kind, old_clean)
     target = device_inventory_path(kind, new_clean)
     base = normalize_base_url(base_url)
@@ -5307,13 +5412,11 @@ def rename_device_inventory(base_url: str, kind: str, old_name: str, new_name: s
 
     misc = json_request(f"{base}/reqMisc", timeout=10.0)
     active_plan_type = str(misc.get("planType") or "").strip().lower()
-    active_name = str(misc.get("sudname") or "").strip()
-    active_filename = f"{active_name}.json" if active_name else ""
-    is_active_recipe = (
-        old_clean == active_filename and (
-            (kind == "mashplans" and active_plan_type == "mash")
-            or (kind == "fermenterplans" and active_plan_type == "ferm")
-        )
+    active_file = str(misc.get("planFile") or "")
+    active_name = str(misc.get("sudname") or "")
+    expected_type = "mash" if kind == "mashplans" else "ferm"
+    is_active_recipe = active_plan_type == expected_type and (
+        source == active_file if active_file else old_clean == f"{active_name}.json"
     )
 
     if is_active_recipe:
@@ -5373,6 +5476,7 @@ def flash_job(
     restart_monitor_after: bool = True,
     handover_state: dict[str, Any] | None = None,
     source_firmware: str = "",
+    guided_device: dict | None = None,
 ) -> dict[str, Any]:
     package = resolve_package(job, package_source, package_dir, include_littlefs, package_ref, require_base_files=True)
     flash_files = usb_flash_plan(package, include_littlefs, source_firmware)
@@ -5385,7 +5489,11 @@ def flash_job(
     try:
         serial_guard = exclusive_serial_access(timeout=30.0)
         serial_guard.__enter__()
+        if guided_device:
+            guided_check_binding(guided_device)
         if erase_flash:
+            if guided_device:
+                job.phase = "erase"
             erase_args = [
                 str(esptool_path),
                 "--chip",
@@ -5442,6 +5550,8 @@ def flash_job(
         STATE.append_serial_line(f"Flash package: {package}")
         if flash_files:
             job.set_current_file(flash_files[0][0])
+        if guided_device:
+            job.phase = "write"
         progress_state = {"index": 0, "overall": job.progress, "write_start": job.progress, "write_end": 99}
         process = subprocess.Popen(
             args,
@@ -5575,7 +5685,7 @@ def ensure_migration_port_unlocked(port: str) -> None:
         if session.get("phase") == "unreadable":
             raise RuntimeError("Migration report is unreadable; inspect saved recovery data before serial access")
         if (normalize_serial_port_name(str(session.get("port") or "")) == normalize_serial_port_name(port)
-                and session.get("phase") in ("writing", "verifying", "flash-verified", "booting", "updating-webfiles", "restoring", "recovery-verified")):
+                and session.get("phase") in ("writing", "verifying", "flash-verified", "booting", "updating-webfiles", "restoring-api", "restoring", "recovery-verified")):
             raise RuntimeError("Incomplete migration on this port; use Migration resume/recovery first")
 
 
@@ -5616,6 +5726,15 @@ def maintenance_firmware_job(job: Job, base_url: str, source: str, directory: st
         if len(payload) > 0x210000:
             raise ValueError("Firmware exceeds App0 partition size")
         migration_engine.check_image(payload, "BrautomatMain")
+        major = migration_engine.image_idf_major(payload)
+        if major is not None:
+            status = download_bytes(normalize_base_url(base_url) + "/api/status", timeout=15)
+            match = re.search(rb"(?m)^app1=2228224,(\d+)\r?$", status)
+            if match is None:
+                raise ValueError("ServiceApp partition size unavailable")
+            limit = int(match.group(1))
+            if limit not in (0x120000, 0x130000) or (major == 6) != (limit == 0x130000):
+                raise ValueError("Use a firmware package matching the installed ServiceApp layout")
         job.set_current_file("firmware.bin")
         job.log("Repair App0 via ServiceApp HTTP; filesystem and partition table are not uploaded")
         result = maintenance_http(base_url, "/api/firmware", payload)
@@ -5726,6 +5845,443 @@ def migration_sessions() -> list[dict[str, Any]]:
     return entries
 
 
+def guided_usb_ports() -> list[dict]:
+    return [item for item in list_serial_ports() if
+            re.search(r"USB|CP210|CH34|CH91|FTDI|Silicon Labs|VID(?:_|:)|ttyACM|ttyUSB|cu\.usb",
+                      " ".join(item.values()), re.I)]
+
+
+def guided_serial_probe(port: dict) -> dict:
+    try:
+        return serial_firmware_version(port["port"], timeout=3)
+    except (OSError, RuntimeError):
+        return {}
+
+def guided_ip_url(ip: str) -> str:
+    try:
+        return "http://" + socket.inet_ntoa(socket.inet_aton(ip)) if ip != "0.0.0.0" else ""
+    except OSError:
+        return ""
+
+
+def guided_network_addresses() -> set[str]:
+    config = load_app_config()
+    addresses = {config.get("device_url", ""), DEFAULT_DEVICE_URL, "http://192.168.4.1"}
+    if config.get("profiles_enabled"):
+        addresses.update(profile["url"] for profile in config["device_profiles"])
+    if Zeroconf is not None:
+        from zeroconf import ServiceBrowser
+
+        service_type = "_http._tcp.local."
+        names = set()
+        with Zeroconf(ip_version=IPVersion.V4Only) as zeroconf:
+            def collect(zeroconf, service_type, name, state_change):
+                if state_change.name != "Removed":
+                    names.add(name)
+
+            browser = ServiceBrowser(zeroconf, service_type, handlers=[collect])
+            try:
+                time.sleep(1.2)
+                for name in tuple(names):
+                    service = zeroconf.get_service_info(service_type, name, timeout=400)
+                    if service:
+                        addresses.update(f"http://{ip}:{service.port}" for ip in service.parsed_addresses())
+            finally:
+                browser.cancel()
+    return {address for address in addresses if address}
+
+
+def guided_http_device(address: str) -> dict | None:
+    try:
+        url = parse.urlparse(normalize_base_url(address))
+        ip = socket.gethostbyname(url.hostname)
+        base = f"{url.scheme}://{ip}" + (f":{url.port}" if url.port and url.port != 80 else "")
+        raw = json_request(f"{base}/reqVis", timeout=2.5)
+        firmware = str(raw.get("firm") or "") if isinstance(raw, dict) else ""
+        if parse_version_tuple(firmware) and (re.search(r"brautomat", firmware, re.I) or "lang" in raw):
+            return {"base_url": base, "firmware": firmware, "dev": bool(raw.get("dev")),
+                    "updatechannel": raw.get("updatechannel"), "raw": {"updateSource": raw.get("updateSource")}}
+    except (OSError, ValueError, TypeError):
+        pass
+    return None
+
+
+def guided_unique_device(kind: str) -> dict:
+    from concurrent.futures import ThreadPoolExecutor
+
+    ports = guided_usb_ports()
+    usb_required = kind in ("setup", "migration")
+    if usb_required and not ports:
+        raise RuntimeError("guided_usb_required")
+    if len(ports) == 1 and usb_required and STATE.active_serial_config(ports[0]["port"]):
+        raise RuntimeError("guided_serial_monitor")
+    detected = [(port, guided_serial_probe(port)) for port in ports]
+    recognized = [(port, info) for port, info in detected if extract_firmware_banner(info.get("firmware"))]
+    if len(recognized) > 1:
+        raise RuntimeError("guided_multiple")
+    if recognized:
+        port, serial_info = recognized[0]
+    elif len(detected) == 1 and (usb_required or detected[0][1].get("ip")):
+        port, serial_info = detected[0]
+    elif usb_required:
+        raise RuntimeError("guided_usb_ambiguous")
+    else:
+        port, serial_info = {}, {}
+    if port and STATE.active_serial_config(port["port"]):
+        raise RuntimeError("guided_serial_monitor")
+    usb_address = guided_ip_url(str(serial_info.get("ip") or ""))
+    addresses = guided_network_addresses() | ({usb_address} if usb_address else set())
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        online = {item["base_url"]: item for item in pool.map(guided_http_device, addresses) if item}
+    if len(online) > 1 or (port and online and usb_address not in online):
+        raise RuntimeError("guided_multiple")
+    device = next(iter(online.values()), {})
+    if port:
+        serial_version = str(serial_info.get("firmware") or "")
+        return {"port": port["port"], "device_id": port["deviceId"], "base_url": "",
+                "firmware": serial_version, **device}
+    if device:
+        return {"port": "", "device_id": "", **device}
+    if ports:
+        raise RuntimeError("guided_usb_ambiguous")
+    raise RuntimeError("guided_not_found")
+
+
+def guided_check_binding(device: dict, *, network: bool = False, reconnect: bool = False) -> dict:
+    ports = guided_usb_ports()
+    port = next((item for item in ports if item["port"] == device["port"]), {})
+    if device["port"] and port.get("deviceId") != device["device_id"]:
+        raise RuntimeError("guided_device_changed")
+    for other in ports:
+        if other["port"] == device["port"]:
+            continue
+        info = guided_serial_probe(other)
+        if extract_firmware_banner(info.get("firmware")) and (
+                port or guided_ip_url(str(info.get("ip") or "")) != device["base_url"]):
+            raise RuntimeError("guided_multiple")
+    if not network:
+        return {}
+    address = device["base_url"]
+    if port:
+        info = serial_firmware_version(port["port"], timeout=3)
+        serial_address = guided_ip_url(str(info.get("ip") or ""))
+        if not serial_address:
+            raise RuntimeError("guided_network_required")
+        if not reconnect and serial_address != address:
+            raise RuntimeError("guided_device_changed")
+        address = serial_address
+    status = guided_http_device(address)
+    if not status or status["base_url"] != address:
+        raise RuntimeError("guided_network_required")
+    status["active_process"] = device_process_status(device["base_url"])
+    return status
+
+
+def guided_flash_table(device: dict, executable: pathlib.Path, log) -> tuple[str, str]:
+    guided_check_binding(device)
+    prepare_esptool_serial_handover(device["port"], 115200, "Start assistant")
+    with exclusive_serial_access(timeout=30), tempfile.TemporaryDirectory() as directory:
+        reader = migration_engine.Esptool(executable, device["port"], 460800, log)
+        try:
+            mac = reader.identity()
+            table = reader.read(0x8000, 0x1000, pathlib.Path(directory) / "partitions.bin")
+            if table == b"\xff" * len(table):
+                header = reader.read(0x10000, 0x1000, pathlib.Path(directory) / "app-header.bin")
+                if header == b"\xff" * len(header):
+                    return "blank", mac
+            for name, layout in (("legacy", migration_engine.OLD_LAYOUT),
+                                 ("idf5", migration_engine.NEW_LAYOUT), ("idf6", migration_engine.IDF6_LAYOUT)):
+                try:
+                    migration_engine.check_layout(table, layout)
+                except ValueError:
+                    continue
+                return name, mac
+            return "unknown", mac
+        finally:
+            reader.boot()
+
+
+def guided_release(source: str) -> dict:
+    root = "build" if source in ("release", "development") else "Updates"
+    result = package_location(source, "", root)
+    if source.startswith("release") and str(result.get("type", "")).lower() != "release":
+        raise ValueError("Unexpected public firmware variant")
+    return result
+
+
+GUIDED_DEVELOPMENT_FILES = (*migration_engine.IMAGES, "Littlefs.bin")
+
+
+def guided_development_archive() -> pathlib.Path | None:
+    settings = DATA_ROOT / "development-firmware.json"
+    try:
+        config = json.loads(settings.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        return None
+    archive = pathlib.Path(config.get("package", "")).expanduser()
+    if not archive.is_absolute() or archive.suffix.lower() != ".zip":
+        raise ValueError("Development firmware must point to an absolute ZIP path")
+    return archive
+
+
+def guided_setup_package(action: str, *, allow_legacy: bool) -> dict:
+    archive = guided_development_archive()
+    if archive is not None:
+        payload = archive.read_bytes()
+        with ZipFile(io.BytesIO(payload)) as package:
+            manifest = json.loads(package.read("version.json"))
+            for filename in GUIDED_DEVELOPMENT_FILES:
+                package.getinfo(filename)
+        version = str(manifest.get("version") or "").strip()
+        require_version_tuple(version, "Development package")
+        if str(manifest.get("type", "")).strip().lower() not in ("develop", "development"):
+            raise ValueError("Expected a Development firmware package")
+        return {"action": action, "source": "local_development", "version": version,
+                "sha256": hashlib.sha256(payload).hexdigest()}
+    source = "release_idf6"
+    try:
+        target = guided_release(source)
+    except error.HTTPError as exc:
+        if exc.code != 404 or not allow_legacy:
+            raise
+        source = "release"
+        target = guided_release(source)
+    return {"action": action, "source": source, "version": target["version"]}
+
+
+def guided_configured_update_plan(device: dict, target: dict) -> dict:
+    decision = target["decision"]
+    if decision == "no_newer":
+        return {"action": "current", "channel": target["type"]}
+    if decision == "migration_required":
+        action = "migration" if device["port"] and device["base_url"] else "migration_connection"
+    elif decision == "usb_required":
+        action = "usb" if device["port"] else "usb_connection"
+    elif decision == "same_generation":
+        action = "web"
+    else:
+        raise RuntimeError("guided_unknown_firmware")
+    return {"action": action, "source": target["target_source"], "version": target["version"], "channel": target["type"]}
+
+
+def guided_target(kind: str, device: dict, *, reset: bool = False) -> dict:
+    version = parse_version_tuple(device["firmware"])
+    if kind == "setup":
+        if reset:
+            if not version or not device["port"]:
+                raise RuntimeError("guided_unknown_firmware")
+            return guided_setup_package("reset", allow_legacy=version < migration_engine.SERVICEAPP_MIN_VERSION)
+        if version:
+            return {"action": "setup_existing"}
+        if device["firmware"]:
+            raise RuntimeError("guided_unknown_firmware")
+        layout, mac = guided_flash_table(device, ensure_esptool_available(None), lambda message: None)
+        if layout != "blank":
+            raise RuntimeError("guided_unknown_firmware")
+        device["mac"] = mac
+        return guided_setup_package("install", allow_legacy=True)
+    if not version:
+        raise RuntimeError("guided_unknown_firmware")
+    legacy = version < migration_engine.SERVICEAPP_MIN_VERSION
+    beta = version[:2] == (1, 70)
+    if kind == "migration" or beta:
+        if beta and device["base_url"]:
+            info = read_firmware_update_info(device["base_url"], device["firmware"])
+            if info is not None:
+                target = configured_firmware_update_status(device, info, device["base_url"])
+                return guided_configured_update_plan(device, target)
+        if not (beta or MIGRATION_MIN_VERSION <= version < migration_engine.SERVICEAPP_MIN_VERSION):
+            raise RuntimeError("guided_migration_unsupported")
+        target = guided_release("release_idf6")
+        if require_version_tuple(target["version"], "Target") <= version:
+            raise RuntimeError("guided_migration_unsupported")
+        action = "migration" if device["port"] and device["base_url"] else "migration_connection"
+        return {"action": action, "source": "release_idf6", "version": target["version"]}
+    if not legacy and version[:2] < (1, 71):
+        raise RuntimeError("guided_unknown_firmware")
+    if device["base_url"]:
+        target = firmware_update_status(device["base_url"], verified_device=device)
+        if target.get("target_source"):
+            return guided_configured_update_plan(device, target)
+        decision = target["decision"]
+        if decision == "migration_required" or (decision == "no_newer" and legacy and version >= MIGRATION_MIN_VERSION):
+            try:
+                return guided_target("migration", device)
+            except error.HTTPError as exc:
+                if exc.code != 404 or decision != "no_newer":
+                    raise
+        if decision == "no_newer":
+            return {"action": "current"}
+        if decision != "same_generation":
+            raise RuntimeError("guided_unknown_firmware")
+        return {"action": "web", "version": target["version"]}
+    if not legacy:
+        return {"action": "update_network_connection"}
+    development = device.get("dev") or "develop" in device["firmware"].lower()
+    source = "development" if development else "release"
+    target = guided_release(source)
+    if require_version_tuple(target["version"], "Target") <= version:
+        if legacy and version >= MIGRATION_MIN_VERSION:
+            try:
+                return guided_target("migration", device)
+            except error.HTTPError as exc:
+                if exc.code != 404:
+                    raise
+        return {"action": "current"}
+    return {"action": "usb", "source": source, "version": target["version"]}
+
+
+def guided_run(job: Job, device: dict, plan: dict) -> dict:
+    action, version = plan["action"], plan["version"]
+    if action == "web":
+        return firmware_webupdate_job(job, device["base_url"], True,
+                                      guided_check=lambda: guided_check_binding(device, network=True),
+                                      expected_version=version, expected_source=plan.get("source", ""))
+    if action == "migration":
+        guided_check_binding(device, network=True)
+        return migration_job(job, device["base_url"], True, device["port"], 460800,
+                             plan["source"], "", "", True, True, guided_device=device,
+                             expected_version=version)
+    source = plan["source"]
+    job.phase = "package"
+    if source == "local_development":
+        archive = guided_development_archive()
+        if archive is None:
+            raise RuntimeError("guided_package_changed")
+        payload = archive.read_bytes()
+        if hashlib.sha256(payload).hexdigest() != plan["sha256"]:
+            raise RuntimeError("guided_package_changed")
+        with tempfile.TemporaryDirectory(prefix="servicetool-development-") as directory:
+            staged = pathlib.Path(directory)
+            with ZipFile(io.BytesIO(payload)) as package:
+                for filename in GUIDED_DEVELOPMENT_FILES:
+                    (staged / filename).write_bytes(package.read(filename))
+            check_remote_package_layout(staged, True)
+            check_idf6_package_main((staged / "firmware.bin").read_bytes(),
+                                    REMOTE_PACKAGES["development_idf6"]["base_url"], version)
+            check_idf6_package_channel((staged / "serviceapp.bin").read_bytes(),
+                                       REMOTE_PACKAGES["development_idf6"]["base_url"], "ServiceApp")
+            job.log(f"Using local Development firmware {version}: {archive}")
+            return guided_flash_package(job, device, plan, staged)
+    include_littlefs = action in ("install", "reset")
+    package = prepare_remote_package(job, source, include_littlefs)
+    metadata = json.loads((package / "package.json").read_text(encoding="utf-8"))
+    if require_version_tuple(metadata["version"], "Package") != require_version_tuple(version, "Target"):
+        raise RuntimeError("guided_package_changed")
+    return guided_flash_package(job, device, plan, package)
+
+
+def guided_flash_package(job: Job, device: dict, plan: dict, package: pathlib.Path) -> dict:
+    action, source = plan["action"], plan["source"]
+    erase_flash = action == "reset"
+    include_littlefs = action in ("install", "reset")
+    job.phase = "device"
+    executable = ensure_esptool_available(job)
+    if erase_flash and device["base_url"]:
+        guided_check_binding(device, network=True)
+        migration_require_idle(device["base_url"])
+    if action == "usb" and plan.get("channel"):
+        checked = guided_check_binding(device, network=True)
+        info = read_firmware_update_info(device["base_url"], checked["firmware"])
+        if info is None or info["source"] != source or info["transport"] != "usb":
+            raise RuntimeError("guided_package_changed")
+        migration_require_idle(device["base_url"])
+    layout, mac = guided_flash_table(device, executable, job.log)
+    expected = "blank" if action == "install" else ("legacy" if source in ("release", "development") else "idf6")
+    allowed_layouts = ("legacy", "idf5", "idf6") if erase_flash else (expected,)
+    if layout not in allowed_layouts or (device.get("mac") and mac != device["mac"]):
+        raise RuntimeError("guided_device_changed")
+    guided_check_binding(device)
+    return flash_job(job, device["port"], 460800, "open", str(package), "", erase_flash, include_littlefs,
+                     source_firmware=device["firmware"], guided_device=device)
+
+
+GUIDED_LOCK = threading.Lock()
+
+
+def guided_request(data: dict) -> dict:
+    kind, action = data.get("kind"), data.get("action")
+    if kind not in ("setup", "update", "migration", "backup"):
+        raise ValueError("Unknown assistant")
+    if kind == "backup" and action not in ("probe", "verify", "scan", "wifi", "backup"):
+        raise ValueError("Unknown backup assistant action")
+    with GUIDED_LOCK:
+        if MIGRATION_LOCK.locked() or any(
+            item["status"] in ("queued", "running") and item["type"] in
+            ("guided", "flash", "firmware-webupdate", "migration", "firmware-backup", "webfiles", "restore")
+            for item in STATE.jobs.snapshot()
+        ):
+            raise RuntimeError("guided_busy")
+        if action == "probe":
+            device = guided_unique_device(kind)
+            if kind == "backup":
+                plan = {"action": "backup" if device["base_url"] else "backup_connection"}
+            else:
+                plan = guided_target(kind, device)
+            return {"device": device, "plan": plan}
+        device = data["device"]
+        if action == "verify":
+            guided_check_binding(device)
+            current = guided_unique_device(kind)
+            if (current["port"], current["device_id"]) != (device["port"], device["device_id"]):
+                raise RuntimeError("guided_device_changed")
+            if not device["port"] and current["base_url"] != device["base_url"]:
+                raise RuntimeError("guided_device_changed")
+            return current
+        if action == "scan" and data.get("refresh") is False:
+            if not device["port"] or not parse_version_tuple(device["firmware"]):
+                raise RuntimeError("guided_device_changed")
+            guided_check_binding(device)
+            return wifi_scan("", False, device["port"])
+        if action in ("scan", "wifi"):
+            current = guided_unique_device("setup")
+            if (current["port"] != device["port"]
+                    or current["device_id"] != device["device_id"] or not parse_version_tuple(current["firmware"])):
+                raise RuntimeError("guided_device_changed")
+            if action == "scan":
+                return wifi_scan("", True, current["port"])
+            return wifi_save("", str(data.get("ssid") or ""), str(data.get("password") or ""), current["port"])
+        if action in ("prepare_reset", "backup", "start"):
+            current = guided_unique_device(kind)
+            if any(current.get(key) != device.get(key) for key in ("port", "device_id", "firmware", "base_url")):
+                raise RuntimeError("guided_device_changed")
+            if action == "prepare_reset":
+                if kind != "setup":
+                    raise ValueError("Flash reset is only available in setup")
+                return guided_target(kind, current, reset=True)
+            if action == "backup":
+                if kind not in ("setup", "backup") or not current["base_url"] or (kind == "setup" and not current["port"]):
+                    raise RuntimeError("guided_network_required")
+                job = STATE.jobs.create("guided", "Konfigurationsbackup")
+                run_job(job, create_backup_job, current["base_url"], True)
+                return {"job_id": job.id}
+            requested = data["plan"]
+            if requested.get("action") == "reset":
+                if kind != "setup" or data.get("confirm_erase") is not True:
+                    raise RuntimeError("guided_erase_confirmation")
+                plan = guided_target(kind, current, reset=True)
+            else:
+                plan = guided_target(kind, current)
+            if plan != requested or plan["action"] not in ("install", "reset", "usb", "web", "migration"):
+                raise RuntimeError("guided_package_changed")
+            if current.get("mac") != device.get("mac"):
+                raise RuntimeError("guided_device_changed")
+            job = STATE.jobs.create("guided", "Start assistant")
+            run_job(job, guided_run, current, plan)
+            return {"job_id": job.id}
+        if action == "resume":
+            guided_check_binding(device)
+            session = migration_engine.Session.load(migration_root(), str(data["session_id"]))
+            if session.report.get("guided_device") != device:
+                raise RuntimeError("guided_device_changed")
+            job = STATE.jobs.create("guided", "Migration recovery")
+            run_job(job, migration_recovery_job, session.report["id"], device["port"], 460800, "resume")
+            return {"job_id": job.id}
+    raise ValueError("Unknown assistant action")
+
+
+
+
 def discard_migration_session(session_id: str) -> dict[str, Any]:
     if not MIGRATION_LOCK.acquire(blocking=False):
         raise RuntimeError("Cannot discard a session while migration or recovery is running")
@@ -5747,8 +6303,7 @@ def migration_require_idle(base_url: str) -> None:
     except error.HTTPError as exc:
         if exc.code != 404:
             raise
-        # Legacy firmware: combine its existing live flag with the persisted
-        # NVS resume/actuator checks performed before the first flash write.
+        # Older firmware reports the live process state through /reqVis.
         vis = json_request(f"{base}/reqVis", timeout=5.0)
         if not isinstance(vis, dict) or vis.get("brauen") is not False:
             raise RuntimeError("Legacy device process state is active or unknown")
@@ -5766,25 +6321,37 @@ def prepare_migration_package(job: Job, source: str, directory: str, ref: str) -
     else:
         if source not in REMOTE_PACKAGES:
             raise ValueError("Unsupported migration package source")
-        branch = ref if source == "special" else package_branch(source, "Updates")
+        branch = ref.strip() if source == "special" else package_branch(source, "Updates")
+        if not branch:
+            raise ValueError("Special Version requires a selected ref for migration")
         commit = json_request(f"https://api.github.com/repos/InnuendoPi/Brautomat32/commits/{parse.quote(branch, safe='')}")
         sha = str(commit.get("sha", ""))
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise ValueError("Unable to pin migration source to a commit")
-        location = package_location(source, ref, "Updates", sha)
+        idf6 = selected_idf6(source, directory)
+        location = package_location(source, ref, "Updates", sha,
+                                    **({"idf6": True} if source == "special" and idf6 else {}))
         base = location["base_url"]
+        if directory and directory.rstrip("/") != base.replace(f"/{sha}/", f"/{branch}/", 1):
+            raise ValueError("Package selection changed. Reload the migration package list.")
         package = CACHE_DIR / ("migration-" + uuid.uuid4().hex)
         package.mkdir(parents=True)
         version = location["version"]
         for name in migration_engine.IMAGES:
             target = package / name
-            target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(download_bytes(f"{base}/{name}", timeout=120.0))
+        if idf6:
+            check_idf6_package_main((package / REQUIRED_FIRMWARE_FILE).read_bytes(), base, version)
+            check_idf6_package_channel((package / "serviceapp.bin").read_bytes(), base, "ServiceApp")
         for name in WEBUPDATE_TOOL_FILES:
             target = package / "webfiles" / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(download_bytes(github_raw_language_base(sha) + "Updates/data/" + name, timeout=120.0))
     metadata = migration_engine.validate_package(package, version)
+    if source == "open" and metadata.get("idf6"):
+        check_idf6_image_pair((package / REQUIRED_FIRMWARE_FILE).read_bytes(), (package / "serviceapp.bin").read_bytes())
+    if source != "open" and idf6 != bool(metadata.get("idf6")):
+        raise ValueError("Partition layout does not match the selected firmware package")
     migration_webfiles(package)
     job.log("Migration package validated: " + str(package))
     return package, metadata
@@ -5915,18 +6482,34 @@ def finish_migration(job: Job, session: migration_engine.Session, base_url: str)
         raise RuntimeError("Saved migration webfiles changed")
     job.set_current_file("migrationStepReconnect")
     expected_version = migration_engine.version_tuple(session.report["target_version"])
+    guided_device = session.report.get("guided_device")
     deadline = time.time() + 120
     while True:
         try:
-            vis = json_request(f"{base_url}/reqVis", timeout=3.0)
-            if require_version_tuple(str(vis.get("firm", "")), "Target") != expected_version:
+            if guided_device:
+                guided_check_binding(guided_device)
+                verified = guided_unique_device("migration")
+                if not verified["base_url"]:
+                    raise RuntimeError("guided_network_required")
+                if (verified["port"], verified["device_id"]) != (guided_device["port"], guided_device["device_id"]):
+                    raise RuntimeError("guided_device_changed")
+                base_url, firmware = verified["base_url"], verified["firmware"]
+            else:
+                vis = json_request(f"{base_url}/reqVis", timeout=3.0)
+                firmware = str(vis.get("firm", ""))
+            if require_version_tuple(firmware, "Target") != expected_version:
                 raise RuntimeError("Unexpected target firmware")
             migration_require_idle(base_url)
             break
-        except Exception:
+        except Exception as exc:
+            if str(exc) in ("guided_multiple", "guided_device_changed"):
+                raise
             if time.time() >= deadline:
                 raise RuntimeError("Target is not reachable with the expected version and idle state; keep recovery backup")
             time.sleep(3)
+    if guided_device:
+        guided_device = {**guided_device, "base_url": base_url}
+        guided_check_binding(guided_device, network=True)
     expected_files = session.report["user_files"]
     if expected_files:
         job.set_current_file("migrationStepUserCheck")
@@ -5954,6 +6537,14 @@ def finish_migration(job: Job, session: migration_engine.Session, base_url: str)
         if migration_engine.digest(migration_read_file(base_url, name)) != expected:
             raise RuntimeError(f"User file changed during webfile update: {name}")
     migration_require_idle(base_url)
+    if (isinstance(session, migration_engine.ApiSession) and session.report.get("restore_after_flash")
+            and not session.report.get("restore_completed")):
+        job.set_current_file("migrationStepRestore")
+        if guided_device:
+            guided_check_binding(guided_device, network=True)
+        session.save("restoring-api")
+        restore_job(job, base_url, "backup.json", session.backup(), progress_start=95)
+        session.save(restore_type="api", restore_completed=True)
     legacy_backup = not isinstance(session, migration_engine.ApiSession)
     session.save("complete", user_files_verified=legacy_backup, webfiles_verified=True, error="",
                  service_image_verified=True, service_runtime_tested=False)
@@ -5999,7 +6590,8 @@ def clear_migration_webupdate_markers(job: Job, base_url: str) -> list[str]:
 
 def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: int,
                   package_source: str, package_dir: str, package_ref: str,
-                  include_littlefs: bool, create_backup: bool) -> dict[str, Any]:
+                  include_littlefs: bool, create_backup: bool, *, guided_device: dict | None = None,
+                  expected_version: str = "") -> dict[str, Any]:
     ensure_migration_port_unlocked(port)
     if not MIGRATION_LOCK.acquire(blocking=False):
         raise RuntimeError("Another migration or recovery is running")
@@ -6011,26 +6603,44 @@ def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: i
         job.set_current_file("migrationStepPrerequisites")
         ensure_esptool_port_available(port)
         base = normalize_base_url(base_url)
-        source, parsed = current_firmware_version(base)
-        if not MIGRATION_MIN_VERSION <= parsed < migration_engine.SERVICEAPP_MIN_VERSION:
-            raise RuntimeError("Migration source must be 1.62.0 through 1.66.x; no intermediate update is required")
+        if guided_device:
+            source = guided_check_binding(guided_device, network=True)["firmware"]
+            parsed = require_version_tuple(source, "Device")
+        else:
+            source, parsed = current_firmware_version(base)
+        source_is_idf5_beta = parsed[:2] == (1, 70)
+        if not (MIGRATION_MIN_VERSION <= parsed < migration_engine.SERVICEAPP_MIN_VERSION or source_is_idf5_beta):
+            raise RuntimeError("Migration source must be 1.62.0 through 1.66.x or the 1.70 IDF5 beta")
         migration_require_idle(base)
         job.set_current_file("migrationStepPackage")
         package, metadata = prepare_migration_package(job, package_source, package_dir, package_ref)
+        if expected_version and require_version_tuple(metadata["version"], "Package") != require_version_tuple(expected_version, "Target"):
+            raise RuntimeError("guided_package_changed")
+        restore_after_flash = bool(metadata.get("idf6"))
+        if source_is_idf5_beta and not restore_after_flash:
+            raise ValueError("The 1.70 IDF5 beta must migrate to an IDF6 package")
         webfiles = migration_webfiles(package)
         job.set_current_file("migrationStepApiBackup")
+        if guided_device:
+            guided_check_binding(guided_device, network=True)
         backup_payload = download_config_backup(base, include_api)
         job.set_current_file("migrationStepTool")
         executable = ensure_esptool_available(job)
         session = migration_engine.ApiSession.create(migration_root(), package, metadata, webfiles, source, CACHE_DIR / "migration-work")
         session.status = job.set_current_file
         session.save(source_version=source, target_version=metadata["version"], port=port,
-                     base_url=base, user_files={}, backup_type="api")
+                     base_url=base, user_files={}, backup_type="api",
+                     restore_after_flash=restore_after_flash,
+                     source_layout=("idf5" if source_is_idf5_beta else "legacy") if restore_after_flash else "")
         session.capture_api(backup_payload)
+        if guided_device:
+            session.save(guided_device=guided_device)
         job.log(f"Migration backup and report: {session.directory}")
         migration_require_idle(base)
         removed_markers = clear_migration_webupdate_markers(job, base)
         session.save(webupdate_markers_cleared=True, webupdate_markers_removed=removed_markers)
+        if guided_device:
+            guided_check_binding(guided_device, network=True)
         handover = prepare_esptool_serial_handover(port, 115200, "Migration")
         with exclusive_serial_access(timeout=30):
             safe_restart = False
@@ -6045,6 +6655,8 @@ def migration_job(job: Job, base_url: str, include_api: bool, port: str, baud: i
     except Exception as exc:
         if session:
             session.save(error=str(exc))
+            if guided_device:
+                job.result = {"migration_id": session.report["id"], "backup_dir": str(session.directory)}
             job.log(f"Migration incomplete. Recovery session: {session.report['id']}")
         raise
     finally:
@@ -6066,6 +6678,8 @@ def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, acti
     try:
         session = (migration_engine.Session.load_directory(pathlib.Path(backup_dir)) if backup_dir and action == "restore"
                    else migration_engine.Session.load(migration_root(), session_id))
+        if action == "resume" and session.report.get("guided_device"):
+            guided_check_binding(session.report["guided_device"])
         if action == "resume" and session.report["phase"] == "cancelled":
             raise ValueError("Migration session was discarded; start a new migration")
         session.status = job.set_current_file
@@ -6083,6 +6697,10 @@ def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, acti
             session.report["work_dir"] = str((CACHE_DIR / "migration-work" / uuid.uuid4().hex).resolve())
         if session.report["phase"] == "complete" and action == "resume":
             raise RuntimeError("Migration is already complete")
+        guided_booted = (session.report.get("guided_device") and session.report.get("write_verification")
+                         and session.report["phase"] == "booting")
+        if api_backup and action == "resume" and (guided_booted or session.report["phase"] in ("updating-webfiles", "restoring-api")):
+            return finish_migration(job, session, session.report["base_url"])
         session.save(port=port)
         # A pre-flash retry must repeat cleanup. Once writing has begun, the
         # recovery path must remain usable without a running HTTP firmware.
@@ -6107,7 +6725,7 @@ def migration_recovery_job(job: Job, session_id: str, port: str, baud: int, acti
                 job.set_progress(100)
                 return {"restored": True, "backup_dir": str(session.directory)}
             phase = session.report["phase"]
-            if api_backup and phase in ("backup-verified", "writing", "verifying", "flash-verified", "booting", "updating-webfiles"):
+            if api_backup and phase in ("backup-verified", "writing", "verifying", "flash-verified", "booting"):
                 session.install(device, job.set_progress)
             elif phase in ("backup-verified", "writing", "verifying", "flash-verified"):
                 session.install(device, job.set_progress)
@@ -6249,7 +6867,8 @@ class AppHandler(BaseHTTPRequestHandler):
             try:
                 if source == "special" and not package_ref.strip():
                     raise ValueError("Please select a firmware version first.")
-                languages = list_remote_languages(source, package_ref, query.get("package_root", ["build"])[0])
+                languages = list_remote_languages(source, package_ref, query.get("package_root", ["build"])[0],
+                                                  query.get("package_idf6", ["0"])[0] == "1")
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, status=400)
                 return
@@ -6464,6 +7083,14 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                 else:
                     self._send_json(store.handle(action, data))
                 return
+            if path == "/api/start-assistant":
+                try:
+                    self._send_json(guided_request(self._read_json()))
+                except error.HTTPError as exc:
+                    if exc.code != 404:
+                        raise
+                    self._send_json({"error": "guided_no_package"}, status=404)
+                return
             if path == "/api/device/status":
                 data = self._read_json()
                 self._send_json(
@@ -6473,6 +7100,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                         int(data.get("serial_baud", 115200)),
                         float(data.get("serial_timeout", 12.0)),
                         bool(data.get("prefer_serial", False)),
+                        profile_bound=bool(data.get("profile_bound", False)),
                     )
                 )
                 return
@@ -6503,9 +7131,12 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                 current = load_app_config()
                 if current.get("active_device_id") and data.get("active_device_id") != current["active_device_id"]:
                     raise ValueError("Das aktive Geräteprofil wurde geändert. Bitte die Seite neu laden.")
+                if data.get("profiles_enabled", current["profiles_enabled"]) != current["profiles_enabled"]:
+                    raise ValueError("Der Profilmodus wurde geändert. Bitte die Seite neu laden.")
                 # Profiles are managed by their dedicated route, not stale form snapshots.
                 data["device_profiles"] = current["device_profiles"]
                 data["active_device_id"] = current["active_device_id"]
+                data["profiles_enabled"] = current["profiles_enabled"]
                 config = save_app_config(data)
                 ensure_runtime_dirs()
                 self._send_json(public_app_config(config))
@@ -6672,6 +7303,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                     data.get("package_source", "release"),
                     data.get("package_ref", ""),
                     data.get("package_root", "build"),
+                    data.get("package_idf6", False),
                 )
                 self._send_json({"job_id": job.id})
                 return
@@ -6686,6 +7318,7 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                     data["filename"],
                     data.get("package_ref", ""),
                     data.get("package_root", "build"),
+                    data.get("package_idf6", False),
                 )
                 self._send_json({"job_id": job.id})
                 return
@@ -6695,7 +7328,11 @@ body .panel pre { max-width: 100%; overflow-x: auto; }
                 return
             if path == "/api/inventory/local-to-device":
                 data = self._read_json()
-                self._send_json(copy_local_to_device(data["base_url"], data["kind"], data["filename"]))
+                self._send_json(copy_local_to_device(
+                    data["base_url"], data["kind"], data["filename"],
+                    overwrite=bool(data.get("overwrite")),
+                    acknowledge_legacy_recipe_name=bool(data.get("acknowledge_legacy_recipe_name")),
+                ))
                 return
             if path == "/api/explorer/action":
                 data = self._read_json()
