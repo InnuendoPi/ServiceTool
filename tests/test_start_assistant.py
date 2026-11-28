@@ -266,13 +266,33 @@ class StartAssistantTests(unittest.TestCase):
             self.assertEqual(app.guided_target("update", device)["action"], "current")
 
     def test_idf5_beta_requires_migration_and_both_connections(self):
-        device = {**LEGACY, "firmware": "Brautomat32 V 1.70.6 Develop"}
-        with (patch.object(app, "guided_release", return_value={"version": "1.71.0"}),
+        manifest = "https://raw.githubusercontent.com/InnuendoPi/Brautomat32/development/Updates/version-idf6.json"
+        files = [{"name": name, "type": "file"} for name in (*app.REQUIRED_PACKAGE_FILES, "serviceapp.bin")]
+        device = {**LEGACY, "firmware": "Brautomat32 V 1.70.6 Develop", "dev": True}
+        for kind in ("update", "migration"):
+            with self.subTest(kind=kind):
+                with patch.object(app, "json_request") as request:
+                    self.assertEqual(app.guided_target(kind, {**device, "base_url": ""}),
+                                     {"action": "migration_connection"})
+                    request.assert_not_called()
+                for port, action in (("", "migration_connection"), (device["port"], "migration")):
+                    with patch.object(app, "json_request", side_effect=[
+                        HTTPError(f"{BASE}/api/firmware/update-info", 404, "missing", {}, None),
+                        {"version": "1.71.0", "type": "Development"},
+                        files,
+                    ]) as request:
+                        self.assertEqual(app.guided_target(kind, {**device, "port": port}),
+                                         {"action": action, "source": "development_idf6", "version": "1.71.0"})
+                        self.assertEqual(request.call_args_list[1].args[0], manifest)
+                        self.assertIn("/Updates/ESP32-IDF6dev?ref=development", request.call_args_list[2].args[0])
+
+    def test_idf5_beta_with_test_versions_disabled_selects_release(self):
+        device = {**LEGACY, "firmware": "Brautomat32 V 1.70.6 Develop", "dev": False}
+        with (patch.object(app, "guided_release", return_value={"version": "1.71.0"}) as release,
               patch.object(app, "read_firmware_update_info", return_value=None)):
-            for unavailable in ("port", "base_url"):
-                self.assertEqual(app.guided_target("update", {**device, unavailable: ""})["action"],
-                                 "migration_connection")
-            self.assertEqual(app.guided_target("update", device)["action"], "migration")
+            self.assertEqual(app.guided_target("migration", device),
+                             {"action": "migration", "source": "release_idf6", "version": "1.71.0"})
+            release.assert_called_once_with("release_idf6")
 
     @patch.object(app.STATE.jobs, "snapshot", return_value=[])
     def test_changed_device_or_package_cannot_start_a_job(self, _snapshot):

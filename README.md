@@ -33,7 +33,7 @@ It provides:
 Brautomat32 ServiceTool is distributed as a complete desktop application.
 
 The Windows package includes a bundled `esptool` copy. Linux and macOS packages
-do not bundle it. ServiceTool uses **esptool 5.6.0** and verifies the version
+do not bundle it. ServiceTool uses **esptool 5.7.0** and verifies the version
 of bundled, cached or downloaded copies. It downloads the matching platform
 asset when needed and caches it locally. If GitHub is unreachable, a verified
 local copy of that version can be used.

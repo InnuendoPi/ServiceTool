@@ -42,7 +42,7 @@ try {
     New-Item -ItemType Directory -Force -Path (Join-Path $packageDir "tools") | Out-Null
     Copy-Item (Join-Path $scriptDir "tools\mock_server.py") (Join-Path $packageDir "tools\mock_server.py")
 
-    $esptoolVersion = "5.6.0"
+    $esptoolVersion = "5.7.0"
     function Test-EsptoolVersion([string]$Path) {
         if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
         try {

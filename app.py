@@ -116,7 +116,7 @@ DEFAULT_DEVICE_URL = "http://brautomat.local"
 PORT = DEFAULT_PORT
 SERIAL_POLL_DELAY = 0.15
 SERVICE_TOOL_VERSION = "2.1.0"
-ESPTOOL_VERSION = "5.6.0"  # Pin downloads and local selection to this version.
+ESPTOOL_VERSION = "5.7.0"  # Pin downloads and local selection to this version.
 ESPTOOL_DOWNLOAD_LOCK = threading.Lock()
 ESPTOOL_SELECTED_PATH = None
 ESPTOOL_SELECTED_VERSION = None
@@ -6085,18 +6085,21 @@ def guided_target(kind: str, device: dict, *, reset: bool = False) -> dict:
     legacy = version < migration_engine.SERVICEAPP_MIN_VERSION
     beta = version[:2] == (1, 70)
     if kind == "migration" or beta:
-        if beta and device["base_url"]:
+        if beta:
+            if not device["base_url"]:
+                return {"action": "migration_connection"}
             info = read_firmware_update_info(device["base_url"], device["firmware"])
             if info is not None:
                 target = configured_firmware_update_status(device, info, device["base_url"])
                 return guided_configured_update_plan(device, target)
         if not (beta or MIGRATION_MIN_VERSION <= version < migration_engine.SERVICEAPP_MIN_VERSION):
             raise RuntimeError("guided_migration_unsupported")
-        target = guided_release("release_idf6")
+        source = "development_idf6" if beta and device.get("dev") else "release_idf6"
+        target = guided_release(source)
         if require_version_tuple(target["version"], "Target") <= version:
             raise RuntimeError("guided_migration_unsupported")
         action = "migration" if device["port"] and device["base_url"] else "migration_connection"
-        return {"action": action, "source": "release_idf6", "version": target["version"]}
+        return {"action": action, "source": source, "version": target["version"]}
     if not legacy and version[:2] < (1, 71):
         raise RuntimeError("guided_unknown_firmware")
     if device["base_url"]:
