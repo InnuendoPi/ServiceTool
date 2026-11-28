@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
   "version": "2.1.1",
-  "released_at": "",
+  "released_at": "2026-11-28",
   "notes": "Korrigiert die Paketauswahl der Migrationsassistenten und aktualisiert esptool auf 5.7.0.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.1.1/Brautomat32ServiceTool-win.zip",
+    "sha256": "f07a2a124229fbad399dbabb15760d32a8b782b8fd832f016d536ccb0827e3c0"
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.1.1/Brautomat32ServiceTool-linux.zip",
+    "sha256": "e4e088edd1fa1bada4107f34720916d2ea90593bed824561ef01b885c1975773"
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "",
-    "sha256": ""
+    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.1.1/Brautomat32ServiceTool-macos.zip",
+    "sha256": "09739c5123dd3a579f2799c2a92e03300736ebed829b49c6f5a764412d032188"
   }
 }
