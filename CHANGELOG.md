@@ -1,10 +1,13 @@
 # Changelog
 
-## 2.1.0
+## 2.1.1
 
 - Bei der Migration der IDF5-Beta wählen beide Firmware-Assistenten
   **IDF6 Development**, wenn am Brautomat Testversionen aktiviert sind.
 - Verwendet esptool 5.7.0 für Windows, Linux und macOS.
+
+## 2.1.0
+
 - Assistenten führen durch Einrichtung, Firmware-Update, Migration und
   Konfigurationsbackup. Bei der Einrichtung kann vor dem Löschen eine
   Sicherung erstellt werden.

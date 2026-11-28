@@ -1,21 +1,21 @@
 {
   "tool": "Brautomat32 ServiceTool",
-  "version": "2.1.0",
-  "released_at": "2026-11-27",
-  "notes": "Unterst\u00fctzt IDF6-Pakete und die USB-Migration mit Backup und Restore.",
+  "version": "2.1.1",
+  "released_at": "",
+  "notes": "Korrigiert die Paketauswahl der Migrationsassistenten und aktualisiert esptool auf 5.7.0.",
   "windows": {
     "filename": "Brautomat32ServiceTool-win.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.1.0/Brautomat32ServiceTool-win.zip",
-    "sha256": "4aa988148d9ac653cdc13b88c1aaba14989d9d133f9fb6a5f1297cc3cf07be2d"
+    "url": "",
+    "sha256": ""
   },
   "linux": {
     "filename": "Brautomat32ServiceTool-linux.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.1.0/Brautomat32ServiceTool-linux.zip",
-    "sha256": "ed91a79ffdb53f7a7027e875a39c076d399f13bd59601cfaf08401c7fe0057fc"
+    "url": "",
+    "sha256": ""
   },
   "macos": {
     "filename": "Brautomat32ServiceTool-macos.zip",
-    "url": "https://github.com/InnuendoPi/ServiceTool/releases/download/v2.1.0/Brautomat32ServiceTool-macos.zip",
-    "sha256": "3e735f15753bdd7e67eda0fe6b921f6afb7efada8731a8d467b37d12fe874c8f"
+    "url": "",
+    "sha256": ""
   }
 }

@@ -4,7 +4,7 @@ Brautomat32 ServiceTool is the desktop companion for Brautomat32 devices.
 It combines recipe planning, device management and maintenance in a local
 browser interface for Windows, Linux and macOS.
 
-This README describes the **2.1.0 source version**. Available release packages
+This README describes the **2.1.1 source version**. Available release packages
 may differ; see [Releases](https://github.com/InnuendoPi/ServiceTool/releases)
 and [CHANGELOG.md](CHANGELOG.md).
 
